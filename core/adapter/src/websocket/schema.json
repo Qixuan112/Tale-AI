@@ -1,0 +1,51 @@
+[
+    {
+        "name": "mode",
+        "type": "string",
+        "required": true,
+        "description": "运行模式: server 或 client",
+        "default": "server"
+    },
+    {
+        "name": "host",
+        "type": "string",
+        "required": false,
+        "description": "服务器主机地址（server模式）",
+        "default": "0.0.0.0"
+    },
+    {
+        "name": "port",
+        "type": "integer",
+        "required": false,
+        "description": "服务器端口",
+        "default": 8080
+    },
+    {
+        "name": "path",
+        "type": "string",
+        "required": false,
+        "description": "WebSocket路径",
+        "default": "/ws"
+    },
+    {
+        "name": "url",
+        "type": "string",
+        "required": false,
+        "description": "连接地址（client模式）",
+        "default": "ws://localhost:8080/ws"
+    },
+    {
+        "name": "auto_reconnect",
+        "type": "boolean",
+        "required": false,
+        "description": "是否自动重连（client模式）",
+        "default": true
+    },
+    {
+        "name": "reconnect_interval",
+        "type": "integer",
+        "required": false,
+        "description": "重连间隔（秒）",
+        "default": 5
+    }
+]

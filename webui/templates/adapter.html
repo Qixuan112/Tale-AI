@@ -1,0 +1,805 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('适配器管理') }} - Tale WebUI{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;">
+    <div>
+        <h1 data-i18n="adapter.title">适配器管理</h1>
+        <p class="subtitle" data-i18n="adapter.subtitle">查看和控制各平台适配器</p>
+    </div>
+    <button class="btn btn-primary" id="addAdapterBtn" data-i18n="adapter.addAdapter">+ 添加适配器</button>
+</div>
+
+<div class="adapter-grid" id="adapterGrid">
+    <div class="empty-tip" data-i18n="adapter.loading">加载中...</div>
+</div>
+
+<!-- 添加适配器模态框 -->
+<div class="modal-backdrop" id="addAdapterModal" style="display:none;">
+    <div class="modal-dialog">
+        <div class="modal-header">
+            <h3 data-i18n="adapter.addAdapter">添加适配器</h3>
+            <button class="modal-close" id="closeModalBtn">&times;</button>
+        </div>
+        <div class="modal-body">
+            <!-- 步骤1：选择适配器 -->
+            <div id="stepSelect">
+                <p class="modal-desc" data-i18n="adapter.selectAdapter">请选择要添加的适配器类型</p>
+                <div class="adapter-select-grid" id="adapterSelectGrid"></div>
+            </div>
+            <!-- 步骤2：实例名称 -->
+            <div id="stepName" style="display:none;">
+                <p class="modal-desc" data-i18n="adapter.inputInstanceName">请输入实例名称（用于区分同一类型的多个适配器）</p>
+                <div class="form-row">
+                    <label for="instanceNameInput" data-i18n="adapter.instanceName">实例名称</label>
+                    <input type="text" id="instanceNameInput" placeholder="">
+                </div>
+            </div>
+            <!-- 步骤3：配置表单 -->
+            <div id="stepConfig" style="display:none;">
+                <div id="configFormHeader" style="margin-bottom:12px;font-weight:600;"></div>
+                <form id="adapterConfigForm"></form>
+            </div>
+        </div>
+        <div class="modal-footer" id="modalFooter">
+            <button class="btn" id="cancelBtn" data-i18n="common.cancel">取消</button>
+            <button class="btn btn-primary" id="nextBtn" data-i18n="common.next" style="display:none;">下一步</button>
+            <button class="btn btn-primary" id="submitBtn" data-i18n="common.confirm" style="display:none;">确认添加</button>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑配置模态框 -->
+<div class="modal-backdrop" id="editConfigModal" style="display:none;">
+    <div class="modal-dialog">
+        <div class="modal-header">
+            <h3 data-i18n="adapter.editConfig">编辑配置</h3>
+            <button class="modal-close" id="closeEditModalBtn">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="editConfigFormHeader" style="margin-bottom:12px;font-weight:600;"></div>
+            <form id="editConfigForm"></form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" id="cancelEditBtn" data-i18n="common.cancel">取消</button>
+            <button class="btn btn-primary" id="saveEditBtn" data-i18n="adapter.saveConfig">保存配置</button>
+        </div>
+    </div>
+</div>
+
+<style>
+.adapter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    padding: 0 28px 28px;
+}
+
+.adapter-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    transition: all 0.15s;
+}
+
+.adapter-card:hover {
+    border-color: var(--accent);
+}
+
+.adapter-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+}
+
+.adapter-name {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.adapter-status {
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 10px;
+    background: var(--bg-tertiary);
+}
+
+.adapter-status.running {
+    background: rgba(52, 211, 153, 0.15);
+    color: var(--success);
+}
+
+.adapter-meta {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.adapter-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+/* 模态框样式 */
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-dialog {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    width: 520px;
+    max-width: 90vw;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+}
+
+.modal-header h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.modal-close {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 22px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+}
+
+.modal-close:hover {
+    color: var(--text-primary);
+}
+
+.modal-body {
+    padding: 20px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.modal-desc {
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin-bottom: 12px;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 12px 20px;
+    border-top: 1px solid var(--border);
+}
+
+/* 适配器选择网格 */
+.adapter-select-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+
+.adapter-select-card {
+    background: var(--bg-tertiary);
+    border: 2px solid transparent;
+    border-radius: 10px;
+    padding: 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.adapter-select-card:hover {
+    border-color: var(--accent);
+}
+
+.adapter-select-card.selected {
+    border-color: var(--accent);
+    background: var(--accent-light);
+}
+
+.adapter-select-card .sa-name {
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 4px;
+}
+
+.adapter-select-card .sa-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+/* 配置表单 */
+#adapterConfigForm .form-row {
+    margin-bottom: 14px;
+}
+
+#adapterConfigForm label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 6px;
+    color: var(--text-primary);
+}
+
+#adapterConfigForm .field-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+#adapterConfigForm input,
+#adapterConfigForm select,
+#adapterConfigForm textarea {
+    width: 100%;
+}
+
+#adapterConfigForm input[type="checkbox"] {
+    width: auto;
+    margin-right: 6px;
+}
+
+#adapterConfigForm .checkbox-row {
+    display: flex;
+    align-items: center;
+}
+
+#adapterConfigForm .checkbox-row label {
+    margin-bottom: 0;
+    font-weight: 400;
+}
+
+#adapterConfigForm .tag-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+#adapterConfigForm .tag-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 12px;
+}
+
+#adapterConfigForm .tag-item button {
+    background: none;
+    border: none;
+    color: var(--danger);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0;
+    line-height: 1;
+}
+
+#adapterConfigForm .list-input-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+#adapterConfigForm .list-input-row input {
+    flex: 1;
+}
+</style>
+
+<script>
+(async () => {
+    const grid = document.getElementById('adapterGrid');
+    const modal = document.getElementById('addAdapterModal');
+    const addBtn = document.getElementById('addAdapterBtn');
+    const closeBtn = document.getElementById('closeModalBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const submitBtn = document.getElementById('submitBtn');
+    const stepSelect = document.getElementById('stepSelect');
+    const stepName = document.getElementById('stepName');
+    const stepConfig = document.getElementById('stepConfig');
+    const adapterSelectGrid = document.getElementById('adapterSelectGrid');
+    const configForm = document.getElementById('adapterConfigForm');
+    const configFormHeader = document.getElementById('configFormHeader');
+    const instanceNameInput = document.getElementById('instanceNameInput');
+
+    // 编辑配置模态框元素
+    const editModal = document.getElementById('editConfigModal');
+    const closeEditBtn = document.getElementById('closeEditModalBtn');
+    const cancelEditBtn = document.getElementById('cancelEditBtn');
+    const saveEditBtn = document.getElementById('saveEditBtn');
+    const editConfigForm = document.getElementById('editConfigForm');
+    const editConfigFormHeader = document.getElementById('editConfigFormHeader');
+
+    let availableAdapters = [];
+    let selectedAdapterId = null;
+    let currentStep = 'select'; // select -> name -> config
+    let editingInstanceName = null;
+    let editingSchema = [];
+
+    // 模态框控制
+    function openModal() {
+        modal.style.display = 'flex';
+        resetModal();
+        loadAvailableAdapters();
+    }
+    function closeModal() {
+        modal.style.display = 'none';
+    }
+    function resetModal() {
+        selectedAdapterId = null;
+        currentStep = 'select';
+        stepSelect.style.display = 'block';
+        stepName.style.display = 'none';
+        stepConfig.style.display = 'none';
+        nextBtn.style.display = 'none';
+        nextBtn.textContent = window.t ? window.t('common.next') : '下一步';
+        submitBtn.style.display = 'none';
+        adapterSelectGrid.innerHTML = '';
+        configForm.innerHTML = '';
+        instanceNameInput.value = '';
+    }
+
+    addBtn.addEventListener('click', openModal);
+    closeBtn.addEventListener('click', closeModal);
+    cancelBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+    // 编辑配置模态框事件
+    closeEditBtn.addEventListener('click', closeEditModal);
+    cancelEditBtn.addEventListener('click', closeEditModal);
+    editModal.addEventListener('click', (e) => { if (e.target === editModal) closeEditModal(); });
+
+    function openEditModal() {
+        editModal.style.display = 'flex';
+    }
+    function closeEditModal() {
+        editModal.style.display = 'none';
+        editingInstanceName = null;
+        editingSchema = [];
+        editConfigForm.innerHTML = '';
+    }
+
+    async function loadAvailableAdapters() {
+        try {
+            const res = await fetch('/api/adapters/available');
+            availableAdapters = await res.json();
+            if (!availableAdapters.length) {
+                adapterSelectGrid.innerHTML = '<div class="empty-tip">' + (window.t ? window.t('adapter.noAdapters') : '未找到适配器') + '</div>';
+                return;
+            }
+            adapterSelectGrid.innerHTML = availableAdapters.map(a => `
+                <div class="adapter-select-card" data-id="${a.id}" onclick="selectAdapter('${a.id}')">
+                    <div class="sa-name">${a.name || a.id}</div>
+                    <div class="sa-desc">${a.description || ''}</div>
+                    <div class="sa-desc" style="margin-top:4px;">${window.t ? window.t('adapter.version') : '版本'}: ${a.version || '-'} | ${window.t ? window.t('adapter.author') : '作者'}: ${a.author || '-'}</div>
+                </div>
+            `).join('');
+        } catch (e) {
+            adapterSelectGrid.innerHTML = '<div class="empty-tip">' + (window.t ? window.t('adapter.loadFailed') : '加载失败') + '</div>';
+        }
+    }
+
+    window.selectAdapter = function(id) {
+        selectedAdapterId = id;
+        document.querySelectorAll('.adapter-select-card').forEach(c => c.classList.toggle('selected', c.dataset.id === id));
+        nextBtn.style.display = 'inline-block';
+    };
+
+    nextBtn.addEventListener('click', () => {
+        if (!selectedAdapterId) return;
+
+        if (currentStep === 'select') {
+            // 进入实例名称步骤
+            currentStep = 'name';
+            stepSelect.style.display = 'none';
+            stepName.style.display = 'block';
+            const adapter = availableAdapters.find(a => a.id === selectedAdapterId);
+            instanceNameInput.placeholder = (adapter?.name || selectedAdapterId);
+            nextBtn.textContent = window.t ? window.t('common.next') : '下一步';
+            return;
+        }
+
+        if (currentStep === 'name') {
+            // 进入配置步骤
+            currentStep = 'config';
+            stepName.style.display = 'none';
+            stepConfig.style.display = 'block';
+            nextBtn.style.display = 'none';
+            submitBtn.style.display = 'inline-block';
+
+            const adapter = availableAdapters.find(a => a.id === selectedAdapterId);
+            configFormHeader.textContent = (adapter?.name || selectedAdapterId) + ' - ' + (window.t ? window.t('adapter.configTitle') : '配置');
+            buildConfigForm(adapter?.schema || []);
+        }
+    });
+
+    function buildConfigForm(schema) {
+        configForm.innerHTML = '';
+        if (!schema.length) {
+            configForm.innerHTML = '<p class="modal-desc">' + (window.t ? window.t('adapter.noConfigNeeded') : '此适配器无需额外配置') + '</p>';
+            return;
+        }
+        schema.forEach(field => {
+            const row = document.createElement('div');
+            row.className = 'form-row';
+            const labelText = field.name + (field.required ? ' *' : '');
+
+            if (field.type === 'boolean') {
+                row.innerHTML = `
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="cfg_${field.name}" name="${field.name}" ${field.default ? 'checked' : ''}>
+                        <label for="cfg_${field.name}">${labelText}</label>
+                    </div>
+                    ${field.description ? `<div class="field-desc">${field.description}</div>` : ''}
+                `;
+            } else if (field.type === 'enum') {
+                const options = (field.options || []).map(o => `<option value="${o}" ${o === field.default ? 'selected' : ''}>${o}</option>`).join('');
+                row.innerHTML = `
+                    <label for="cfg_${field.name}">${labelText}</label>
+                    ${field.description ? `<div class="field-desc">${field.description}</div>` : ''}
+                    <select id="cfg_${field.name}" name="${field.name}">${options}</select>
+                `;
+            } else if (field.type === 'list') {
+                const listId = 'list_' + field.name;
+                row.innerHTML = `
+                    <label>${labelText}</label>
+                    ${field.description ? `<div class="field-desc">${field.description}</div>` : ''}
+                    <div class="list-input-row">
+                        <input type="text" id="input_${listId}" placeholder="${window.t ? window.t('adapter.pressEnter') : '输入后按回车添加'}">
+                        <button type="button" class="btn btn-sm" onclick="addListItem('${listId}')">+</button>
+                    </div>
+                    <div class="tag-list" id="${listId}"></div>
+                    <input type="hidden" name="${field.name}" id="hidden_${listId}" value="">
+                `;
+                setTimeout(() => {
+                    const input = document.getElementById('input_' + listId);
+                    if (input) {
+                        input.addEventListener('keydown', (e) => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                addListItem(listId);
+                            }
+                        });
+                    }
+                }, 0);
+            } else if (field.type === 'integer' || field.type === 'float' || field.type === 'number') {
+                const step = field.type === 'integer' ? '1' : '0.1';
+                row.innerHTML = `
+                    <label for="cfg_${field.name}">${labelText}</label>
+                    ${field.description ? `<div class="field-desc">${field.description}</div>` : ''}
+                    <input type="number" id="cfg_${field.name}" name="${field.name}" value="${field.default !== undefined ? field.default : ''}" step="${step}">
+                `;
+            } else {
+                row.innerHTML = `
+                    <label for="cfg_${field.name}">${labelText}</label>
+                    ${field.description ? `<div class="field-desc">${field.description}</div>` : ''}
+                    <input type="text" id="cfg_${field.name}" name="${field.name}" value="${field.default !== undefined ? field.default : ''}">
+                `;
+            }
+            configForm.appendChild(row);
+        });
+    }
+
+    window.addListItem = function(listId) {
+        const input = document.getElementById('input_' + listId);
+        const container = document.getElementById(listId);
+        const val = input.value.trim();
+        if (!val) return;
+        const tag = document.createElement('div');
+        tag.className = 'tag-item';
+        tag.innerHTML = `<span>${val}</span><button type="button" onclick="this.parentElement.remove();updateListHidden('${listId}')">&times;</button>`;
+        container.appendChild(tag);
+        input.value = '';
+        updateListHidden(listId);
+    };
+
+    window.updateListHidden = function(listId) {
+        const container = document.getElementById(listId);
+        const hidden = document.getElementById('hidden_' + listId);
+        const values = Array.from(container.querySelectorAll('.tag-item span')).map(s => s.textContent);
+        hidden.value = JSON.stringify(values);
+    };
+
+    submitBtn.addEventListener('click', async () => {
+        if (!selectedAdapterId) return;
+        const adapter = availableAdapters.find(a => a.id === selectedAdapterId);
+        if (!adapter) return;
+
+        const instanceName = instanceNameInput.value.trim() || (adapter.name || selectedAdapterId);
+
+        const config = {};
+        const schema = adapter.schema || [];
+        schema.forEach(field => {
+            if (field.type === 'boolean') {
+                const el = document.getElementById('cfg_' + field.name);
+                config[field.name] = el ? el.checked : (field.default || false);
+            } else if (field.type === 'list') {
+                const hidden = document.getElementById('hidden_list_' + field.name);
+                try {
+                    config[field.name] = hidden && hidden.value ? JSON.parse(hidden.value) : (field.default || []);
+                } catch (e) {
+                    config[field.name] = field.default || [];
+                }
+            } else {
+                const el = document.getElementById('cfg_' + field.name);
+                let val = el ? el.value : '';
+                if (field.type === 'integer') {
+                    val = val === '' ? (field.default !== undefined ? field.default : 0) : parseInt(val, 10);
+                } else if (field.type === 'float' || field.type === 'number') {
+                    val = val === '' ? (field.default !== undefined ? field.default : 0) : parseFloat(val);
+                }
+                config[field.name] = val;
+            }
+        });
+
+        try {
+            const res = await fetch(`/api/adapters/${selectedAdapterId}/add`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ config, instance_name: instanceName })
+            });
+            const data = await res.json();
+            if (data.ok) {
+                alert(window.t ? window.t('adapter.addSuccess') : '添加成功' + (data.instance_name && data.instance_name !== instanceName ? '\n实例名: ' + data.instance_name : ''));
+                closeModal();
+                loadAdapters();
+            } else {
+                alert((window.t ? window.t('adapter.addFailed') : '添加失败') + ': ' + (data.error || ''));
+            }
+        } catch (e) {
+            alert(window.t ? window.t('adapter.requestFailed') : '请求失败');
+        }
+    });
+
+    async function loadAdapters() {
+        try {
+            const res = await fetch('/api/adapters');
+            const adapters = await res.json();
+            if (!adapters.length) {
+                grid.innerHTML = '<div class="empty-tip">' + (window.t ? window.t('adapter.noAdapters') : '未找到适配器') + '</div>';
+                return;
+            }
+            grid.innerHTML = adapters.map(a => `
+                <div class="adapter-card">
+                    <div class="adapter-header">
+                        <span class="adapter-name">${a.instance_name}</span>
+                        <span class="adapter-status ${a.running ? 'running' : ''}">
+                            ${a.running ? '● ' + (window.t ? window.t('adapter.running') : '运行中') : '○ ' + (window.t ? window.t('adapter.stopped') : '已停止')}
+                        </span>
+                    </div>
+                    <div class="adapter-meta">类型: ${a.name || a.adapter_type}</div>
+                    <div class="adapter-meta">${window.t ? window.t('adapter.version') : '版本'}: ${a.version || (window.t ? window.t('adapter.unknown') : 'unknown')}</div>
+                    <div class="adapter-meta">${window.t ? window.t('adapter.author') : '作者'}: ${a.author || (window.t ? window.t('adapter.unknown') : 'unknown')}</div>
+                    <div class="adapter-actions">
+                        <button class="btn btn-sm ${a.running ? 'btn-danger' : 'btn-primary'}" onclick="toggleAdapter('${a.instance_name}', ${a.running})">
+                            ${a.running ? (window.t ? window.t('adapter.stop') : '停止') : (window.t ? window.t('adapter.start') : '启动')}
+                        </button>
+                        <button class="btn btn-sm" onclick="editAdapterConfig('${a.instance_name}')">
+                            ${window.t ? window.t('adapter.config') : '配置'}
+                        </button>                        <button class="btn btn-sm btn-danger" onclick="deleteAdapter('${a.instance_name}')\" style="margin-left:auto;">
+                            ${window.t ? window.t('adapter.delete') : '删除'}
+                        </button>                    </div>
+                </div>
+            `).join('');
+        } catch (e) {
+            grid.innerHTML = '<div class="empty-tip">' + (window.t ? window.t('adapter.loadFailed') : '加载失败') + '</div>';
+        }
+    }
+
+    window.toggleAdapter = async function(instanceName, running) {
+        const action = running ? 'stop' : 'start';
+        try {
+            const res = await fetch(`/api/adapters/${encodeURIComponent(instanceName)}/${action}`, {method: 'POST'});
+            const data = await res.json();
+            alert(data.ok ? (window.t ? window.t('adapter.toggleSuccess') : '操作成功') : ((window.t ? window.t('adapter.toggleFailed') : '失败') + ': ' + (data.error || '')));
+            loadAdapters();
+        } catch (e) { alert(window.t ? window.t('adapter.requestFailed') : '请求失败'); }
+    };
+
+    window.editAdapterConfig = async function(instanceName) {
+        editingInstanceName = instanceName;
+        try {
+            const res = await fetch(`/api/adapters/${encodeURIComponent(instanceName)}/config`);
+            const data = await res.json();
+            if (data.error) {
+                alert((window.t ? window.t('adapter.loadFailed') : '加载失败') + ': ' + data.error);
+                return;
+            }
+            editingSchema = data.schema || [];
+            editConfigFormHeader.textContent = instanceName + ' - ' + (window.t ? window.t('adapter.configTitle') : '配置');
+            buildEditConfigForm(editingSchema, data.config || {});
+            openEditModal();
+        } catch (e) {
+            alert(window.t ? window.t('adapter.requestFailed') : '请求失败');
+        }
+    };
+
+    function buildEditConfigForm(schema, currentConfig) {
+        editConfigForm.innerHTML = '';
+        if (!schema.length) {
+            editConfigForm.innerHTML = '<p class="modal-desc">' + (window.t ? window.t('adapter.noConfigNeeded') : '此适配器无需额外配置') + '</p>';
+            return;
+        }
+        schema.forEach(field => {
+            const row = document.createElement('div');
+            row.className = 'form-row';
+            const labelText = field.name + (field.required ? ' *' : '');
+            const currentVal = currentConfig[field.name] !== undefined ? currentConfig[field.name] : field.default;
+
+            if (field.type === 'boolean') {
+                const checked = currentVal ? 'checked' : '';
+                row.innerHTML = `
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="edit_cfg_${field.name}" name="${field.name}" ${checked}>
+                        <label for="edit_cfg_${field.name}">${labelText}</label>
+                    </div>
+                    ${field.description ? `<div class="field-desc">${field.description}</div>` : ''}
+                `;
+            } else if (field.type === 'enum') {
+                const val = currentVal !== undefined ? currentVal : field.default;
+                const options = (field.options || []).map(o => `<option value="${o}" ${o === val ? 'selected' : ''}>${o}</option>`).join('');
+                row.innerHTML = `
+                    <label for="edit_cfg_${field.name}">${labelText}</label>
+                    ${field.description ? `<div class="field-desc">${field.description}</div>` : ''}
+                    <select id="edit_cfg_${field.name}" name="${field.name}">${options}</select>
+                `;
+            } else if (field.type === 'list') {
+                const listId = 'edit_list_' + field.name;
+                const values = Array.isArray(currentVal) ? currentVal : (field.default || []);
+                const tagsHtml = values.map(v => `<div class="tag-item"><span>${v}</span><button type="button" onclick="this.parentElement.remove();updateEditListHidden('${listId}')">&times;</button></div>`).join('');
+                row.innerHTML = `
+                    <label>${labelText}</label>
+                    ${field.description ? `<div class="field-desc">${field.description}</div>` : ''}
+                    <div class="list-input-row">
+                        <input type="text" id="input_${listId}" placeholder="${window.t ? window.t('adapter.pressEnter') : '输入后按回车添加'}">
+                        <button type="button" class="btn btn-sm" onclick="addEditListItem('${listId}')">+</button>
+                    </div>
+                    <div class="tag-list" id="${listId}">${tagsHtml}</div>
+                    <input type="hidden" name="${field.name}" id="hidden_${listId}" value="${JSON.stringify(values)}">
+                `;
+                setTimeout(() => {
+                    const input = document.getElementById('input_' + listId);
+                    if (input) {
+                        input.addEventListener('keydown', (e) => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                addEditListItem(listId);
+                            }
+                        });
+                    }
+                }, 0);
+            } else if (field.type === 'integer' || field.type === 'float' || field.type === 'number') {
+                const val = currentVal !== undefined ? currentVal : (field.default !== undefined ? field.default : '');
+                const step = field.type === 'integer' ? '1' : '0.1';
+                row.innerHTML = `
+                    <label for="edit_cfg_${field.name}">${labelText}</label>
+                    ${field.description ? `<div class="field-desc">${field.description}</div>` : ''}
+                    <input type="number" id="edit_cfg_${field.name}" name="${field.name}" value="${val}" step="${step}">
+                `;
+            } else {
+                const val = currentVal !== undefined ? currentVal : (field.default !== undefined ? field.default : '');
+                row.innerHTML = `
+                    <label for="edit_cfg_${field.name}">${labelText}</label>
+                    ${field.description ? `<div class="field-desc">${field.description}</div>` : ''}
+                    <input type="text" id="edit_cfg_${field.name}" name="${field.name}" value="${val}">
+                `;
+            }
+            editConfigForm.appendChild(row);
+        });
+    }
+
+    window.addEditListItem = function(listId) {
+        const input = document.getElementById('input_' + listId);
+        const container = document.getElementById(listId);
+        const val = input.value.trim();
+        if (!val) return;
+        const tag = document.createElement('div');
+        tag.className = 'tag-item';
+        tag.innerHTML = `<span>${val}</span><button type="button" onclick="this.parentElement.remove();updateEditListHidden('${listId}')">&times;</button>`;
+        container.appendChild(tag);
+        input.value = '';
+        updateEditListHidden(listId);
+    };
+
+    window.updateEditListHidden = function(listId) {
+        const container = document.getElementById(listId);
+        const hidden = document.getElementById('hidden_' + listId);
+        const values = Array.from(container.querySelectorAll('.tag-item span')).map(s => s.textContent);
+        hidden.value = JSON.stringify(values);
+    };
+
+    window.deleteAdapter = function(instanceName) {
+        const msg = window.t
+            ? window.t('adapter.confirmDelete').replace('{name}', instanceName)
+            : `确定要删除适配器「${instanceName}」吗？删除后不可恢复！`;
+        if (!confirm(msg)) return;
+
+        fetch(`/api/adapters/${encodeURIComponent(instanceName)}/delete`, {method: 'POST'})
+            .then(res => res.json())
+            .then(data => {
+                if (data.ok) {
+                    alert(window.t ? window.t('adapter.deleteSuccess') : '删除成功');
+                    loadAdapters();
+                } else {
+                    alert((window.t ? window.t('adapter.deleteFailed') : '删除失败') + ': ' + (data.error || ''));
+                }
+            })
+            .catch(() => alert(window.t ? window.t('adapter.requestFailed') : '请求失败'));
+    };
+
+    saveEditBtn.addEventListener('click', async () => {
+        if (!editingInstanceName) return;
+
+        const config = {};
+        editingSchema.forEach(field => {
+            if (field.type === 'boolean') {
+                const el = document.getElementById('edit_cfg_' + field.name);
+                config[field.name] = el ? el.checked : false;
+            } else if (field.type === 'list') {
+                const hidden = document.getElementById('hidden_edit_list_' + field.name);
+                try {
+                    config[field.name] = hidden && hidden.value ? JSON.parse(hidden.value) : [];
+                } catch (e) {
+                    config[field.name] = [];
+                }
+            } else {
+                const el = document.getElementById('edit_cfg_' + field.name);
+                let val = el ? el.value : '';
+                if (field.type === 'integer') {
+                    val = val === '' ? 0 : parseInt(val, 10);
+                } else if (field.type === 'float' || field.type === 'number') {
+                    val = val === '' ? 0 : parseFloat(val);
+                }
+                config[field.name] = val;
+            }
+        });
+
+        try {
+            const res = await fetch(`/api/adapters/${encodeURIComponent(editingInstanceName)}/config`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ config })
+            });
+            const data = await res.json();
+            if (data.ok) {
+                alert(window.t ? window.t('adapter.saveSuccess') : '保存成功');
+                closeEditModal();
+                loadAdapters();
+            } else {
+                alert((window.t ? window.t('adapter.saveFailed') : '保存失败') + ': ' + (data.error || ''));
+            }
+        } catch (e) {
+            alert(window.t ? window.t('adapter.requestFailed') : '请求失败');
+        }
+    });
+
+    loadAdapters();
+})();
+</script>
+{% endblock %}

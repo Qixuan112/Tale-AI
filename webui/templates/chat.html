@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('对话管理') }} - Tale WebUI{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/card-view.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="chat-layout">
+    <!-- 左侧会话列表 -->
+    <aside class="chat-sidebar">
+        <div class="chat-toolbar">
+            <button class="btn btn-sm" id="btnNewChat" data-i18n-title="chat.newChat">
+                <span>＋</span> <span data-i18n="chat.newChat">新建对话</span>
+            </button>
+            <button class="btn btn-sm" id="btnCardView" title="Expand (Tab)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"></path><path d="M21 8V5a2 2 0 0 0-2-2h-3"></path><path d="M3 16v3a2 2 0 0 0 2 2h3"></path><path d="M16 21h3a2 2 0 0 0 2-2v-3"></path></svg>
+                <span data-i18n="chat.expand">展开</span>
+            </button>
+        </div>
+
+        <div class="conversation-list" id="conversationList">
+            <!-- JS 动态填充 -->
+            <div class="empty-tip" data-i18n="chat.loading">加载中...</div>
+        </div>
+    </aside>
+
+    <!-- 右侧聊天面板 -->
+    <div class="chat-panel">
+        <div class="chat-header" id="chatHeader">
+            <span class="chat-title" data-i18n="chat.defaultSession">默认会话</span>
+            <div class="chat-actions">
+                <button class="btn btn-sm btn-danger" id="btnClearChat" data-i18n="chat.clear">清空</button>
+            </div>
+        </div>
+
+        <div class="chat-messages" id="chatMessages">
+            <!-- JS 动态填充 -->
+            <div class="empty-tip" data-i18n="chat.startChat">选择或创建一个对话开始聊天</div>
+        </div>
+
+        <div class="chat-input-area">
+            <textarea id="messageInput" data-i18n-placeholder="chat.placeholder" placeholder="输入消息，按 Enter 发送，Shift+Enter 换行..."></textarea>
+            <button class="btn btn-primary" id="btnSend">
+                <span>&gt;</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- 3D 卡片浮层 -->
+<div id="cardOverlay" class="hidden">
+    <div class="card-container" id="cardContainer"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+<script src="{{ url_for('static', filename='js/card-view.js') }}"></script>
+{% endblock %}

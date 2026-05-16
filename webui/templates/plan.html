@@ -1,0 +1,314 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('日程规划') }} - Tale WebUI{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 data-i18n="plan.title">日程规划</h1>
+    <p class="subtitle" data-i18n="plan.subtitle">管理每日日程与长期目标</p>
+</div>
+
+<div class="plan-layout">
+    <!-- 左侧控制区 -->
+    <aside class="plan-sidebar">
+        <div class="panel">
+            <div class="panel-header"><h3 data-i18n="plan.selectDate">选择日期</h3></div>
+            <div class="panel-body">
+                <input type="date" id="planDatePicker" style="width:100%">
+                <button class="btn btn-primary" id="btnLoadPlan" style="width:100%;margin-top:10px" data-i18n="plan.load">加载</button>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-header"><h3 data-i18n="plan.generatePlan">生成计划</h3></div>
+            <div class="panel-body">
+                <input type="text" id="planPrompt" data-i18n-placeholder="plan.generatePlaceholder" placeholder="制定今天的学习计划..." style="width:100%">
+                <button class="btn btn-primary" id="btnGenPlan" style="width:100%;margin-top:10px" data-i18n="plan.generate">生成</button>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-header"><h3 data-i18n="plan.addEvent">添加行程</h3></div>
+            <div class="panel-body">
+                <input type="text" id="eventTitle" data-i18n-placeholder="plan.eventTitle" placeholder="标题" style="width:100%;margin-bottom:8px">
+                <input type="text" id="eventDesc" data-i18n-placeholder="plan.eventDesc" placeholder="描述" style="width:100%;margin-bottom:8px">
+                <input type="time" id="eventStart" style="width:48%">
+                <input type="time" id="eventEnd" style="width:48%;float:right">
+                <select id="eventType" style="width:100%;margin-top:8px">
+                    <option value="" data-i18n="plan.loading">加载中...</option>
+                </select>
+                <button class="btn btn-primary" id="btnAddEvent" style="width:100%;margin-top:10px" data-i18n="plan.add">添加</button>
+            </div>
+        </div>
+    </aside>
+
+    <!-- 右侧时间轴 -->
+    <div class="plan-timeline" id="planTimeline">
+        <div class="empty-tip">选择一个日期查看日程</div>
+    </div>
+</div>
+
+<style>
+.plan-layout { display: flex; gap: 20px; padding: 0 28px 28px; height: calc(100% - 80px); }
+.plan-sidebar { width: 260px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
+.plan-timeline { flex: 1; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 20px; overflow-y: auto; position: relative; }
+
+.timeline-date { font-size: 16px; font-weight: 600; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.timeline-entry {
+    display: flex; align-items: flex-start; gap: 14px;
+    padding: 14px 0; border-bottom: 1px solid var(--border);
+    position: relative;
+    transition: background 0.3s ease;
+}
+.timeline-entry:last-child { border-bottom: none; }
+.timeline-entry.is-current { background: var(--accent-light); border-radius: 8px; margin: 4px -12px; padding: 14px 12px; }
+.timeline-entry.is-past { opacity: 0.65; }
+.timeline-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--accent); margin-top: 5px; flex-shrink: 0;
+    box-shadow: 0 0 8px var(--accent);
+    transition: all 0.3s ease;
+}
+.timeline-entry.is-current .timeline-dot {
+    width: 14px; height: 14px;
+    background: var(--success);
+    box-shadow: 0 0 12px var(--success);
+    animation: pulse-dot 2s infinite;
+}
+.timeline-entry.is-past .timeline-dot { background: var(--text-muted); box-shadow: none; }
+@keyframes pulse-dot {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.2); }
+}
+.timeline-content { flex: 1; }
+.timeline-content .title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.timeline-content .desc { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+.timeline-content .meta { font-size: 11px; color: var(--text-muted); display: flex; gap: 12px; }
+.timeline-content .actions { margin-top: 8px; display: flex; gap: 6px; }
+
+.status-pending { color: var(--warning); }
+.status-in-progress { color: var(--accent); font-weight: 600; }
+.status-completed { color: var(--success); }
+.status-cancelled { color: var(--danger); }
+
+/* now 指示线 */
+.now-indicator {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 12px; margin: 8px -12px;
+    background: var(--accent); color: #fff; border-radius: 6px;
+    font-size: 11px; font-weight: 600;
+}
+.now-indicator::before {
+    content: ''; width: 6px; height: 6px;
+    background: #fff; border-radius: 50%;
+    animation: pulse-dot 1.5s infinite;
+}
+</style>
+
+<script>
+(function() {
+    'use strict';
+
+    const elDate = document.getElementById('planDatePicker');
+    const elTimeline = document.getElementById('planTimeline');
+    let _currentPlan = null;
+    let _currentDateStr = '';
+    let _statusTimer = null;
+
+    // 默认今天
+    elDate.value = new Date().toISOString().split('T')[0];
+
+    // ===== 工具：时间比对 =====
+    function timeToMinutes(str) {
+        if (!str) return -1;
+        const parts = str.split(':');
+        return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+    }
+    function getNowMinutes() {
+        const now = new Date();
+        return now.getHours() * 60 + now.getMinutes();
+    }
+
+    // ===== 计算实时状态 =====
+    function computeStatus(entry, isToday) {
+        if (!isToday) return entry.status || 'pending';
+        const now = getNowMinutes();
+        const start = timeToMinutes(entry.start_time);
+        const end = timeToMinutes(entry.end_time);
+        if (end !== -1 && now > end) return 'completed';
+        if (start !== -1 && now >= start && (end === -1 || now <= end)) return 'in-progress';
+        if (start !== -1 && now < start) return 'pending';
+        return entry.status || 'pending';
+    }
+
+    const STATUS_MAP = {
+        pending: { label: '待开始', cls: 'pending' },
+        'in-progress': { label: '进行中', cls: 'in-progress' },
+        completed: { label: '已完成', cls: 'completed' },
+        cancelled: { label: '已取消', cls: 'cancelled' }
+    };
+    function getStatusLabel(status) {
+        const s = STATUS_MAP[status] || { label: status, cls: 'pending' };
+        if (window.t) {
+            const keys = { pending: 'plan.pending', 'in-progress': 'plan.inProgress', completed: 'plan.completed', cancelled: 'plan.cancelled' };
+            const k = keys[status];
+            if (k) return { label: window.t(k), cls: s.cls };
+        }
+        return s;
+    }
+
+    // ===== 找到当前/下一个事件索引 =====
+    function findNowOrNextIdx(entries, isToday) {
+        if (!isToday || !entries.length) return -1;
+        const now = getNowMinutes();
+        for (let i = 0; i < entries.length; i++) {
+            const st = computeStatus(entries[i], true);
+            if (st === 'in-progress' || st === 'pending') return i;
+        }
+        return -1;
+    }
+
+    // ===== 渲染时间轴 =====
+    function renderPlan(plan) {
+        _currentPlan = plan;
+        _currentDateStr = plan.date || elDate.value;
+        const entries = plan.entries || [];
+        const date = _currentDateStr;
+        const isToday = date === new Date().toISOString().split('T')[0];
+
+        if (!entries.length) {
+            elTimeline.innerHTML = '<div class="timeline-date">' + date + '</div><div class="empty-tip">' + (window.t ? window.t('plan.noSchedule') : '暂无日程') + '</div>';
+            return;
+        }
+
+        const computed = entries.map(function(e) {
+            var st = computeStatus(e, isToday);
+            return { entry: e, status: st, isCurrent: st === 'in-progress', isPast: st === 'completed' };
+        });
+
+        var nowIdx = findNowOrNextIdx(entries, isToday);
+        var html = '<div class="timeline-date">' + date + '</div>';
+
+        for (var i = 0; i < computed.length; i++) {
+            var e = computed[i].entry;
+            var st = computed[i].status;
+            var isCur = computed[i].isCurrent;
+            var isPast = computed[i].isPast;
+
+            // 在"待开始"事件前插入 now 指示线
+            if (isToday && i === nowIdx && st === 'pending') {
+                html += '<div class="now-indicator">' + (window.t ? window.t('plan.now') : '现在') + '</div>';
+            }
+
+            var info = getStatusLabel(st);
+            var cls = 'timeline-entry';
+            if (isCur) cls += ' is-current';
+            if (isPast) cls += ' is-past';
+
+            var timeRange = e.start_time;
+            if (e.end_time) timeRange += '-' + e.end_time;
+
+            html += '<div class="' + cls + '" data-id="' + e.id + '">';
+            html += '<div class="timeline-dot"></div>';
+            html += '<div class="timeline-content">';
+            html += '<div class="title">' + e.title + '</div>';
+            html += '<div class="desc">' + (e.description || '') + '</div>';
+            html += '<div class="meta">';
+            html += '<span>' + timeRange + '</span>';
+            html += '<span>' + e.event_type + '</span>';
+            html += '<span class="status-' + info.cls + '">\u25cf ' + info.label + '</span>';
+            html += '</div>';
+            html += '<div class="actions">';
+            html += '<button class="btn btn-sm" onclick="deleteEvent(\'' + e.id + '\')">' + (window.t ? window.t('plan.delete') : '删除') + '</button>';
+            html += '</div></div></div>';
+        }
+
+        elTimeline.innerHTML = html;
+    }
+
+    // ===== 仅刷新状态（不重新请求 API） =====
+    function refreshStatuses() {
+        if (_currentPlan) renderPlan(_currentPlan);
+    }
+
+    // ===== 加载计划 =====
+    async function loadPlan(dateStr) {
+        try {
+            const res = await fetch('/api/plan/' + dateStr);
+            const plan = await res.json();
+            renderPlan(plan);
+        } catch (e) {
+            elTimeline.innerHTML = '<div class="empty-tip">加载失败</div>';
+        }
+    }
+
+    // ===== 事件绑定 =====
+    document.getElementById('btnLoadPlan').addEventListener('click', function() { loadPlan(elDate.value); });
+
+    document.getElementById('btnGenPlan').addEventListener('click', async function() {
+        var prompt = document.getElementById('planPrompt').value.trim() || '制定今天的计划';
+        var btn = document.getElementById('btnGenPlan');
+        btn.disabled = true;
+        btn.textContent = window.t ? window.t('plan.generating') : '生成中...';
+        try {
+            var res = await fetch('/api/plan/generate', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({prompt: prompt})
+            });
+            var data = await res.json();
+            alert(data.result || (window.t ? window.t('plan.generated') : '已生成'));
+            loadPlan(elDate.value);
+        } catch (e) { alert(window.t ? window.t('plan.genFailed') : '生成失败'); }
+        finally { btn.disabled = false; btn.textContent = window.t ? window.t('plan.generate') : '生成'; }
+    });
+
+    document.getElementById('btnAddEvent').addEventListener('click', async function() {
+        var title = document.getElementById('eventTitle').value.trim();
+        var desc = document.getElementById('eventDesc').value.trim();
+        var start = document.getElementById('eventStart').value;
+        var end = document.getElementById('eventEnd').value;
+        var type = document.getElementById('eventType').value;
+        if (!title || !start) { alert(window.t ? window.t('plan.fillRequired') : '请填写标题和开始时间'); return; }
+
+        var reqText = type + '\uff1a' + title + '\uff0c' + desc + '\uff0c\u65f6\u95f4 ' + start + (end ? ' \u5230 ' + end : '');
+        try {
+            var res = await fetch('/api/plan/event', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({request: reqText})
+            });
+            var data = await res.json();
+            alert(data.result || (window.t ? window.t('plan.added') : '已添加'));
+            loadPlan(elDate.value);
+        } catch (e) { alert(window.t ? window.t('plan.addFailed') : '添加失败'); }
+    });
+
+    window.deleteEvent = async function(id) {
+        if (!confirm(window.t ? window.t('plan.confirmDelete') : '确定删除此行程？')) return;
+        try {
+            await fetch('/api/plan/event/' + id, {method: 'DELETE'});
+            loadPlan(elDate.value);
+        } catch (e) { alert(window.t ? window.t('plan.deleteFailed') : '删除失败'); }
+    };
+
+    // ===== 加载事件类型 =====
+    async function loadEventTypes() {
+        try {
+            var res = await fetch('/api/plan/event-types');
+            var types = await res.json();
+            var sel = document.getElementById('eventType');
+            sel.innerHTML = types.map(function(t) { return '<option value="' + t.value + '">' + t.label + '</option>'; }).join('');
+        } catch (e) {
+            document.getElementById('eventType').innerHTML = '<option value="other">' + (window.t ? window.t('plan.other') : '其他') + '</option>';
+        }
+    }
+
+    // ===== 初始化 =====
+    loadEventTypes();
+    loadPlan(elDate.value);
+
+    // 每 30 秒刷新状态
+    _statusTimer = setInterval(refreshStatuses, 30000);
+
+})();
+</script>
+{% endblock %}

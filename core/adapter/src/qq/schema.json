@@ -1,0 +1,37 @@
+[
+    {
+        "name": "ws_url",
+        "type": "string",
+        "required": true,
+        "description": "WebSocket连接地址",
+        "default": "ws://localhost:3001"
+    },
+    {
+        "name": "http_url",
+        "type": "string",
+        "required": true,
+        "description": "HTTP API地址",
+        "default": "http://localhost:3000"
+    },
+    {
+        "name": "access_token",
+        "type": "string",
+        "required": false,
+        "description": "访问令牌（可选）",
+        "default": ""
+    },
+    {
+        "name": "auto_reconnect",
+        "type": "boolean",
+        "required": false,
+        "description": "是否自动重连",
+        "default": true
+    },
+    {
+        "name": "reconnect_interval",
+        "type": "integer",
+        "required": false,
+        "description": "重连间隔（秒）",
+        "default": 5
+    }
+]

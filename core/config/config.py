@@ -1,0 +1,4 @@
+MAX_CONTEXT = 10
+
+# 分条发送最大数量配置
+MAX_SPLIT_COUNT = 3

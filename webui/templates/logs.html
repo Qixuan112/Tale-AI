@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('日志中心') }} - Tale WebUI{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 data-i18n="logs.title">日志中心</h1>
+    <p class="subtitle" data-i18n="logs.subtitle">实时日志流与历史查询</p>
+</div>
+
+<div class="logs-layout">
+    <div class="logs-toolbar">
+        <select id="filterLevel">
+            <option value="" data-i18n="logs.allLevels">全部级别</option>
+            <option value="DEBUG" data-i18n="logs.DEBUG">DEBUG</option>
+            <option value="INFO" data-i18n="logs.INFO">INFO</option>
+            <option value="WARNING" data-i18n="logs.WARNING">WARNING</option>
+            <option value="ERROR" data-i18n="logs.ERROR">ERROR</option>
+        </select>
+        <select id="filterModule">
+            <option value="" data-i18n="logs.allModules">全部模块</option>
+        </select>
+        <button class="btn btn-sm" id="btnRefresh" data-i18n="logs.refresh">刷新</button>
+        <button class="btn btn-sm" id="btnExport" data-i18n="logs.export">导出</button>
+        <label class="sse-toggle">
+            <input type="checkbox" id="sseToggle" checked>
+            <span data-i18n="logs.realtime">实时推送</span>
+        </label>
+    </div>
+
+    <div class="logs-container" id="logsContainer">
+        <div class="empty-tip" data-i18n="logs.waiting">等待日志...</div>
+    </div>
+</div>
+
+<style>
+.logs-layout { padding: 0 28px 28px; height: calc(100% - 80px); display: flex; flex-direction: column; }
+.logs-toolbar { display: flex; gap: 10px; margin-bottom: 12px; align-items: center; flex-wrap: wrap; }
+.logs-toolbar select { width: auto; min-width: 100px; }
+.sse-toggle { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); cursor: pointer; }
+.sse-toggle input { accent-color: var(--accent); }
+
+.logs-container {
+    flex: 1;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 16px;
+    overflow-y: auto;
+    font-family: "Consolas", "Monaco", monospace;
+    font-size: 12px;
+    line-height: 1.7;
+}
+
+.log-line {
+    padding: 2px 0;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+}
+
+.log-time { color: var(--text-muted); width: 70px; flex-shrink: 0; }
+.log-level { width: 50px; flex-shrink: 0; font-weight: 600; }
+.log-level.DEBUG { color: var(--text-muted); }
+.log-level.INFO { color: var(--accent); }
+.log-level.WARNING { color: var(--warning); }
+.log-level.ERROR { color: var(--danger); }
+.log-module { color: var(--text-secondary); width: 60px; flex-shrink: 0; }
+.log-msg { color: var(--text-primary); flex: 1; word-break: break-all; }
+</style>
+
+<script>
+(function() {
+    const container = document.getElementById('logsContainer');
+    const sseToggle = document.getElementById('sseToggle');
+    let eventSource = null;
+    let logs = [];
+
+    function appendLog(item) {
+        const empty = container.querySelector('.empty-tip');
+        if (empty) empty.remove();
+
+        const div = document.createElement('div');
+        div.className = 'log-line';
+        const levelClass = (item.level || 'INFO').toUpperCase();
+        div.innerHTML = `
+            <span class="log-time">${item.time || '--:--:--'}</span>
+            <span class="log-level ${levelClass}">${levelClass}</span>
+            <span class="log-module">${item.module || 'system'}</span>
+            <span class="log-msg">${escapeHtml(item.message || '')}</span>
+        `;
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function renderLogs() {
+        const level = document.getElementById('filterLevel').value;
+        const module = document.getElementById('filterModule').value;
+
+        container.innerHTML = '';
+        let filtered = logs;
+        if (level) filtered = filtered.filter(l => (l.level || '').toUpperCase() === level);
+        if (module) filtered = filtered.filter(l => (l.module || '') === module);
+
+        if (!filtered.length) {
+            container.innerHTML = '<div class="empty-tip">' + (window.t ? window.t('logs.noLogs') : '无日志') + '</div>';
+            return;
+        }
+        filtered.forEach(appendLog);
+    }
+
+    function startSSE() {
+        if (eventSource) return;
+        eventSource = new EventSource('/api/logs/stream');
+        eventSource.onmessage = (e) => {
+            try {
+                const item = JSON.parse(e.data);
+                logs.push(item);
+                if (logs.length > 500) logs.shift();
+                if (!document.getElementById('filterLevel').value && !document.getElementById('filterModule').value) {
+                    appendLog(item);
+                }
+            } catch (err) {}
+        };
+    }
+
+    function stopSSE() {
+        if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+        }
+    }
+
+    // 加载模块列表
+    async function loadModules() {
+        try {
+            const res = await fetch('/api/logs/modules');
+            const modules = await res.json();
+            const sel = document.getElementById('filterModule');
+            const current = sel.value;
+            sel.innerHTML = '<option value="">' + (window.t ? window.t('logs.allModules') : '全部模块') + '</option>' +
+                modules.map(m => `<option value="${m}">${m}</option>`).join('');
+            sel.value = current;
+        } catch (e) {}
+    }
+
+    // 加载历史
+    async function loadHistory() {
+        try {
+            const level = document.getElementById('filterLevel').value;
+            const module = document.getElementById('filterModule').value;
+            const qs = new URLSearchParams();
+            if (level) qs.set('level', level);
+            if (module) qs.set('module', module);
+            const res = await fetch('/api/logs?' + qs.toString());
+            const data = await res.json();
+            logs = data;
+            renderLogs();
+        } catch (e) {
+            container.innerHTML = '<div class="empty-tip">' + (window.t ? window.t('logs.loadFailed') : '加载失败') + '</div>';
+        }
+    }
+
+    // 导出
+    document.getElementById('btnExport').addEventListener('click', () => {
+        const text = logs.map(l => `${l.time || ''} [${l.level || 'INFO'}] [${l.module || ''}] ${l.message || ''}`).join('\n');
+        const blob = new Blob([text], {type: 'text/plain'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `tale_logs_${new Date().toISOString().slice(0,10)}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('btnRefresh').addEventListener('click', loadHistory);
+    document.getElementById('filterLevel').addEventListener('change', renderLogs);
+    document.getElementById('filterModule').addEventListener('change', renderLogs);
+
+    sseToggle.addEventListener('change', () => {
+        if (sseToggle.checked) startSSE();
+        else stopSSE();
+    });
+
+    // 启动
+    loadModules();
+    loadHistory();
+    startSSE();
+})();
+</script>
+{% endblock %}

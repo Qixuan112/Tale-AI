@@ -1,0 +1,8 @@
+{
+    "id": "websocket",
+    "name": "WebSocket Adapter",
+    "version": "1.0.0",
+    "author": "Tale",
+    "description": "通用WebSocket适配器，可作为服务端或客户端",
+    "repo": null
+}

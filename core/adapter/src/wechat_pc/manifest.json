@@ -1,0 +1,7 @@
+{
+    "name": "wechat_pc",
+    "version": "1.0.0",
+    "author": "KiraAI",
+    "description": "基于 wxauto 的微信 PC 客户端 UI 自动化适配器（Windows 限定），已整合朋友圈动态轮询功能",
+    "repo": null
+}

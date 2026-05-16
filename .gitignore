@@ -1,0 +1,95 @@
+# ──────────────────────────────────────────────
+# Python
+# ──────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+*.egg-info/
+*.so
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+
+# ──────────────────────────────────────────────
+# Virtual Environment
+# ──────────────────────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+.env/
+virtualenv/
+
+# ──────────────────────────────────────────────
+# IDE & Editors
+# ──────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.iml
+.vs/
+.vscode/settings.json
+.history/
+
+# ──────────────────────────────────────────────
+# OS Files
+# ──────────────────────────────────────────────
+Thumbs.db
+Thumbs.db:encryptable
+Desktop.ini
+*.DS_Store
+*.DS_Store?
+ehthumbs.db
+*.lnk
+
+# ──────────────────────────────────────────────
+# Environment & Secrets
+# ──────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+*.crt
+config.json
+credentials.json
+
+# ──────────────────────────────────────────────
+# Logs & Temp
+# ──────────────────────────────────────────────
+*.log
+*.tmp
+*.temp
+logs/
+.direnv
+*.swp
+
+# ──────────────────────────────────────────────
+# Jupyter Notebook
+# ──────────────────────────────────────────────
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# ──────────────────────────────────────────────
+# Project Specific - Data / User Content
+# ──────────────────────────────────────────────
+# data/ 目录在首次启动时由 core/data_initializer.py 自动创建
+data/
+
+# ──────────────────────────────────────────────
+# Project Specific - WebUI / Assets
+# ──────────────────────────────────────────────
+webui/static/dist/
+node_modules/

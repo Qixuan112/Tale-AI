@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('工具测试') }} - Tale WebUI{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 data-i18n="tools.title">工具测试</h1>
+    <p class="subtitle" data-i18n="tools.subtitle">测试可用工具的调用与返回结果</p>
+</div>
+
+<div class="tools-grid" id="toolsGrid">
+    <div class="empty-tip" data-i18n="tools.loading">加载中...</div>
+</div>
+
+<style>
+.tools-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+    padding: 0 28px 28px;
+}
+
+.tool-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+}
+
+.tool-card h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.tool-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 14px;
+}
+
+.tool-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.tool-result {
+    margin-top: 14px;
+    padding: 12px;
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+    font-size: 12px;
+    font-family: "Consolas", "Monaco", monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+}
+
+.tool-result.success { border-color: var(--success); }
+.tool-result.error   { border-color: var(--danger); }
+</style>
+
+<script>
+(async () => {
+    const grid = document.getElementById('toolsGrid');
+    let toolForms = {};
+
+    async function loadTools() {
+        try {
+            const res = await fetch('/api/tools');
+            const tools = await res.json();
+            if (!tools.length) {
+                grid.innerHTML = '<div class="empty-tip">' + (window.t ? window.t('tools.noTools') : '未找到工具') + '</div>';
+                return;
+            }
+            toolForms = {};
+            tools.forEach(t => { toolForms[t.name] = t; });
+
+            grid.innerHTML = tools.map(t => `
+                <div class="tool-card">
+                    <h3>${t.title || t.name}</h3>
+                    <div class="tool-desc">${t.description || ''}</div>
+                    <div class="tool-form">
+                        ${(t.fields || []).map(f => `
+                            <input type="text" id="tool_${t.name}_${f.key}" placeholder="${f.placeholder || f.label}" data-key="${f.key}">
+                        `).join('')}
+                        <button class="btn btn-primary btn-sm" onclick="runTool('${t.name}')">${window.t ? window.t('tools.execute') : '执行'}</button>
+                    </div>
+                    <div class="tool-result hidden" id="result_${t.name}"></div>
+                </div>
+            `).join('');
+        } catch (e) {
+            grid.innerHTML = '<div class="empty-tip">' + (window.t ? window.t('tools.loadFailed') : '加载失败') + '</div>';
+        }
+    }
+
+    window.runTool = async function(name) {
+        const cfg = toolForms[name];
+        if (!cfg) return;
+        const params = {};
+        (cfg.fields || []).forEach(f => {
+            params[f.key] = document.getElementById(`tool_${name}_${f.key}`).value.trim();
+        });
+
+        const resultEl = document.getElementById(`result_${name}`);
+        resultEl.classList.remove('hidden', 'success', 'error');
+        resultEl.textContent = '执行中...';
+
+        try {
+            const res = await fetch(`/api/tools/${name}`, {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({parameters: params})
+            });
+            const data = await res.json();
+            resultEl.textContent = JSON.stringify(data, null, 2);
+            resultEl.classList.add(data.status === 'success' ? 'success' : 'error');
+        } catch (e) {
+            resultEl.textContent = '请求失败: ' + e.message;
+            resultEl.classList.add('error');
+        }
+    };
+
+    loadTools();
+})();
+</script>
+{% endblock %}

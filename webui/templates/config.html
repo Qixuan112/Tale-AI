@@ -1,0 +1,580 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('配置中心') }} - Tale WebUI{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 data-i18n="config.title">配置中心</h1>
+    <p class="subtitle" data-i18n="config.subtitle">编辑角色人设、行为参数、平台与服务配置</p>
+</div>
+
+<div class="config-layout">
+    <!-- Tab 导航 -->
+    <div class="config-tabs" id="configTabs">
+        <div class="empty-tip" data-i18n="config.loading">加载中...</div>
+    </div>
+
+    <!-- Tab 内容区 -->
+    <div class="config-body" id="configBody">
+        <div class="empty-tip" data-i18n="config.loading">加载中...</div>
+
+        <!-- 角色人设工具栏（仅 character tab 显示） -->
+        <div class="char-toolbar" id="charToolbar" style="display:none">
+            <div class="char-mode-switch">
+                <button class="mode-btn active" data-mode="form" id="modeFormBtn">📝 <span data-i18n="config.formMode">表单模式</span></button>
+                <button class="mode-btn" data-mode="source" id="modeSourceBtn">📄 <span data-i18n="config.sourceMode">源码模式</span></button>
+            </div>
+            <div class="char-actions">
+                <input type="file" id="importFileInput" accept=".yaml,.yml,.json" style="display:none">
+                <button class="btn btn-sm" id="btnImport">📥 <span data-i18n="config.import">导入</span></button>
+                <button class="btn btn-sm" id="btnExport">📤 <span data-i18n="config.export">导出</span></button>
+                <div class="preset-group">
+                    <select id="presetSelect">
+                        <option value="">— <span data-i18n="config.presetPlaceholder">预设列表</span> —</option>
+                    </select>
+                    <button class="btn btn-sm" id="btnPresetSave">💾 <span data-i18n="config.presetSave">另存为</span></button>
+                    <button class="btn btn-sm btn-danger" id="btnPresetDelete">🗑 <span data-i18n="config.presetDelete">删除</span></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Monaco Editor 容器（源码模式） -->
+        <div id="monacoContainer" style="display:none; height:520px; border:1px solid var(--border); border-radius:8px; margin-top:12px;"></div>
+    </div>
+
+    <div class="config-footer">
+        <button class="btn btn-primary" id="btnSaveConfig" data-i18n="config.save">保存配置</button>
+        <span id="saveStatus"></span>
+    </div>
+</div>
+
+<style>
+.config-layout { padding: 0 28px 28px; height: calc(100% - 80px); display: flex; flex-direction: column; }
+.config-tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 2px; }
+.tab-btn { padding: 8px 18px; border-radius: 8px 8px 0 0; border: none; background: transparent; color: var(--text-secondary); font-size: 13px; cursor: pointer; transition: all 0.15s; border-bottom: 2px solid transparent; }
+.tab-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--bg-active); }
+
+.config-body { flex: 1; overflow-y: auto; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 0 12px 12px 12px; padding: 20px; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+.form-grid { display: grid; grid-template-columns: 140px 1fr; gap: 12px 16px; align-items: center; }
+.form-grid label { font-size: 13px; color: var(--text-secondary); text-align: right; }
+.form-grid input, .form-grid textarea, .form-grid select { width: 100%; max-width: 480px; }
+.form-grid textarea { min-height: 80px; }
+.form-grid .full-row { grid-column: 1 / -1; }
+.form-grid .section-title { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-top: 8px; text-align: left; }
+
+@media (max-width: 640px) {
+    .form-grid { grid-template-columns: 1fr; gap: 8px 0; }
+    .form-grid label { text-align: left; font-weight: 600; }
+}
+
+.config-footer { margin-top: 16px; display: flex; align-items: center; gap: 12px; }
+#saveStatus { font-size: 12px; color: var(--success); }
+
+/* 角色人设工具栏 */
+.char-toolbar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+    padding: 10px 0 14px; border-bottom: 1px solid var(--border); margin-bottom: 12px;
+}
+.char-mode-switch { display: flex; gap: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.mode-btn { padding: 6px 16px; border: none; background: transparent; color: var(--text-secondary); font-size: 13px; cursor: pointer; transition: all 0.15s; }
+.mode-btn:hover { background: var(--bg-hover); }
+.mode-btn.active { background: var(--accent); color: #fff; }
+.char-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; }
+.preset-group { display: flex; align-items: center; gap: 4px; }
+.preset-group select { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font-size: 13px; }
+.btn-sm { padding: 4px 12px; font-size: 13px; border-radius: 6px; }
+.btn-danger { background: var(--danger, #e74c3c); color: #fff; border: none; cursor: pointer; }
+.btn-danger:hover { opacity: 0.85; }
+</style>
+
+<script>
+(function() {
+    'use strict';
+
+    let currentTab = '';
+    let currentData = {};
+    let tabs = [];
+    let monacoEditor = null;
+    let monacoLoading = false;
+    let sourceMode = false;
+    let yamlLib = null;
+
+    function loadScript(src) {
+        return new Promise(function(resolve, reject) {
+            var s = document.createElement('script');
+            s.src = src;
+            s.onload = resolve;
+            s.onerror = reject;
+            document.head.appendChild(s);
+        });
+    }
+
+    async function loadJsYaml() {
+        try {
+            await loadScript('https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js');
+            yamlLib = window.jsyaml;
+        } catch (e) {
+            console.warn('[Config] js-yaml 加载失败，源码模式不可用', e);
+        }
+    }
+
+    async function loadMonaco() {
+        if (monacoEditor) return;
+        if (monacoLoading) return;
+        monacoLoading = true;
+        try {
+            await loadScript('https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js');
+            require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
+            await new Promise(function(resolve, reject) {
+                require(['vs/editor/editor.main'], resolve, reject);
+            });
+            createMonacoEditor();
+        } catch (e) {
+            console.error('[Config] Monaco Editor 加载失败', e);
+        }
+        monacoLoading = false;
+    }
+
+    function createMonacoEditor() {
+        var container = document.getElementById('monacoContainer');
+        if (!container) return;
+        monacoEditor = monaco.editor.create(container, {
+            value: '',
+            language: 'yaml',
+            theme: document.documentElement.getAttribute('data-theme') === 'light' ? 'vs' : 'vs-dark',
+            minimap: { enabled: false },
+            automaticLayout: true,
+            fontSize: 13,
+            lineNumbers: 'on',
+            scrollBeyondLastLine: false,
+            wordWrap: 'on',
+            tabSize: 2
+        });
+    }
+
+    async function init() {
+        await loadJsYaml();
+        try {
+            var res = await fetch('/api/config');
+            tabs = await res.json();
+            renderTabs();
+            if (tabs.length) switchTab(tabs[0].name);
+        } catch (e) {
+            document.getElementById('configTabs').innerHTML = '<div class="empty-tip">' + (window.t ? window.t('config.loadFailed') : '加载失败') + '</div>';
+        }
+    }
+
+    function renderTabs() {
+        var tabsEl = document.getElementById('configTabs');
+        var bodyEl = document.getElementById('configBody');
+        if (!tabs.length) {
+            tabsEl.innerHTML = '<div class="empty-tip">' + (window.t ? window.t('config.noConfig') : '无配置') + '</div>';
+            return;
+        }
+
+        tabsEl.innerHTML = tabs.map(function(t, i) {
+            return '<button class="tab-btn ' + (i === 0 ? 'active' : '') + '" data-tab="' + t.name + '">' + (t.label || t.name) + '</button>';
+        }).join('');
+
+        var validNames = new Set(tabs.map(function(t) { return t.name; }));
+        bodyEl.querySelectorAll('.tab-panel').forEach(function(p) {
+            if (!validNames.has(p.id.replace('panel-', ''))) p.remove();
+        });
+
+        tabs.forEach(function(t, i) {
+            var panel = document.getElementById('panel-' + t.name);
+            if (!panel) {
+                panel = document.createElement('div');
+                panel.className = 'tab-panel' + (i === 0 ? ' active' : '');
+                panel.id = 'panel-' + t.name;
+                panel.innerHTML = '<div class="form-grid" id="form-' + t.name + '"></div>';
+                bodyEl.insertBefore(panel, document.getElementById('charToolbar'));
+            }
+        });
+
+        tabsEl.querySelectorAll('.tab-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() { switchTab(btn.dataset.tab); });
+        });
+    }
+
+    function switchTab(name) {
+        document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+        document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+        var btn = document.querySelector('.tab-btn[data-tab="' + name + '"]');
+        if (btn) btn.classList.add('active');
+        var panel = document.getElementById('panel-' + name);
+        if (panel) panel.classList.add('active');
+        currentTab = name;
+
+        var toolbar = document.getElementById('charToolbar');
+        var monaco = document.getElementById('monacoContainer');
+        if (name === 'character') {
+            toolbar.style.display = 'flex';
+            if (sourceMode) {
+                monaco.style.display = 'block';
+                if (panel) panel.style.display = 'none';
+            } else {
+                monaco.style.display = 'none';
+                if (panel) panel.style.display = 'block';
+            }
+            loadPresets();
+        } else {
+            toolbar.style.display = 'none';
+            monaco.style.display = 'none';
+        }
+
+        loadConfig(name);
+    }
+
+    async function loadConfig(name) {
+        try {
+            var res = await fetch('/api/config/' + name);
+            var data = await res.json();
+            currentData[name] = data;
+            renderForm(name, data);
+        } catch (e) {
+            var container = document.getElementById('form-' + name);
+            if (container) container.innerHTML = '<div class="empty-tip">' + (window.t ? window.t('config.loadFailed') : '加载失败') + '</div>';
+        }
+    }
+
+    function renderForm(name, data) {
+        var container = document.getElementById('form-' + name);
+        if (!container) return;
+        container.innerHTML = buildFields(data);
+    }
+
+    function buildFields(obj, prefix) {
+        if (!obj || typeof obj !== 'object') return '';
+        var html = '';
+        for (var key in obj) {
+            if (!obj.hasOwnProperty(key)) continue;
+            var val = obj[key];
+            var fullKey = prefix ? prefix + '.' + key : key;
+            if (Array.isArray(val)) {
+                html += '<div class="full-row section-title">' + key + '</div>';
+                html += '<div class="full-row"><textarea data-key="' + fullKey + '" rows="4">' + val.map(function(v) { return typeof v === 'string' ? v : JSON.stringify(v); }).join('\n') + '</textarea></div>';
+            } else if (typeof val === 'object' && val !== null) {
+                html += '<div class="full-row section-title">' + key + '</div>';
+                html += buildFields(val, fullKey);
+            } else if (typeof val === 'boolean') {
+                html += '<label>' + key + '</label><div><input type="checkbox" data-key="' + fullKey + '" ' + (val ? 'checked' : '') + '></div>';
+            } else if (typeof val === 'number') {
+                html += '<label>' + key + '</label><div><input type="number" data-key="' + fullKey + '" value="' + val + '"></div>';
+            } else {
+                var isSecret = key.toLowerCase().indexOf('key') !== -1 || key.toLowerCase().indexOf('token') !== -1 || key.toLowerCase().indexOf('secret') !== -1;
+                html += '<label>' + key + '</label><div><input type="' + (isSecret ? 'password' : 'text') + '" data-key="' + fullKey + '" value="' + (val || '').replace(/"/g, '&quot;') + '"></div>';
+            }
+        }
+        return html;
+    }
+
+    function collectFormData(name) {
+        var container = document.getElementById('form-' + name);
+        var result = JSON.parse(JSON.stringify(currentData[name] || {}));
+
+        container.querySelectorAll('input[data-key], textarea[data-key], select[data-key]').forEach(function(el) {
+            var keyPath = el.dataset.key.split('.');
+            var target = result;
+            for (var i = 0; i < keyPath.length - 1; i++) {
+                if (!target[keyPath[i]]) target[keyPath[i]] = {};
+                target = target[keyPath[i]];
+            }
+            var lastKey = keyPath[keyPath.length - 1];
+            if (el.type === 'checkbox') {
+                target[lastKey] = el.checked;
+            } else if (el.tagName === 'TEXTAREA' && el.value.indexOf('\n') !== -1) {
+                target[lastKey] = el.value.split('\n').map(function(s) { return s.trim(); }).filter(Boolean);
+            } else if (!isNaN(el.value) && el.value !== '' && el.type === 'number') {
+                target[lastKey] = Number(el.value);
+            } else {
+                target[lastKey] = el.value;
+            }
+        });
+        return result;
+    }
+
+    document.getElementById('btnSaveConfig').addEventListener('click', async function() {
+        if (currentTab === 'character' && sourceMode && monacoEditor) {
+            await saveRawYaml();
+        } else {
+            await saveFormYaml();
+        }
+    });
+
+    async function saveFormYaml() {
+        var data = collectFormData(currentTab);
+        var status = document.getElementById('saveStatus');
+        try {
+            var res = await fetch('/api/config/' + currentTab, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            var result = await res.json();
+            if (result.ok) {
+                status.textContent = window.t ? window.t('config.saved') : '[OK] 已保存';
+                setTimeout(function() { status.textContent = ''; }, 2000);
+            } else {
+                status.textContent = window.t ? window.t('config.saveFailed') : '[X] 保存失败';
+            }
+        } catch (e) {
+            status.textContent = window.t ? window.t('config.networkError') : '[X] 网络错误';
+        }
+    }
+
+    async function saveRawYaml() {
+        var status = document.getElementById('saveStatus');
+        var yamlStr = monacoEditor.getValue();
+        try {
+            if (yamlLib) {
+                try { yamlLib.load(yamlStr); } catch (e) {
+                    status.textContent = '[X] YAML 语法错误: ' + e.message;
+                    setTimeout(function() { status.textContent = ''; }, 4000);
+                    return;
+                }
+            }
+            var res = await fetch('/api/config/character/raw', {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+                body: yamlStr
+            });
+            var result = await res.json();
+            if (result.ok) {
+                status.textContent = window.t ? window.t('config.saved') : '[OK] 已保存';
+                setTimeout(function() { status.textContent = ''; }, 2000);
+            } else {
+                status.textContent = '[X] 保存失败';
+            }
+        } catch (e) {
+            status.textContent = '[X] 网络错误';
+        }
+    }
+
+    async function switchToFormMode() {
+        if (!monacoEditor) return;
+        var yamlStr = monacoEditor.getValue();
+        if (!yamlLib) {
+            alert('js-yaml 未加载，无法切换回表单模式');
+            return;
+        }
+        var parsed;
+        try {
+            parsed = yamlLib.load(yamlStr);
+        } catch (e) {
+            alert('YAML 格式错误，请修正后再切换表单模式:\n' + e.message);
+            return;
+        }
+        if (!parsed || typeof parsed !== 'object') {
+            alert('YAML 内容无效，请检查');
+            return;
+        }
+        try {
+            var res = await fetch('/api/config/character', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(parsed)
+            });
+            var result = await res.json();
+            if (!result.ok) throw new Error('保存失败');
+            currentData.character = parsed;
+            renderForm('character', parsed);
+        } catch (e) {
+            alert('切换到表单模式失败: ' + e.message);
+            return;
+        }
+
+        sourceMode = false;
+        document.getElementById('modeFormBtn').classList.add('active');
+        document.getElementById('modeSourceBtn').classList.remove('active');
+        document.getElementById('monacoContainer').style.display = 'none';
+        var panel = document.getElementById('panel-character');
+        if (panel) panel.style.display = 'block';
+    }
+
+    async function switchToSourceMode() {
+        if (!yamlLib || !monacoEditor) {
+            await loadMonaco();
+            if (!monacoEditor) {
+                alert('Monaco Editor 加载失败');
+                return;
+            }
+        }
+
+        var formData = collectFormData('character');
+        var yamlStr;
+        try {
+            yamlStr = yamlLib.dump(formData, {
+                indent: 2, lineWidth: -1, noRefs: true, sortKeys: false, forceQuotes: false
+            });
+        } catch (e) {
+            alert('序列化 YAML 失败: ' + e.message);
+            return;
+        }
+
+        monacoEditor.setValue(yamlStr);
+
+        sourceMode = true;
+        document.getElementById('modeSourceBtn').classList.add('active');
+        document.getElementById('modeFormBtn').classList.remove('active');
+        document.getElementById('monacoContainer').style.display = 'block';
+        var panel = document.getElementById('panel-character');
+        if (panel) panel.style.display = 'none';
+
+        setTimeout(function() {
+            if (monacoEditor) monacoEditor.layout();
+        }, 50);
+    }
+
+    document.getElementById('modeFormBtn').addEventListener('click', function() {
+        if (sourceMode) switchToFormMode();
+    });
+
+    document.getElementById('modeSourceBtn').addEventListener('click', function() {
+        if (!sourceMode) switchToSourceMode();
+    });
+
+    async function loadPresets() {
+        try {
+            var res = await fetch('/api/config/presets');
+            var presets = await res.json();
+            var select = document.getElementById('presetSelect');
+            select.innerHTML = '<option value="">— 预设列表 —</option>' +
+                presets.map(function(p) { return '<option value="' + p.name + '">' + p.name + '</option>'; }).join('');
+        } catch (e) {
+            console.warn('[Config] 加载预设列表失败', e);
+        }
+    }
+
+    document.getElementById('btnPresetSave').addEventListener('click', async function() {
+        var name = prompt('请输入预设名称：');
+        if (!name || !name.trim()) return;
+        var status = document.getElementById('saveStatus');
+        try {
+            var res = await fetch('/api/config/presets', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name.trim() })
+            });
+            var result = await res.json();
+            if (result.ok) {
+                status.textContent = '[OK] 预设已保存';
+                setTimeout(function() { status.textContent = ''; }, 2000);
+                loadPresets();
+            } else {
+                status.textContent = '[X] ' + (result.error || '保存失败');
+            }
+        } catch (e) {
+            status.textContent = '[X] 网络错误';
+        }
+    });
+
+    document.getElementById('btnPresetDelete').addEventListener('click', async function() {
+        var select = document.getElementById('presetSelect');
+        var name = select.value;
+        if (!name) {
+            alert('请先选择一个预设');
+            return;
+        }
+        if (!confirm('确定要删除预设「' + name + '」吗？')) return;
+        var status = document.getElementById('saveStatus');
+        try {
+            var res = await fetch('/api/config/presets/' + encodeURIComponent(name), {
+                method: 'DELETE'
+            });
+            var result = await res.json();
+            if (result.ok) {
+                status.textContent = '[OK] 预设已删除';
+                setTimeout(function() { status.textContent = ''; }, 2000);
+                loadPresets();
+            }
+        } catch (e) {
+            status.textContent = '[X] 删除失败';
+        }
+    });
+
+    document.getElementById('presetSelect').addEventListener('change', async function(e) {
+        var name = e.target.value;
+        if (!name) return;
+        if (!confirm('确定要切换人设到「' + name + '」吗？当前未保存的修改将丢失。')) {
+            e.target.value = '';
+            return;
+        }
+        var status = document.getElementById('saveStatus');
+        try {
+            var res = await fetch('/api/config/presets/' + encodeURIComponent(name) + '/apply', {
+                method: 'POST'
+            });
+            var result = await res.json();
+            if (result.ok) {
+                status.textContent = '[OK] 已切换到「' + name + '」';
+                setTimeout(function() { status.textContent = ''; }, 2000);
+                if (sourceMode) {
+                    var rawRes = await fetch('/api/config/character/raw');
+                    var rawText = await rawRes.text();
+                    if (monacoEditor) monacoEditor.setValue(rawText);
+                } else {
+                    loadConfig('character');
+                }
+            } else {
+                status.textContent = '[X] 切换失败';
+            }
+        } catch (e) {
+            status.textContent = '[X] 网络错误';
+        }
+    });
+
+    document.getElementById('btnExport').addEventListener('click', function() {
+        window.open('/api/config/export', '_blank');
+    });
+
+    document.getElementById('btnImport').addEventListener('click', function() {
+        document.getElementById('importFileInput').click();
+    });
+
+    document.getElementById('importFileInput').addEventListener('change', async function(e) {
+        var file = e.target.files[0];
+        if (!file) return;
+        var formData = new FormData();
+        formData.append('file', file);
+        var status = document.getElementById('saveStatus');
+        try {
+            var res = await fetch('/api/config/import', {
+                method: 'POST',
+                body: formData
+            });
+            var result = await res.json();
+            if (result.ok) {
+                status.textContent = '[OK] 导入成功';
+                setTimeout(function() { status.textContent = ''; }, 2000);
+                if (sourceMode && monacoEditor) {
+                    var rawRes = await fetch('/api/config/character/raw');
+                    var rawText = await rawRes.text();
+                    monacoEditor.setValue(rawText);
+                } else {
+                    loadConfig('character');
+                }
+            } else {
+                status.textContent = '[X] 导入失败: ' + (result.error || '未知错误');
+            }
+        } catch (e) {
+            status.textContent = '[X] 导入失败: 网络错误';
+        }
+        e.target.value = '';
+    });
+
+    var themeObserver = new MutationObserver(function() {
+        if (monacoEditor) {
+            var isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+            monaco.editor.setTheme(isDark ? 'vs-dark' : 'vs');
+        }
+    });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+    init();
+})();
+</script>
+{% endblock %}

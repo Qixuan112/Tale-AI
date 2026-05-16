@@ -1,0 +1,343 @@
+/* ===== 对话页布局 ===== */
+.chat-layout {
+    display: flex;
+    height: 100%;
+    overflow: hidden;
+}
+
+/* 左侧会话列表 */
+.chat-sidebar {
+    width: 260px;
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+}
+
+.chat-toolbar {
+    padding: 12px;
+    display: flex;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.chat-toolbar .btn {
+    flex: 1;
+}
+
+.conversation-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px;
+}
+
+.conv-item {
+    padding: 10px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    margin-bottom: 4px;
+    border: 1px solid transparent;
+}
+
+.conv-item:hover {
+    background: var(--bg-hover);
+}
+
+.conv-item.active {
+    background: var(--bg-active);
+    border-color: var(--accent);
+}
+
+.conv-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.conv-preview {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.conv-meta {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    display: flex;
+    justify-content: space-between;
+}
+
+/* 会话删除按钮 */
+.conv-item {
+    position: relative;
+}
+
+.conv-delete {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 20px;
+    height: 20px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: 4px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    opacity: 0.6;
+    transition: all 0.15s ease;
+}
+
+.conv-item:hover .conv-delete {
+    display: flex;
+}
+
+.conv-delete:hover {
+    opacity: 1;
+    background: var(--bg-hover);
+    color: var(--danger);
+}
+
+/* 右侧聊天面板 */
+.chat-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-primary);
+    overflow: hidden;
+}
+
+.chat-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg-secondary);
+}
+
+.chat-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.chat-actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* 消息区 */
+.chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.message {
+    display: flex;
+    gap: 10px;
+    max-width: 85%;
+    animation: msgIn 0.2s ease;
+}
+
+@keyframes msgIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.message.user {
+    align-self: flex-end;
+    flex-direction: row-reverse;
+}
+
+.message.assistant {
+    align-self: flex-start;
+}
+
+.message .avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--bg-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+}
+
+.message.user .avatar {
+    background: var(--accent);
+}
+
+.message .bubble {
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 13px;
+    line-height: 1.6;
+    word-break: break-word;
+    white-space: pre-wrap;
+}
+
+.message.user .bubble {
+    background: var(--accent);
+    color: #fff;
+    border-bottom-right-radius: 4px;
+}
+
+.message.assistant .bubble {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 4px;
+}
+
+.message .time {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    text-align: right;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.message:hover .time {
+    opacity: 1;
+}
+
+/* 输入区 */
+.chat-input-area {
+    padding: 14px 20px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-secondary);
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+}
+
+.chat-input-area textarea {
+    flex: 1;
+    min-height: 44px;
+    max-height: 140px;
+    resize: none;
+    padding: 10px 14px;
+    border-radius: 10px;
+}
+
+.chat-input-area .btn-primary {
+    height: 44px;
+    width: 44px;
+    padding: 0;
+    border-radius: 10px;
+    font-size: 16px;
+}
+
+/* 空状态 */
+.empty-tip {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 40px 20px;
+    font-size: 13px;
+}
+
+/* 系统消息 */
+.system-msg {
+    align-self: center;
+    font-size: 12px;
+    color: var(--text-muted);
+    background: var(--bg-secondary);
+    padding: 6px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+}
+
+/* ===== XML 消息渲染 ===== */
+.msg-block {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 6px;
+}
+
+.msg-text {
+    color: var(--text-primary);
+    line-height: 1.6;
+}
+
+.msg-emoji {
+    font-size: 1.4em;
+    line-height: 1;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+.msg-at {
+    color: var(--accent);
+    font-weight: 500;
+    background: var(--accent-light);
+    padding: 0 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.msg-act,
+.msg-plan,
+.msg-tool {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 10px;
+    margin-top: 6px;
+    border-radius: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+}
+
+.msg-act .msg-badge,
+.msg-plan .msg-badge,
+.msg-tool .msg-badge {
+    flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+}
+
+.msg-act .msg-badge {
+    background: var(--warning);
+    color: #000;
+}
+
+.msg-plan .msg-badge {
+    background: var(--success);
+    color: #000;
+}
+
+.msg-tool .msg-badge {
+    background: var(--accent);
+    color: #fff;
+}

@@ -1,0 +1,125 @@
+[
+  {
+    "name": "poll_interval",
+    "type": "float",
+    "default": 2.0,
+    "description": "轮询新消息的间隔时间，建议 1.0–5.0 秒"
+  },
+  {
+    "name": "language",
+    "type": "enum",
+    "options": ["cn", "cn_t", "en"],
+    "default": "cn",
+    "description": "微信客户端语言版本：cn 简体中文，cn_t 繁体中文，en 英文"
+  },
+  {
+    "name": "save_pic",
+    "type": "boolean",
+    "default": false,
+    "description": "收到图片时自动下载到本地，并在消息中替换为本地路径"
+  },
+  {
+    "name": "save_file",
+    "type": "boolean",
+    "default": false,
+    "description": "收到文件时自动下载到本地，并在消息中替换为本地路径"
+  },
+  {
+    "name": "save_voice",
+    "type": "boolean",
+    "default": false,
+    "description": "收到语音消息时自动转为文字"
+  },
+  {
+    "name": "debug",
+    "type": "boolean",
+    "default": false,
+    "description": "开启 wxauto 的 debug 日志"
+  },
+  {
+    "name": "self_nickname",
+    "type": "string",
+    "default": "",
+    "description": "当前登录微信昵称，用于区分自己发送的消息，留空则使用 wxauto 自动获取的昵称"
+  },
+  {
+    "name": "permission_mode",
+    "type": "enum",
+    "options": ["allow_list", "deny_list"],
+    "default": "allow_list",
+    "description": "allow_list：只处理列表中的群/用户；deny_list：屏蔽列表中的群/用户"
+  },
+  {
+    "name": "group_allow_list",
+    "type": "list",
+    "default": [],
+    "description": "当权限模式为 allow_list 时生效，填写群名称"
+  },
+  {
+    "name": "user_allow_list",
+    "type": "list",
+    "default": [],
+    "description": "当权限模式为 allow_list 时生效，填写好友备注/昵称"
+  },
+  {
+    "name": "group_deny_list",
+    "type": "list",
+    "default": [],
+    "description": "当权限模式为 deny_list 时生效，填写群名称"
+  },
+  {
+    "name": "user_deny_list",
+    "type": "list",
+    "default": [],
+    "description": "当权限模式为 deny_list 时生效，填写好友备注/昵称"
+  },
+  {
+    "name": "group_at_me_only",
+    "type": "boolean",
+    "default": false,
+    "description": "开启后，群聊中仅当消息 @ 你或包含唤醒关键词时才响应"
+  },
+  {
+    "name": "group_wake_words",
+    "type": "list",
+    "default": [],
+    "description": "群聊唤醒关键词列表，任一匹配即响应（如 [\"Kira\", \"助手\"]）"
+  },
+  {
+    "name": "enable_moments",
+    "type": "boolean",
+    "default": false,
+    "description": "是否启用朋友圈动态轮询（整合到本适配器内，无需单独添加朋友圈适配器）"
+  },
+  {
+    "name": "moments_poll_interval",
+    "type": "float",
+    "default": 60.0,
+    "description": "轮询朋友圈新动态或评论的间隔时间（秒），仅在启用朋友圈时生效"
+  },
+  {
+    "name": "moments_fetch_count",
+    "type": "int",
+    "default": 10,
+    "description": "每次轮询朋友圈时获取的动态数量上限"
+  },
+  {
+    "name": "moments_permission_mode",
+    "type": "enum",
+    "options": ["allow_list", "deny_list"],
+    "default": "allow_list",
+    "description": "朋友圈权限模式：allow_list 只处理列表中的用户；deny_list 屏蔽列表中的用户"
+  },
+  {
+    "name": "moments_user_allow_list",
+    "type": "list",
+    "default": [],
+    "description": "朋友圈白名单（昵称），仅在 allow_list 模式生效"
+  },
+  {
+    "name": "moments_user_deny_list",
+    "type": "list",
+    "default": [],
+    "description": "朋友圈黑名单（昵称），仅在 deny_list 模式生效"
+  }
+]

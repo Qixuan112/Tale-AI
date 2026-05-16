@@ -1,0 +1,8 @@
+{
+    "id": "qq",
+    "name": "QQ Adapter",
+    "version": "1.0.0",
+    "author": "Tale",
+    "description": "QQ平台适配器，基于NapCat/OneBot协议",
+    "repo": null
+}

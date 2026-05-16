@@ -1,0 +1,317 @@
+/* ===== 3D 环绕卡片浮层 ===== */
+#cardOverlay {
+    position: fixed;
+    inset: 0;
+    background: var(--bg-primary);
+    z-index: 999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    opacity: 1;
+    transition: opacity 0.4s ease;
+    overflow: hidden;
+}
+
+#cardOverlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* 场景容器 */
+.card-scene {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    perspective: 1400px;
+    perspective-origin: 50% 45%;
+}
+
+/* 卡片轨道 - 整体移动使当前卡片居中 */
+.card-track {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    position: relative;
+    transform-style: preserve-3d;
+    transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    will-change: transform;
+}
+
+/* 单个卡片包装器 */
+.card-wrapper {
+    position: relative;
+    flex-shrink: 0;
+    width: 320px;
+    height: 220px;
+    margin: 0 24px;
+    transform-style: preserve-3d;
+    transition: all 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* 卡片本体 */
+.card {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(165deg, var(--bg-secondary) 0%, var(--bg-tertiary) 60%, var(--bg-secondary) 100%);
+    border-radius: 16px;
+    padding: 20px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: all 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    transform-origin: center center;
+    will-change: transform, opacity;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+}
+
+/* 顶部高光 */
+.card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 20px;
+    right: 20px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--text-primary), transparent 85%), transparent);
+    opacity: 0.6;
+}
+
+/* 当前激活卡片 */
+.card-wrapper.active .card {
+    transform: scale(1.12);
+    border-color: color-mix(in srgb, var(--accent), transparent 40%);
+    box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--accent), transparent 60%),
+        0 0 40px color-mix(in srgb, var(--accent), transparent 80%),
+        0 0 80px color-mix(in srgb, var(--accent), transparent 92%),
+        0 16px 48px rgba(0, 0, 0, 0.3);
+    background: linear-gradient(165deg, var(--bg-hover) 0%, var(--bg-secondary) 60%, var(--bg-tertiary) 100%);
+}
+
+/* 相邻卡片 */
+.card-wrapper.side-1 .card {
+    transform: scale(0.82) rotateY(var(--rot, 25deg)) translateZ(-50px);
+    opacity: 0.45;
+    filter: brightness(0.65);
+    border-color: var(--border);
+}
+
+/* 较远卡片 */
+.card-wrapper.side-2 .card {
+    transform: scale(0.65) rotateY(var(--rot, 38deg)) translateZ(-100px);
+    opacity: 0.18;
+    filter: brightness(0.45);
+    border-color: var(--border);
+}
+
+/* 极远卡片 */
+.card-wrapper.side-3 .card {
+    transform: scale(0.5) rotateY(var(--rot, 45deg)) translateZ(-150px);
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* 倒影 */
+.card-reflection {
+    position: absolute;
+    bottom: -8px;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: inherit;
+    border-radius: 16px;
+    transform: scaleY(-1) translateY(-16px);
+    opacity: 0;
+    pointer-events: none;
+    mask-image: linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, transparent 50%);
+    -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, transparent 50%);
+    transition: all 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.card-wrapper.active .card-reflection {
+    opacity: 0.12;
+    transform: scaleY(-1) translateY(-16px) scale(1.12);
+}
+
+.card-wrapper.side-1 .card-reflection {
+    opacity: 0.04;
+}
+
+/* 卡片内容 */
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.card-header-id {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.card-header-time {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.card-first-msg {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin-bottom: 12px;
+    min-height: 20px;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+}
+
+.card-divider {
+    height: 1px;
+    background: var(--border);
+    margin-bottom: 8px;
+}
+
+.card-preview-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 5px;
+}
+
+.card-preview-text {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    flex: 1;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
+}
+
+.card-footer {
+    margin-top: auto;
+    padding-top: 10px;
+}
+
+.card-count {
+    display: inline-block;
+    font-size: 11px;
+    color: var(--text-muted);
+    background: var(--bg-tertiary);
+    padding: 3px 10px;
+    border-radius: 10px;
+}
+
+/* 左右箭头 */
+.nav-arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    z-index: 200;
+    user-select: none;
+    backdrop-filter: blur(8px);
+}
+
+.nav-arrow:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--accent);
+    transform: translateY(-50%) scale(1.05);
+}
+
+.nav-arrow:active {
+    transform: translateY(-50%) scale(0.95);
+}
+
+.nav-arrow.prev { left: 40px; }
+.nav-arrow.next { right: 40px; }
+
+.nav-arrow.disabled {
+    opacity: 0.15;
+    pointer-events: none;
+}
+
+/* 底部指示器 */
+.card-indicator {
+    position: absolute;
+    bottom: 56px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 6px;
+    z-index: 200;
+}
+
+.indicator-dot {
+    height: 3px;
+    border-radius: 2px;
+    background: var(--border);
+    transition: all 0.35s ease;
+}
+
+.indicator-dot.active {
+    background: var(--accent);
+    width: 24px;
+}
+
+.indicator-dot.inactive {
+    width: 10px;
+}
+
+/* 底部提示 */
+.card-hint {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    z-index: 200;
+    letter-spacing: 0.5px;
+}
+
+/* 拖拽状态 */
+.card-wrapper.dragging .card {
+    transition: none !important;
+}
+
+/* 入场动画 */
+@keyframes cardEnter {
+    from {
+        opacity: 0;
+        transform: scale(0.5) translateZ(-80px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(var(--enter-scale, 1)) translateZ(var(--enter-z, 0));
+    }
+}
+
+.card-wrapper.entering .card {
+    animation: cardEnter 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
