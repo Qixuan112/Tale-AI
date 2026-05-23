@@ -1162,4 +1162,5 @@ if __name__ == "__main__":
     print("  Tale WebUI 启动中...")
     print("  访问: http://127.0.0.1:32456")
     print("=" * 50)
-    app.run(host="127.0.0.1", port=32456, debug=True, threaded=True)
+    debug = os.environ.get("FLASK_DEBUG", "0") == "1"
+    app.run(host="127.0.0.1", port=32456, debug=debug, threaded=True)
