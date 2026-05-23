@@ -6,6 +6,8 @@ Tale WebUI - Flask 管理面板
 
 import os
 import sys
+import secrets
+import string
 
 # Windows 控制台 UTF-8 编码修复
 if sys.platform == 'win32':
@@ -24,7 +26,7 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from flask import Flask, render_template, jsonify, request, Response
+from flask import Flask, render_template, jsonify, request, Response, session, redirect
 
 # 把项目根目录加入路径，确保能导入 core
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -41,6 +43,46 @@ from core.tools.registry import get_registry
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.config['JSON_AS_ASCII'] = False
 app.add_template_global(lambda x: x, '_')
+app.secret_key = secrets.token_urlsafe(32)
+
+# ============ WebUI 认证 ============
+
+WEBUI_AUTH_ENABLED = True  # 设为 False 可跳过认证（桌面端嵌入时不需要）
+
+_TOKEN_CHARS = string.ascii_letters + string.digits
+
+
+def _generate_token() -> str:
+    return ''.join(secrets.choice(_TOKEN_CHARS) for _ in range(6))
+
+
+def _load_webui_token() -> str:
+    token_path = PROJECT_ROOT / "data" / "config" / "webui_token"
+    if token_path.exists():
+        return token_path.read_text(encoding="utf-8").strip()
+    # 首次启动自动生成
+    token = _generate_token()
+    token_path.parent.mkdir(parents=True, exist_ok=True)
+    token_path.write_text(token, encoding="utf-8")
+    print(f"\n  WebUI 认证令牌: {token}\n")
+    return token
+
+
+WEBUI_TOKEN = _load_webui_token()
+
+
+@app.before_request
+def _require_auth():
+    if not WEBUI_AUTH_ENABLED:
+        return
+    if request.path in ("/login", "/api/login"):
+        return
+    if request.path.startswith("/static/"):
+        return
+    if "webui_authed" not in session:
+        if request.path.startswith("/api/"):
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+        return redirect("/login")
 
 
 @app.context_processor
@@ -309,8 +351,17 @@ _metrics_cache = {
 
 # ============ 页面路由 ============
 
+@app.route("/login")
+def page_login():
+    if "webui_authed" in session:
+        return redirect("/dashboard")
+    return render_template("login.html")
+
+
 @app.route("/")
 def index():
+    if WEBUI_AUTH_ENABLED and "webui_authed" not in session:
+        return redirect("/login")
     return render_template("chat.html")
 
 
@@ -1036,6 +1087,23 @@ def api_system_reload():
         return jsonify({"ok": True, "message": "配置已重载"})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ============ 认证 API ============
+
+@app.route("/api/login", methods=["POST"])
+def api_login():
+    data = request.get_json(silent=True) or {}
+    if data.get("token") == WEBUI_TOKEN:
+        session["webui_authed"] = True
+        return jsonify({"ok": True, "redirect": "/dashboard"})
+    return jsonify({"ok": False, "error": "令牌错误"}), 401
+
+
+@app.route("/api/logout", methods=["POST"])
+def api_logout():
+    session.pop("webui_authed", None)
+    return jsonify({"ok": True})
 
 
 # ============ 插件管理 API ============

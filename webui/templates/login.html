@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tale WebUI - Login</title>
+    <style>
+        :root {
+            --bg: #0b0f18;
+            --card-bg: #0f1117;
+            --border: #1f2937;
+            --text: #e8eaf0;
+            --text-secondary: #9ca3af;
+            --accent: #60a5fa;
+            --accent-hover: #3b82f6;
+            --danger: #f87171;
+            --radius: 10px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex; align-items: center; justify-content: center;
+            min-height: 100vh;
+        }
+        .login-box {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 48px 40px;
+            width: 380px;
+            max-width: 90vw;
+            text-align: center;
+        }
+        .logo { font-size: 40px; font-weight: 700; color: var(--accent); margin-bottom: 6px; }
+        .title { font-size: 18px; color: var(--text-secondary); margin-bottom: 32px; }
+        .field { text-align: left; margin-bottom: 20px; }
+        .field label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 6px; }
+        .field input {
+            width: 100%; padding: 10px 14px;
+            background: var(--bg); border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text); font-size: 15px;
+            outline: none; transition: border-color 0.2s;
+        }
+        .field input:focus { border-color: var(--accent); }
+        .btn {
+            width: 100%; padding: 10px;
+            background: var(--accent); color: #fff;
+            border: none; border-radius: 6px; font-size: 15px;
+            cursor: pointer; transition: background 0.2s;
+            margin-top: 4px;
+        }
+        .btn:hover { background: var(--accent-hover); }
+        .error { color: var(--danger); font-size: 13px; margin-top: 12px; display: none; }
+        .error.show { display: block; }
+    </style>
+</head>
+<body>
+    <div class="login-box">
+        <div class="logo">T</div>
+        <div class="title">Tale WebUI</div>
+        <form id="loginForm">
+            <div class="field">
+                <label>认证令牌</label>
+                <input type="text" id="tokenInput" placeholder="输入 6 位令牌" maxlength="6" autocomplete="off" autofocus>
+            </div>
+            <button type="submit" class="btn">登 录</button>
+            <div class="error" id="errorMsg"></div>
+        </form>
+    </div>
+
+    <script>
+        const form = document.getElementById('loginForm');
+        const input = document.getElementById('tokenInput');
+        const error = document.getElementById('errorMsg');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const token = input.value.trim();
+            if (!token) {
+                error.textContent = '请输入认证令牌';
+                error.classList.add('show');
+                return;
+            }
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    window.location.href = data.redirect;
+                } else {
+                    error.textContent = data.error || '认证失败';
+                    error.classList.add('show');
+                }
+            } catch {
+                error.textContent = '网络错误';
+                error.classList.add('show');
+            }
+        });
+    </script>
+</body>
+</html>

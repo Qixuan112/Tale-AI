@@ -8,6 +8,8 @@
 
 import os
 import json
+import secrets
+import string
 from pathlib import Path
 
 # 项目根目录（core/data_initializer.py -> core/ -> root）
@@ -177,5 +179,14 @@ def initialize_data():
     _write_if_missing("data/config/services.yaml", DEFAULT_SERVICES_YAML)
     _write_if_missing("data/config/plugins.yaml", DEFAULT_PLUGINS_YAML)
 
-    # 3. 写入默认会话索引
+    # 3. 生成 WebUI 认证 token（仅在文件不存在时）
+    _token_path = PROJECT_ROOT / "data" / "config" / "webui_token"
+    if not _token_path.exists():
+        _token_chars = string.ascii_letters + string.digits
+        _token = ''.join(secrets.choice(_token_chars) for _ in range(6))
+        _token_path.parent.mkdir(parents=True, exist_ok=True)
+        _token_path.write_text(_token, encoding="utf-8")
+        print(f"\n  WebUI 认证令牌: {_token}\n")
+
+    # 4. 写入默认会话索引
     _write_json_if_missing("data/conversations/index.json", DEFAULT_CONVERSATIONS_INDEX)
