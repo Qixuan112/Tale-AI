@@ -52,6 +52,12 @@ python main.py              # 启动核心服务 + WebUI → http://127.0.0.1:32
 
 ---
 
+## 参考 / Reference
+
+本项目部分设计参考了 [KiraAI](https://github.com/xxynet/KiraAI)，一个模块化 AI 聊天机器人框架。
+
+---
+
 ## 许可证 / License
 
 **[GNU AGPL v3](LICENSE)** — 自由使用、修改、分发。对外提供服务须公开修改后的源代码。
