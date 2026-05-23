@@ -3,12 +3,27 @@ Function Calling 执行器 - 解析和执行工具调用
 """
 import json
 import re
+from typing import Callable, Dict
+
 from .tools import browser
 from .tools.registry import get_registry, get_tools_list, format_tools_for_chatllm
 from .utils.calculator import safe_calculate
 from .utils import get_logger
 
 logger = get_logger(__name__)
+
+# Plugin tool dispatch — populated by PluginManager
+_plugin_dispatch: Dict[str, Callable] = {}
+
+
+def register_plugin_handler(func_name: str, handler: Callable) -> None:
+    """Register a plugin-provided tool handler. Called by PluginManager."""
+    _plugin_dispatch[func_name] = handler
+
+
+def _unregister_plugin_handler(func_name: str) -> None:
+    """Remove a plugin-provided tool handler."""
+    _plugin_dispatch.pop(func_name, None)
 
 
 # 兼容旧代码：从注册表动态生成 AVAILABLE_TOOLS
@@ -107,6 +122,13 @@ def execute_function(func_name: str, parameters: dict) -> dict:
                 return safe_calculate(expression)
             return {"status": "failed", "error": "缺少 expression 参数"}
         
+        # Plugin dispatch
+        elif func_name in _plugin_dispatch:
+            try:
+                return _plugin_dispatch[func_name](parameters)
+            except Exception as e:
+                return {"status": "failed", "error": str(e)}
+
         else:
             return {"status": "failed", "error": f"未知的函数: {func_name}"}
             

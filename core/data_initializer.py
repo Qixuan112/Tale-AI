@@ -98,6 +98,20 @@ DEFAULT_SERVICES_YAML = """\
 #   model: deepseek-ai/DeepSeek-V3
 """
 
+DEFAULT_PLUGINS_YAML = """\
+# ============================================
+# 插件配置 - plugins.yaml
+# 启用/禁用插件，覆盖默认配置
+# ============================================
+
+plugins:
+  # 示例：
+  # my_plugin:
+  #   enabled: true
+  #   config:
+  #     key: value
+"""
+
 DEFAULT_CONVERSATIONS_INDEX = {
     "current_id": 1,
     "conversations": [
@@ -120,6 +134,7 @@ def ensure_data_dirs():
         "data/conversations",
         "data/diary",
         "data/files",
+        "plugins",
     ]
     for d in dirs:
         dir_path = PROJECT_ROOT / d
@@ -160,6 +175,7 @@ def initialize_data():
     _write_if_missing("data/config/platforms.yaml", DEFAULT_PLATFORMS_YAML)
     _write_if_missing("data/config/routing.yaml", DEFAULT_ROUTING_YAML)
     _write_if_missing("data/config/services.yaml", DEFAULT_SERVICES_YAML)
+    _write_if_missing("data/config/plugins.yaml", DEFAULT_PLUGINS_YAML)
 
     # 3. 写入默认会话索引
     _write_json_if_missing("data/conversations/index.json", DEFAULT_CONVERSATIONS_INDEX)

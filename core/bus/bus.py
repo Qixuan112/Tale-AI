@@ -9,11 +9,20 @@ class EventBus:
     def __init__(self):
         self._listeners = {}
 
-    def on(self, event_name, callback):
-        """订阅事件（同步或异步回调均可）"""
+    def on(self, event_name, callback, priority: int = 0):
+        """订阅事件（同步或异步回调均可）
+
+        Args:
+            event_name: 事件名
+            callback: 回调函数
+            priority: 优先级（越大越先触发，默认 0）
+        """
         if event_name not in self._listeners:
             self._listeners[event_name] = []
-        self._listeners[event_name].append(callback)
+        # 存储为 (priority, seq, callback) 并按优先级排序
+        entry = (priority, len(self._listeners[event_name]), callback)
+        self._listeners[event_name].append(entry)
+        self._listeners[event_name].sort(key=lambda x: (-x[0], x[1]))
         return self
 
     def off(self, event_name, callback=None):
@@ -25,7 +34,8 @@ class EventBus:
             del self._listeners[event_name]
         else:
             self._listeners[event_name] = [
-                cb for cb in self._listeners[event_name] if cb != callback
+                entry for entry in self._listeners[event_name]
+                if entry[2] != callback
             ]
         return self
 
@@ -34,7 +44,7 @@ class EventBus:
         if event_name not in self._listeners:
             return
 
-        for callback in self._listeners[event_name]:
+        for _pri, _seq, callback in self._listeners[event_name]:
             try:
                 callback(*args, **kwargs)
             except Exception as e:
@@ -45,7 +55,7 @@ class EventBus:
         if event_name not in self._listeners:
             return
 
-        for callback in self._listeners[event_name]:
+        for _pri, _seq, callback in self._listeners[event_name]:
             try:
                 if inspect.iscoroutinefunction(callback):
                     await callback(*args, **kwargs)

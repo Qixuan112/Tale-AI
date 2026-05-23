@@ -3,6 +3,7 @@ import time
 import threading
 import asyncio
 import signal
+from pathlib import Path
 from typing import Optional, Callable, Any, List
 
 from .spin_think import spinning_think
@@ -71,6 +72,7 @@ class TaleCore:
         self.toolllm: Optional[ToolLLM] = None
         self.adapter_bridge: Optional[AdapterEventBridge] = None
         self.message_processor: Optional[MessageProcessor] = None
+        self.plugin_manager: Optional[Any] = None
         self._running = False
         self._shutdown_event: Optional[asyncio.Event] = None
 
@@ -103,6 +105,9 @@ class TaleCore:
         # 注册 wechat_moments 专属处理器
         bus.on("wechat_moments_message", self._handle_wechat_moments_message)
 
+        # 初始化插件管理器
+        self._init_plugin_manager()
+
         logger.info("核心组件初始化完成")
 
     def _init_message_processor(self):
@@ -125,6 +130,32 @@ class TaleCore:
         bus.on("private_message", self._handle_private_message)
         bus.on("group_message", self._handle_group_message)
         bus.on("qq_message", self._handle_qq_message)
+
+    def _init_plugin_manager(self):
+        """初始化插件管理器"""
+        try:
+            from .plugin import PluginManager
+
+            project_root = Path(__file__).parent.parent
+            plugins_config = getattr(config_loader, "_plugins_config", {})
+
+            self.plugin_manager = PluginManager(
+                plugins_dir=project_root / "plugins",
+                config=plugins_config,
+            )
+            self.plugin_manager.load_all_enabled()
+
+            # 延迟注入提示词段（需要 ChatLLM/ToolLLM 引用）
+            self.plugin_manager._wire_prompt_sections(
+                chatllm=self.chat,
+                toollLM=self.toolllm,
+            )
+            logger.info(
+                "插件管理器初始化完成，已加载 %d 个插件",
+                len(self.plugin_manager.list_loaded()),
+            )
+        except Exception as e:
+            logger.warning("插件管理器初始化失败（不影响核心运行）: %s", e)
 
     def _handle_platform_message(self, event_data: dict):
         """处理平台消息事件（调试用）"""

@@ -1,9 +1,23 @@
 import re
+from typing import Callable, Dict
 from xml.etree import ElementTree as ET
 from .message import Text, Emoji, At, Act, Message
 from .utils import get_logger
 
 logger = get_logger(__name__)
+
+# Plugin tag handler registry — populated by PluginManager
+_plugin_tag_handlers: Dict[str, Callable] = {}
+
+
+def _register_tag_handler(tag_name: str, handler: Callable) -> None:
+    """Register a plugin handler for a custom XML tag."""
+    _plugin_tag_handlers[tag_name] = handler
+
+
+def _unregister_tag_handler(tag_name: str) -> None:
+    """Remove a plugin tag handler."""
+    _plugin_tag_handlers.pop(tag_name, None)
 
 
 def parse_xml_msg(xml_data):
@@ -155,6 +169,18 @@ def _parse_root(root: ET.Element) -> dict:
     if tool_elem is not None:
         tool_text = tool_elem.text.strip() if tool_elem.text else ""
         result["tool"] = tool_text.replace("<!--", "").replace("-->", "").strip()
+
+    # 处理插件注册的自定义标签
+    for tag_name, handler in _plugin_tag_handlers.items():
+        for elem in root.findall(tag_name):
+            try:
+                key = f"plugin_{tag_name}"
+                value = handler(tag_name, elem, {"parse_for": "chatllm"})
+                if key not in result:
+                    result[key] = []
+                result[key].append(value)
+            except Exception as e:
+                logger.warning("Plugin tag handler '%s' failed: %s", tag_name, e)
 
     return result
 

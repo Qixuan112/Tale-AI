@@ -42,6 +42,18 @@ app = Flask(__name__, template_folder='templates', static_folder='static')
 app.config['JSON_AS_ASCII'] = False
 app.add_template_global(lambda x: x, '_')
 
+
+@app.context_processor
+def inject_plugin_nav():
+    """注入插件侧边栏导航项到所有模板"""
+    try:
+        from core.plugin import PluginManager
+        items = PluginManager._nav_items
+    except Exception:
+        items = []
+    return {"plugin_nav_items": items}
+
+
 # 线程池，用于执行同步的 LLM 调用
 _executor = ThreadPoolExecutor(max_workers=4)
 
@@ -1022,6 +1034,52 @@ def api_system_reload():
     try:
         config_loader.reload()
         return jsonify({"ok": True, "message": "配置已重载"})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ============ 插件管理 API ============
+
+@app.route("/api/plugins")
+def api_plugins():
+    """获取插件列表"""
+    try:
+        from core.plugin import PluginManager
+        available = []
+        for manifest in PluginManager.list_available():
+            available.append({
+                "id": manifest.id,
+                "name": manifest.name,
+                "version": manifest.version,
+                "author": manifest.author,
+                "description": manifest.description,
+                "hooks": manifest.hooks,
+            })
+        core = get_core()
+        loaded = core.plugin_manager.list_loaded() if core and core.plugin_manager else []
+        return jsonify({"ok": True, "plugins": available, "loaded": loaded})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/plugins/<plugin_id>/toggle", methods=["POST"])
+def api_plugin_toggle(plugin_id):
+    """启用/禁用插件"""
+    try:
+        core = get_core()
+        if not core or not core.plugin_manager:
+            return jsonify({"ok": False, "error": "插件管理器未初始化"}), 500
+
+        pm = core.plugin_manager
+        data = request.get_json(silent=True) or {}
+        enabled = data.get("enabled", True)
+
+        if enabled:
+            success = pm.load_plugin(plugin_id)
+            return jsonify({"ok": success, "message": f"插件 {plugin_id} 已加载" if success else f"加载失败"})
+        else:
+            success = pm.unload_plugin(plugin_id)
+            return jsonify({"ok": success, "message": f"插件 {plugin_id} 已卸载" if success else f"卸载失败"})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 

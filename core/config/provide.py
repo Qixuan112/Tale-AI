@@ -163,6 +163,7 @@ class ConfigLoader:
     def __init__(self):
         if self._config is None:
             self._data_dir = self._get_data_dir()
+            self._plugins_config: dict = {}
             self._load_all_configs()
     
     def _get_data_dir(self) -> str:
@@ -205,7 +206,11 @@ class ConfigLoader:
         
         # 解析适配器配置
         adapters = self._parse_adapters(platforms_data)
-        
+
+        # 加载插件配置
+        plugins_data = self._load_yaml("config/plugins.yaml")
+        self._plugins_config = plugins_data.get("plugins", {})
+
         # 组装完整配置
         self._config = ProvideConfig(
             persona=persona,
