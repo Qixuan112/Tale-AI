@@ -129,7 +129,7 @@ class MessageProcessor:
     Example:
         config = ProcessorConfig(
             permission_mode="allow_list",
-            group_allow_list=["123456"],
+            group_allow_list=["example_group_id"],
             bot_id="bot_qq_id"
         )
         processor = MessageProcessor(config)

@@ -11,7 +11,7 @@ Example:
         print(f"[{event.platform.value}] {event.sender.name}: {event.content.text}")
 
     manager = AdapterManager(event_callback=on_event)
-    await manager.start_adapter("qq", {"ws_url": "ws://localhost:3001"})
+    await manager.start_adapter("qq", {"ws_url": "ws://example.com:3001"})
 """
 
 from .base import BaseAdapter

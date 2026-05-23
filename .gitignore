@@ -100,6 +100,12 @@ node_modules/
 CLAUDE.md
 
 # ──────────────────────────────────────────────
+# Project Specific - Internal Docs (ignore all except published ones)
+# ──────────────────────────────────────────────
+docs/*
+!docs/README.zh.md
+
+# ──────────────────────────────────────────────
 # Project Specific - TODO
 # ──────────────────────────────────────────────
 TODO.md
