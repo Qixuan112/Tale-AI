@@ -33,7 +33,6 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from core.llm.chatllm import ChatLLM
 from core.llm.planllm import PlanLLM, get_planllm
 from core.config.provide import config_loader, get_character_prompt
-from core.config.prompt import CHAT_PROMPT
 from core.function_caller import AVAILABLE_TOOLS, execute_function
 from core.adapter.manager import AdapterManager
 from core.main import get_core, get_main_event_loop
@@ -226,7 +225,7 @@ class ConversationStore:
     def clear(self, conv_id=None):
         cid = conv_id or self.current_id
         if self.chatllm and cid == self.current_id:
-            system_msg = self.chatllm.messages[0] if self.chatllm.messages else {"role": "system", "content": CHAT_PROMPT}
+            system_msg = self.chatllm.messages[0] if self.chatllm.messages else self.chatllm.context.get_system_message()
             self.chatllm.messages = [system_msg]
             self._messages[cid] = [system_msg]
             conv = self._get_conv(cid)

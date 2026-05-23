@@ -1,13 +1,18 @@
+from typing import Optional
+
 from openai import OpenAI
 from ..config import MAX_CONTEXT
-from ..config.prompt import CHAT_PROMPT
+from ..config.provide import get_character_prompt, get_dialogue_examples, config_loader
 from ..utils import get_logger
+from .context import AgentContext, create_chat_context
 
 logger = get_logger(__name__)
 
 
 class ChatLLM:
-    def __init__(self, api_key, model, url, max_context=MAX_CONTEXT):
+    def __init__(self, api_key, model, url, max_context=MAX_CONTEXT,
+                 context: Optional[AgentContext] = None,
+                 cache_strategy: str = "single_message"):
         """
         初始化 ChatLLM
 
@@ -15,13 +20,37 @@ class ChatLLM:
             api_key: OpenAI API 密钥
             model: 使用的模型
             max_context: 最大上下文消息数（包括 system 消息），建议 10-20 条
+            context: 可选的 AgentContext；缺省时通过工厂函数自动创建
+            cache_strategy: "single_message"（默认，向后兼容）或 "multi_message"
         """
         self.client = OpenAI(api_key=api_key, base_url=url)
         self.model = model
         self.max_context = max_context
-        self.messages = [
-            {"role": "system", "content": CHAT_PROMPT}
-        ]
+        self.cache_strategy = cache_strategy
+
+        if context is not None:
+            self.context = context
+        else:
+            self.context = create_chat_context(
+                character_prompt=get_character_prompt(),
+                dialogue_examples=get_dialogue_examples(),
+                persona_additional_prompt=config_loader.persona.additional_prompt,
+            )
+
+        # Build initial messages from context
+        self.messages = list(self.context.build_messages_head(self.cache_strategy))
+
+    def refresh_context(self):
+        """Rebuild the system message(s) from context (call after config changes)."""
+        new_head = self.context.build_messages_head(self.cache_strategy)
+        # Replace all leading system messages from the old context
+        cut = 0
+        for m in self.messages:
+            if m.get("role") == "system":
+                cut += 1
+            else:
+                break
+        self.messages = new_head + self.messages[cut:]
 
     def chat(self, user_input):
         """
@@ -60,8 +89,7 @@ class ChatLLM:
 
     def clear_history(self):
         """清空对话历史，只保留 system 消息"""
-        system_msg = self.messages[0]
-        self.messages = [system_msg]
+        self.messages = list(self.context.build_messages_head(self.cache_strategy))
 
     def get_history(self):
         """获取当前对话历史"""
@@ -72,12 +100,10 @@ class ChatLLM:
         if not messages:
             self.clear_history()
             return
-        # 确保第一条是 system 消息
-        if messages and messages[0].get("role") == "system":
-            self.messages = list(messages)
-        else:
-            # 如果不包含 system 消息，保留当前的 system 消息并追加
-            self.messages = [self.messages[0]] + list(messages)
+        # Rebuild system head, then append conversation messages
+        system_head = self.context.build_messages_head(self.cache_strategy)
+        conv_msgs = [m for m in messages if m.get("role") != "system"]
+        self.messages = system_head + conv_msgs
         self._trim_context()
 
 

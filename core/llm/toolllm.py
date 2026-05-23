@@ -1,7 +1,13 @@
+from typing import Optional
+
 from openai import OpenAI
 from ..config import provide
-from ..tools.registry import get_tools_list, format_tools_for_chatllm, build_fc_prompt
+from ..tools.registry import (
+    get_tools_list, format_tools_for_chatllm, build_fc_prompt, get_registry,
+)
 from ..utils import get_logger
+from .context import AgentContext, create_tool_context
+
 import json
 
 logger = get_logger(__name__)
@@ -15,7 +21,7 @@ AVAILABLE_TOOLS = [
 ]
 
 
-# ToolLLM 的 Function Calling 提示词（JSON 格式）
+# ToolLLM 的 Function Calling 提示词（JSON 格式）— 保留向后兼容
 TOOL_FC_PROMPT = build_fc_prompt()
 
 
@@ -23,12 +29,22 @@ class ToolLLM:
     """
     工具型 AI：根据 action 输出 Function Calling JSON
     """
-    def __init__(self, api_key=None, model=None, url=None):
+    def __init__(self, api_key=None, model=None, url=None,
+                 context: Optional[AgentContext] = None,
+                 cache_strategy: str = "single_message"):
         self.client = OpenAI(
             api_key=api_key or provide.TOOL_API_KEY,
             base_url=url or provide.TOOL_URL,
         )
         self.model = model or provide.TOOL_MODEL
+        self.cache_strategy = cache_strategy
+
+        if context is not None:
+            self.context = context
+        else:
+            self.context = create_tool_context(
+                tools_text=get_registry().get_tools_list_text(),
+            )
 
     def generate_fc(self, action):
         """
@@ -41,12 +57,12 @@ class ToolLLM:
             Function Calling JSON 字符串
         """
         try:
+            messages = self.context.build_messages_head(self.cache_strategy) + [
+                {"role": "user", "content": f"动作指令：{action}"},
+            ]
             response = self.client.chat.completions.create(
                 model=self.model,
-                messages=[
-                    {"role": "system", "content": TOOL_FC_PROMPT},
-                    {"role": "user", "content": f"动作指令：{action}"},
-                ],
+                messages=messages,
             )
             return response.choices[0].message.content
         except Exception as e:
@@ -61,6 +77,21 @@ class ToolLLM:
             包含 <chatllm> 标签的工具列表
         """
         return format_tools_for_chatllm()
+
+    def rebuild_tool_definitions(self):
+        """更新 tool_definitions 段内容（工具注册表变更后调用）。"""
+        tools_text = get_registry().get_tools_list_text()
+        self.context.set_section_content("tool_definitions", tools_text)
+        # Also rebuild the fc_format_template which embeds the tools list
+        fc_intro = (
+            "你是 \"ToolLLM\"，工具调用专家。你的任务是分析用户的动作指令，"
+            "输出标准化的 Function Calling JSON。\n\n" + tools_text
+        )
+        from ...config.prompt import FC_FORMAT_TEMPLATE
+        self.context.set_section_content(
+            "fc_format_template",
+            fc_intro + FC_FORMAT_TEMPLATE.strip(),
+        )
 
 
 # 创建全局实例

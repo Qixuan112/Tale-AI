@@ -18,17 +18,20 @@ from typing import Optional, List, Dict, Any
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
+from typing import Optional
+
 from openai import OpenAI
 from filelock import FileLock
 
 from ..bus import bus
 from ..config import provide
-from ..config.prompt import PLAN_PROMPT
+from ..config.prompt import get_plan_character_info
 from ..utils import get_logger
 from .diary_models import (
     DiaryEntry, DailyPlan, Goal, LongTermGoals,
     EventType, Priority, EventStatus
 )
+from .context import AgentContext, create_plan_context
 
 logger = get_logger(__name__)
 
@@ -58,15 +61,19 @@ class PlanLLM:
         current_plan = planllm.get_today_plan()
     """
     
-    def __init__(self, api_key=None, model=None, url=None, max_context=10):
+    def __init__(self, api_key=None, model=None, url=None, max_context=10,
+                 context: Optional[AgentContext] = None,
+                 cache_strategy: str = "single_message"):
         """
         初始化 PlanLLM
-        
+
         Args:
             api_key: OpenAI API 密钥
             model: 使用的模型
             url: API 基础 URL
             max_context: 最大上下文消息数
+            context: 可选的 AgentContext；缺省时通过工厂函数自动创建
+            cache_strategy: "single_message"（默认）或 "multi_message"
         """
         self.client = OpenAI(
             api_key=api_key or provide.PLAN_API_KEY,
@@ -74,6 +81,19 @@ class PlanLLM:
         )
         self.model = model or provide.PLAN_MODEL
         self.max_context = max_context
+        self.cache_strategy = cache_strategy
+
+        if context is not None:
+            self.context = context
+        else:
+            info = get_plan_character_info()
+            self.context = create_plan_context(
+                name=info.get("name", "AI"),
+                english_name=info.get("english_name", ""),
+                age=info.get("age", "未知"),
+                gender=info.get("gender", "未知"),
+                values=info.get("personality", []),
+            )
         
         # 数据存储路径
         self.data_dir = Path("data/diary")
@@ -583,8 +603,7 @@ class PlanLLM:
     
     def _call_llm(self, prompt: str) -> str:
         """调用 LLM（使用独立上下文，避免对话历史污染计划生成）"""
-        messages = [
-            {"role": "system", "content": PLAN_PROMPT},
+        messages = self.context.build_messages_head(self.cache_strategy) + [
             {"role": "user", "content": prompt}
         ]
         

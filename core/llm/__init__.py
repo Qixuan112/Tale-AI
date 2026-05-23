@@ -5,6 +5,11 @@ from .diary_models import (
     DiaryEntry, DailyPlan, Goal, LongTermGoals,
     EventType, Priority, EventStatus
 )
+from .context import (
+    AgentContext, PromptSection, CachedPrompt,
+    create_chat_context, create_plan_context, create_tool_context,
+    ContextConfig, load_context_config,
+)
 
 __all__ = [
     'ChatLLM',
@@ -20,5 +25,13 @@ __all__ = [
     'LongTermGoals',
     'EventType',
     'Priority',
-    'EventStatus'
+    'EventStatus',
+    'AgentContext',
+    'PromptSection',
+    'CachedPrompt',
+    'create_chat_context',
+    'create_plan_context',
+    'create_tool_context',
+    'ContextConfig',
+    'load_context_config',
 ]
