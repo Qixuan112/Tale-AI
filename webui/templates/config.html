@@ -8,6 +8,11 @@
     <p class="subtitle" data-i18n="config.subtitle">编辑角色人设、行为参数、平台与服务配置</p>
 </div>
 
+<div class="config-search" id="configSearchWrap" style="display:none">
+    <input type="text" id="configSearch" placeholder="🔍 搜索配置字段..." data-i18n-placeholder="config.searchPlaceholder">
+    <span class="search-clear" id="searchClear">&times;</span>
+</div>
+
 <div class="config-layout">
     <!-- Tab 导航 -->
     <div class="config-tabs" id="configTabs">
@@ -18,28 +23,31 @@
     <div class="config-body" id="configBody">
         <div class="empty-tip" data-i18n="config.loading">加载中...</div>
 
-        <!-- 角色人设工具栏（仅 character tab 显示） -->
-        <div class="char-toolbar" id="charToolbar" style="display:none">
+        <!-- 配置工具栏（所有标签页通用） -->
+        <div class="char-toolbar" id="configToolbar" style="display:none">
             <div class="char-mode-switch">
-                <button class="mode-btn active" data-mode="form" id="modeFormBtn">📝 <span data-i18n="config.formMode">表单模式</span></button>
-                <button class="mode-btn" data-mode="source" id="modeSourceBtn">📄 <span data-i18n="config.sourceMode">源码模式</span></button>
+                <button class="mode-btn" data-mode="form" id="modeFormBtn">📝 <span data-i18n="config.formMode">表单模式</span></button>
+                <button class="mode-btn active" data-mode="source" id="modeSourceBtn">📄 <span data-i18n="config.sourceMode">源码模式</span></button>
             </div>
-            <div class="char-actions">
-                <input type="file" id="importFileInput" accept=".yaml,.yml,.json" style="display:none">
-                <button class="btn btn-sm" id="btnImport">📥 <span data-i18n="config.import">导入</span></button>
-                <button class="btn btn-sm" id="btnExport">📤 <span data-i18n="config.export">导出</span></button>
-                <div class="preset-group">
-                    <select id="presetSelect">
-                        <option value="">— <span data-i18n="config.presetPlaceholder">预设列表</span> —</option>
-                    </select>
-                    <button class="btn btn-sm" id="btnPresetSave">💾 <span data-i18n="config.presetSave">另存为</span></button>
-                    <button class="btn btn-sm btn-danger" id="btnPresetDelete">🗑 <span data-i18n="config.presetDelete">删除</span></button>
-                </div>
+            <div class="char-actions" id="charActions">
+                <!-- 角色特定操作：预设、导入/导出（仅 character 标签显示） -->
+                <span class="char-only-actions">
+                    <input type="file" id="importFileInput" accept=".yaml,.yml,.json" style="display:none">
+                    <button class="btn btn-sm" id="btnImport">📥 <span data-i18n="config.import">导入</span></button>
+                    <button class="btn btn-sm" id="btnExport">📤 <span data-i18n="config.export">导出</span></button>
+                    <div class="preset-group">
+                        <select id="presetSelect">
+                            <option value="">— <span data-i18n="config.presetPlaceholder">预设列表</span> —</option>
+                        </select>
+                        <button class="btn btn-sm" id="btnPresetSave">💾 <span data-i18n="config.presetSave">另存为</span></button>
+                        <button class="btn btn-sm btn-danger" id="btnPresetDelete">🗑 <span data-i18n="config.presetDelete">删除</span></button>
+                    </div>
+                </span>
             </div>
         </div>
 
         <!-- Monaco Editor 容器（源码模式） -->
-        <div id="monacoContainer" style="display:none; height:520px; border:1px solid var(--border); border-radius:8px; margin-top:12px;"></div>
+        <div id="monacoContainer" style="display:block; height:520px; border:1px solid var(--border); border-radius:8px; margin-top:12px;"></div>
     </div>
 
     <div class="config-footer">
@@ -89,6 +97,32 @@
 .btn-sm { padding: 4px 12px; font-size: 13px; border-radius: 6px; }
 .btn-danger { background: var(--danger, #e74c3c); color: #fff; border: none; cursor: pointer; }
 .btn-danger:hover { opacity: 0.85; }
+
+/* 字段分组建 */
+.form-fieldset { border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; background: var(--bg-primary); }
+.form-fieldset legend { font-size: 14px; font-weight: 600; color: var(--accent); padding: 0 8px; }
+.form-group { display: flex; flex-direction: column; gap: 2px; }
+.form-group label { font-size: 13px; font-weight: 500; color: var(--text-primary); }
+.form-group input, .form-group textarea { width: 100%; max-width: 480px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font-size: 13px; }
+.form-group textarea { min-height: 72px; resize: vertical; }
+.form-group input[type="checkbox"] { width: auto; }
+.field-desc { display: block; font-size: 11px; color: var(--text-secondary); font-weight: 400; margin-top: 1px; }
+.checkbox-label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+
+/* 数组编辑器 */
+.array-editor { display: flex; flex-direction: column; gap: 4px; }
+.ae-item { display: flex; align-items: center; gap: 4px; }
+.ae-item input { flex: 1; max-width: 440px; }
+.ae-remove { background: none; border: none; color: var(--danger, #e74c3c); font-size: 18px; cursor: pointer; padding: 0 4px; line-height: 1; }
+.ae-add { align-self: flex-start; margin-top: 2px; }
+
+/* 配置搜索 */
+.config-search { position: relative; margin-bottom: 8px; padding: 0 28px; }
+.config-search input { width: 100%; padding: 8px 32px 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-primary); color: var(--text-primary); font-size: 13px; }
+.config-search input::placeholder { color: var(--text-secondary); }
+.search-clear { position: absolute; right: 36px; top: 50%; transform: translateY(-50%); cursor: pointer; color: var(--text-secondary); font-size: 18px; display: none; }
+.search-highlight { background: rgba(255, 200, 0, 0.3); border-radius: 2px; }
+.search-hidden { display: none !important; }
 </style>
 
 <script>
@@ -100,7 +134,7 @@
     let tabs = [];
     let monacoEditor = null;
     let monacoLoading = false;
-    let sourceMode = false;
+    let sourceMode = true;  // 默认源码模式
     let yamlLib = null;
 
     function loadScript(src) {
@@ -158,6 +192,7 @@
 
     async function init() {
         await loadJsYaml();
+        loadMonaco();  // 后台加载 Monaco
         try {
             var res = await fetch('/api/config');
             tabs = await res.json();
@@ -192,7 +227,7 @@
                 panel.className = 'tab-panel' + (i === 0 ? ' active' : '');
                 panel.id = 'panel-' + t.name;
                 panel.innerHTML = '<div class="form-grid" id="form-' + t.name + '"></div>';
-                bodyEl.insertBefore(panel, document.getElementById('charToolbar'));
+                bodyEl.appendChild(panel);
             }
         });
 
@@ -209,28 +244,32 @@
         var panel = document.getElementById('panel-' + name);
         if (panel) panel.classList.add('active');
         currentTab = name;
+        initSearch();
 
-        var toolbar = document.getElementById('charToolbar');
+        var toolbar = document.getElementById('configToolbar');
         var monaco = document.getElementById('monacoContainer');
-        if (name === 'character') {
-            toolbar.style.display = 'flex';
-            if (sourceMode) {
-                monaco.style.display = 'block';
-                if (panel) panel.style.display = 'none';
-            } else {
-                monaco.style.display = 'none';
-                if (panel) panel.style.display = 'block';
-            }
-            loadPresets();
+        // 所有标签页都显示工具栏，但角色特定操作仅 character 可见
+        toolbar.style.display = 'flex';
+        var charActions = document.querySelector('.char-only-actions');
+        if (charActions) {
+            charActions.style.display = (name === 'character') ? 'inline-flex' : 'none';
+        }
+        if (sourceMode) {
+            monaco.style.display = 'block';
+            if (panel) panel.style.display = 'none';
         } else {
-            toolbar.style.display = 'none';
             monaco.style.display = 'none';
+            if (panel) panel.style.display = 'block';
+        }
+        if (name === 'character') {
+            loadPresets();
         }
 
-        loadConfig(name);
+        loadConfigForTab(name);
     }
 
-    async function loadConfig(name) {
+    async function loadConfigForTab(name) {
+        // 加载 JSON 用于表单模式
         try {
             var res = await fetch('/api/config/' + name);
             var data = await res.json();
@@ -240,36 +279,160 @@
             var container = document.getElementById('form-' + name);
             if (container) container.innerHTML = '<div class="empty-tip">' + (window.t ? window.t('config.loadFailed') : '加载失败') + '</div>';
         }
+        // 加载 raw YAML 用于源码模式
+        if (monacoEditor) {
+            try {
+                var rawRes = await fetch('/api/config/' + name + '/raw');
+                var rawText = await rawRes.text();
+                monacoEditor.setValue(rawText);
+            } catch (e) {
+                monacoEditor.setValue('');
+            }
+        }
     }
 
     function renderForm(name, data) {
         var container = document.getElementById('form-' + name);
         if (!container) return;
-        container.innerHTML = buildFields(data);
+        container.innerHTML = buildFields(name, data);
     }
 
-    function buildFields(obj, prefix) {
+    // 字段元数据：标签、描述、类型、分组
+    var FIELD_META = {
+        // character 分组
+        'character.ChineseName': { label: t('中文名'), desc: '角色姓名', group: 'basic' },
+        'character.EnglishName': { label: t('英文名'), desc: '角色英文名', group: 'basic' },
+        'character.NickNames': { label: t('昵称'), desc: '其他称呼', group: 'basic', type: 'array' },
+        'character.gender': { label: t('性别'), desc: '', group: 'basic' },
+        'character.age': { label: t('年龄'), desc: '', group: 'basic', type: 'number' },
+        'character.birthday': { label: t('生日'), desc: '例如 3月14日', group: 'basic' },
+        'character.language': { label: t('语言'), desc: '角色语言设置', group: 'basic' },
+        'character.appearance': { label: t('外貌'), desc: '角色外貌描述', group: 'personality', type: 'textarea' },
+        'character.views': { label: t('世界观'), desc: '角色对世界的看法', group: 'personality', type: 'textarea' },
+        'character.values': { label: t('价值观'), desc: '核心价值取向，每行一个', group: 'personality', type: 'array' },
+        'character.hobbies': { label: t('爱好'), desc: '兴趣爱好，每行一个', group: 'personality', type: 'array' },
+        'character.expressions': { label: t('表情/语气'), desc: '常用表达方式', group: 'personality' },
+        'character.dialogue_style_imitation': { label: t('对话风格'), desc: '对话风格示例', group: 'style', type: 'array' },
+        // behavior 分组
+        'bot.bot.max_memory_length': { label: t('记忆长度'), desc: '角色能记住的最大消息数', group: 'behavior-bot', type: 'number' },
+        'bot.bot.max_message_interval': { label: t('消息间隔'), desc: '消息间隔（秒）', group: 'behavior-bot', type: 'number' },
+        'bot.bot.max_buffer_messages': { label: t('缓冲消息数'), desc: '最大缓冲消息数', group: 'behavior-bot', type: 'number' },
+        'bot.bot.min_message_delay': { label: t('最小延迟'), desc: '消息最小延迟（秒）', group: 'behavior-bot', type: 'number' },
+        'bot.bot.max_message_delay': { label: t('最大延迟'), desc: '消息最大延迟（秒）', group: 'behavior-bot', type: 'number' },
+        'bot.context.max_context': { label: t('上下文长度'), desc: '最大上下文轮数', group: 'behavior-context', type: 'number' },
+        'bot.context.memory_enabled': { label: t('记忆启用'), desc: '启用长期记忆', group: 'behavior-context', type: 'boolean' },
+        'bot.context.personality_strength': { label: t('性格强度'), desc: '性格影响强度 0-1', group: 'behavior-context', type: 'number' },
+        'bot.selfie.path': { label: t('头像路径'), desc: '自定义头像路径', group: 'behavior-other' },
+    };
+
+    function getFieldMeta(fullKey) {
+        return FIELD_META[fullKey] || null;
+    }
+
+    function getGroupLabel(group) {
+        var groups = {
+            'basic': t('基本信息'),
+            'personality': t('性格设定'),
+            'style': t('对话风格'),
+            'behavior-bot': t('行为参数'),
+            'behavior-context': t('上下文设置'),
+            'behavior-other': t('其他'),
+        };
+        return groups[group] || group;
+    }
+
+    function arrayEditorHtml(fullKey, items, meta) {
+        var label = meta ? meta.label : fullKey;
+        var desc = meta ? meta.desc : '';
+        var listId = 'aelist-' + fullKey.replace(/\./g, '-');
+        var itemHtml = '';
+        if (items && items.length) {
+            itemHtml = items.map(function(v, i) {
+                var val = typeof v === 'string' ? v : JSON.stringify(v);
+                return '<div class="ae-item"><input type="text" data-ae-key="' + fullKey + '" value="' + val.replace(/"/g, '&quot;') + '"><button type="button" class="ae-remove" title="移除">&times;</button></div>';
+            }).join('');
+        }
+        return '<div class="form-group full-row">'
+            + '<label>' + label + (desc ? '<span class="field-desc">' + desc + '</span>' : '') + '</label>'
+            + '<div class="array-editor" data-key="' + fullKey + '" id="' + listId + '">'
+            + itemHtml
+            + '<button type="button" class="ae-add btn btn-sm">+ ' + t('添加') + '</button>'
+            + '</div></div>';
+    }
+
+    function buildFields(name, obj, prefix, currentGroup) {
         if (!obj || typeof obj !== 'object') return '';
-        var html = '';
+        // 确定根 key 前缀
+        var rootKey = prefix ? prefix : name;
+        var groups = {};
+        var ungrouped = [];
+
+        // 按分组归类字段
         for (var key in obj) {
             if (!obj.hasOwnProperty(key)) continue;
             var val = obj[key];
-            var fullKey = prefix ? prefix + '.' + key : key;
-            if (Array.isArray(val)) {
-                html += '<div class="full-row section-title">' + key + '</div>';
-                html += '<div class="full-row"><textarea data-key="' + fullKey + '" rows="4">' + val.map(function(v) { return typeof v === 'string' ? v : JSON.stringify(v); }).join('\n') + '</textarea></div>';
-            } else if (typeof val === 'object' && val !== null) {
-                html += '<div class="full-row section-title">' + key + '</div>';
-                html += buildFields(val, fullKey);
-            } else if (typeof val === 'boolean') {
-                html += '<label>' + key + '</label><div><input type="checkbox" data-key="' + fullKey + '" ' + (val ? 'checked' : '') + '></div>';
-            } else if (typeof val === 'number') {
-                html += '<label>' + key + '</label><div><input type="number" data-key="' + fullKey + '" value="' + val + '"></div>';
+            var fullKey = rootKey + '.' + key;
+            var meta = getFieldMeta(fullKey);
+            var group = meta ? meta.group : (currentGroup || '_ungrouped');
+
+            if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
+                // 嵌套对象：递归处理
+                var childHtml = buildFields(name, val, fullKey, group);
+                if (childHtml) {
+                    if (!groups[group]) groups[group] = [];
+                    groups[group].push(childHtml);
+                }
             } else {
-                var isSecret = key.toLowerCase().indexOf('key') !== -1 || key.toLowerCase().indexOf('token') !== -1 || key.toLowerCase().indexOf('secret') !== -1;
-                html += '<label>' + key + '</label><div><input type="' + (isSecret ? 'password' : 'text') + '" data-key="' + fullKey + '" value="' + (val || '').replace(/"/g, '&quot;') + '"></div>';
+                if (!groups[group]) groups[group] = [];
+                groups[group].push({ key: key, fullKey: fullKey, val: val, meta: meta });
             }
         }
+
+        var html = '';
+        var groupKeys = Object.keys(groups);
+        for (var gi = 0; gi < groupKeys.length; gi++) {
+            var g = groupKeys[gi];
+            var fields = groups[g];
+            if (g !== '_ungrouped' && g !== currentGroup) {
+                html += '<fieldset class="form-fieldset"><legend>' + getGroupLabel(g) + '</legend><div class="form-grid">';
+            }
+
+            for (var fi = 0; fi < fields.length; fi++) {
+                var field = fields[fi];
+                if (typeof field === 'string') {
+                    // 递归返回的 HTML 直接插入
+                    html += field;
+                    continue;
+                }
+
+                var meta = field.meta || getFieldMeta(field.fullKey);
+                var label = meta ? meta.label : field.key;
+                var desc = meta ? meta.desc : '';
+                var fType = meta ? meta.type : '';
+
+                if (Array.isArray(field.val)) {
+                    html += arrayEditorHtml(field.fullKey, field.val, meta);
+                } else if (fType === 'textarea') {
+                    html += '<div class="form-group full-row"><label>' + label + (desc ? '<span class="field-desc">' + desc + '</span>' : '') + '</label>'
+                        + '<textarea data-key="' + field.fullKey + '" rows="4">' + (field.val || '').replace(/"/g, '&quot;') + '</textarea></div>';
+                } else if (fType === 'boolean' || typeof field.val === 'boolean') {
+                    html += '<div class="form-group"><label class="checkbox-label"><input type="checkbox" data-key="' + field.fullKey + '" ' + (field.val ? 'checked' : '') + '> ' + label + '</label>'
+                        + (desc ? '<span class="field-desc">' + desc + '</span>' : '') + '</div>';
+                } else if (fType === 'number' || typeof field.val === 'number') {
+                    html += '<div class="form-group"><label>' + label + (desc ? '<span class="field-desc">' + desc + '</span>' : '') + '</label>'
+                        + '<input type="number" data-key="' + field.fullKey + '" value="' + field.val + '"></div>';
+                } else {
+                    var isSecret = field.fullKey.toLowerCase().indexOf('key') !== -1 || field.fullKey.toLowerCase().indexOf('token') !== -1 || field.fullKey.toLowerCase().indexOf('secret') !== -1;
+                    html += '<div class="form-group"><label>' + label + (desc ? '<span class="field-desc">' + desc + '</span>' : '') + '</label>'
+                        + '<input type="' + (isSecret ? 'password' : 'text') + '" data-key="' + field.fullKey + '" value="' + (field.val || '').replace(/"/g, '&quot;') + '"></div>';
+                }
+            }
+
+            if (g !== '_ungrouped' && g !== currentGroup) {
+                html += '</div></fieldset>';
+            }
+        }
+
         return html;
     }
 
@@ -277,7 +440,8 @@
         var container = document.getElementById('form-' + name);
         var result = JSON.parse(JSON.stringify(currentData[name] || {}));
 
-        container.querySelectorAll('input[data-key], textarea[data-key], select[data-key]').forEach(function(el) {
+        // 收集普通字段
+        container.querySelectorAll('input[data-key]:not([data-ae-key]), textarea[data-key], select[data-key]').forEach(function(el) {
             var keyPath = el.dataset.key.split('.');
             var target = result;
             for (var i = 0; i < keyPath.length - 1; i++) {
@@ -287,19 +451,107 @@
             var lastKey = keyPath[keyPath.length - 1];
             if (el.type === 'checkbox') {
                 target[lastKey] = el.checked;
-            } else if (el.tagName === 'TEXTAREA' && el.value.indexOf('\n') !== -1) {
-                target[lastKey] = el.value.split('\n').map(function(s) { return s.trim(); }).filter(Boolean);
             } else if (!isNaN(el.value) && el.value !== '' && el.type === 'number') {
                 target[lastKey] = Number(el.value);
             } else {
                 target[lastKey] = el.value;
             }
         });
+        // 收集数组编辑器字段
+        container.querySelectorAll('.array-editor').forEach(function(editor) {
+            var fullKey = editor.dataset.key;
+            if (!fullKey) return;
+            var keyPath = fullKey.split('.');
+            var target = result;
+            for (var i = 0; i < keyPath.length - 1; i++) {
+                if (!target[keyPath[i]]) target[keyPath[i]] = {};
+                target = target[keyPath[i]];
+            }
+            var lastKey = keyPath[keyPath.length - 1];
+            var items = [];
+            editor.querySelectorAll('input[data-ae-key="' + fullKey + '"]').forEach(function(inp) {
+                var v = inp.value.trim();
+                if (v) items.push(v);
+            });
+            target[lastKey] = items;
+        });
         return result;
     }
 
+    // 表单事件委托：数组编辑器增删
+    document.getElementById('configBody').addEventListener('click', function(e) {
+        var target = e.target;
+        if (target.classList.contains('ae-add')) {
+            var editor = target.closest('.array-editor');
+            if (!editor) return;
+            var key = editor.dataset.key;
+            var item = document.createElement('div');
+            item.className = 'ae-item';
+            item.innerHTML = '<input type="text" data-ae-key="' + key + '" value=""> <button type="button" class="ae-remove" title="移除">&times;</button>';
+            editor.insertBefore(item, target);
+        }
+        if (target.classList.contains('ae-remove')) {
+            var item = target.closest('.ae-item');
+            if (item) item.remove();
+        }
+    });
+
+    // ============ 配置搜索 ============
+
+    var searchInput = document.getElementById('configSearch');
+    var searchWrap = document.getElementById('configSearchWrap');
+    var searchClear = document.getElementById('searchClear');
+
+    function initSearch() {
+        if (currentTab) {
+            searchWrap.style.display = 'block';
+        }
+    }
+
+    searchInput.addEventListener('input', function() {
+        var q = searchInput.value.trim().toLowerCase();
+        searchClear.style.display = q ? 'block' : 'none';
+        var panel = document.getElementById('form-' + currentTab);
+        if (!panel) return;
+
+        if (sourceMode && monacoEditor) {
+            // 源码模式：用 Monaco 的 findMatches 高亮
+            if (q) {
+                monacoEditor.getModel().findMatches(q, false, true, false, null, true);
+            }
+            return;
+        }
+
+        // 表单模式：隐藏不匹配的行
+        var groups = panel.querySelectorAll('.form-fieldset, .form-group');
+        var visibleCount = 0;
+        groups.forEach(function(el) {
+            var text = el.textContent.toLowerCase();
+            if (!q || text.indexOf(q) !== -1) {
+                el.classList.remove('search-hidden');
+                visibleCount++;
+            } else {
+                el.classList.add('search-hidden');
+            }
+        });
+        // 隐藏空的分组
+        panel.querySelectorAll('.form-fieldset').forEach(function(fs) {
+            var visible = fs.querySelectorAll('.form-group:not(.search-hidden)').length;
+            if (!q || visible === 0) {
+                fs.classList.add('search-hidden');
+            } else {
+                fs.classList.remove('search-hidden');
+            }
+        });
+    });
+
+    searchClear.addEventListener('click', function() {
+        searchInput.value = '';
+        searchInput.dispatchEvent(new Event('input'));
+    });
+
     document.getElementById('btnSaveConfig').addEventListener('click', async function() {
-        if (currentTab === 'character' && sourceMode && monacoEditor) {
+        if (sourceMode && monacoEditor) {
             await saveRawYaml();
         } else {
             await saveFormYaml();
@@ -337,7 +589,7 @@
                     return;
                 }
             }
-            var res = await fetch('/api/config/character/raw', {
+            var res = await fetch('/api/config/' + currentTab + '/raw', {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain; charset=utf-8' },
                 body: yamlStr
@@ -373,15 +625,15 @@
             return;
         }
         try {
-            var res = await fetch('/api/config/character', {
+            var res = await fetch('/api/config/' + currentTab, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(parsed)
             });
             var result = await res.json();
             if (!result.ok) throw new Error('保存失败');
-            currentData.character = parsed;
-            renderForm('character', parsed);
+            currentData[currentTab] = parsed;
+            renderForm(currentTab, parsed);
         } catch (e) {
             alert('切换到表单模式失败: ' + e.message);
             return;
@@ -391,7 +643,7 @@
         document.getElementById('modeFormBtn').classList.add('active');
         document.getElementById('modeSourceBtn').classList.remove('active');
         document.getElementById('monacoContainer').style.display = 'none';
-        var panel = document.getElementById('panel-character');
+        var panel = document.getElementById('panel-' + currentTab);
         if (panel) panel.style.display = 'block';
     }
 
@@ -404,24 +656,26 @@
             }
         }
 
-        var formData = collectFormData('character');
-        var yamlStr;
-        try {
-            yamlStr = yamlLib.dump(formData, {
-                indent: 2, lineWidth: -1, noRefs: true, sortKeys: false, forceQuotes: false
-            });
-        } catch (e) {
-            alert('序列化 YAML 失败: ' + e.message);
-            return;
+        // 表单模式切换到源码：将表单数据转 YAML
+        if (!sourceMode) {
+            var formData = collectFormData(currentTab);
+            var yamlStr;
+            try {
+                yamlStr = yamlLib.dump(formData, {
+                    indent: 2, lineWidth: -1, noRefs: true, sortKeys: false, forceQuotes: false
+                });
+            } catch (e) {
+                alert('序列化 YAML 失败: ' + e.message);
+                return;
+            }
+            monacoEditor.setValue(yamlStr);
         }
-
-        monacoEditor.setValue(yamlStr);
 
         sourceMode = true;
         document.getElementById('modeSourceBtn').classList.add('active');
         document.getElementById('modeFormBtn').classList.remove('active');
         document.getElementById('monacoContainer').style.display = 'block';
-        var panel = document.getElementById('panel-character');
+        var panel = document.getElementById('panel-' + currentTab);
         if (panel) panel.style.display = 'none';
 
         setTimeout(function() {
@@ -517,7 +771,7 @@
                     var rawText = await rawRes.text();
                     if (monacoEditor) monacoEditor.setValue(rawText);
                 } else {
-                    loadConfig('character');
+                    loadConfigForTab('character');
                 }
             } else {
                 status.textContent = '[X] 切换失败';
@@ -555,7 +809,7 @@
                     var rawText = await rawRes.text();
                     monacoEditor.setValue(rawText);
                 } else {
-                    loadConfig('character');
+                    loadConfigForTab('character');
                 }
             } else {
                 status.textContent = '[X] 导入失败: ' + (result.error || '未知错误');

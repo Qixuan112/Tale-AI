@@ -108,9 +108,12 @@ class PlanLLM:
         
         # 线程池用于异步执行
         self._executor = ThreadPoolExecutor(max_workers=2)
-        
+
+        # 监听配置变更以热更新
+        bus.on("config_reloaded", self._on_config_reloaded)
+
         self._load_data()
-        
+
         # 检查是否需要创建新日期的计划
         self._check_new_day()
     
@@ -198,6 +201,27 @@ class PlanLLM:
                 except Exception as e:
                     logger.error("自动生成今日计划失败: %s", e)
     
+    def _on_config_reloaded(self):
+        """配置重载后热更新 API 客户端和角色上下文。"""
+        cfg = provide.config_loader.get_api_config("plan_llm")
+        api_key = cfg.get("api_key")
+        base_url = cfg.get("url")
+        model = cfg.get("model")
+        if api_key and base_url:
+            self.client = OpenAI(api_key=api_key, base_url=base_url)
+        if model:
+            self.model = model
+        # 重建角色上下文
+        info = get_plan_character_info()
+        self.context = create_plan_context(
+            name=info.get("name", "AI"),
+            english_name=info.get("english_name", ""),
+            age=info.get("age", "未知"),
+            gender=info.get("gender", "未知"),
+            values=info.get("personality", []),
+        )
+        logger.info("PlanLLM: 配置已热更新")
+
     def ensure_today_plan(self):
         """确保今日有计划：如果今日尚无日程，自动生成默认计划
 

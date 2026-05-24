@@ -21,7 +21,7 @@ DEFAULT_CHARACTER_YAML = """\
 character:
   ChineseName: ''
   EnglishName: ''
-  NickName(s): ''
+  NickNames: []
   age: ''
   appearance: ''
   birthday: ''
@@ -29,8 +29,9 @@ character:
   expressions: ''
   gender: ''
   hobbies: []
-  language: Chinese
-  personality: []
+  language:
+    primary: Chinese
+    style: casual
   values: []
   views: []
 """

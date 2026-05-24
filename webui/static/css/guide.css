@@ -1,0 +1,425 @@
+/* ============================================
+   Tale 视觉小说风格引导系统
+   ============================================
+   全屏 Galgame/VN 风格：
+   场景背景 + 角色立绘 + 底部对话框 + 打字机效果
+   ============================================ */
+
+/* ---- 全屏覆盖层 ---- */
+.vn-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: none;
+    background: #000;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.vn-overlay.active {
+    display: block;
+}
+
+/* ---- 场景背景 ---- */
+.vn-background {
+    position: absolute;
+    inset: 0;
+}
+.vn-scene-gradient {
+    position: absolute;
+    inset: 0;
+    /* 默认场景渐变：暮色室内，后续可替换为背景图 */
+    background: linear-gradient(
+        180deg,
+        #1a1a2e 0%,
+        #16213e 15%,
+        #2d2d44 30%,
+        #3d3d5c 50%,
+        #2a2a3e 70%,
+        #1a1a2e 100%
+    );
+}
+/* 覆盖层：底部渐暗以突出对话框 */
+.vn-background::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 38%;
+    background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.4) 50%, rgba(0,0,0,0.75) 100%);
+    pointer-events: none;
+}
+
+/* ---- 角色立绘 ---- */
+.vn-sprites {
+    position: absolute;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    justify-content: center;
+    gap: 60px;
+    z-index: 10;
+    pointer-events: none;
+}
+.vn-sprite {
+    animation: vnSpriteEnter 0.6s ease-out both;
+}
+.vn-sprite img {
+    max-height: 82vh;
+    max-width: 55vw;
+    width: auto;
+    height: auto;
+    display: block;
+    filter: drop-shadow(0 8px 32px rgba(0,0,0,0.5));
+}
+@keyframes vnSpriteEnter {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ---- 底部对话框容器 ---- */
+.vn-textbox-container {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    padding: 0 32px 16px;
+}
+
+/* ---- 对话框 ---- */
+.vn-textbox {
+    background: rgba(10, 10, 30, 0.88);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px;
+    padding: 28px 24px 18px;
+    position: relative;
+    max-width: 860px;
+    margin: 0 auto;
+    min-height: 100px;
+    box-shadow:
+        0 -1px 0 rgba(255,255,255,0.06) inset,
+        0 8px 40px rgba(0,0,0,0.5);
+    cursor: pointer;
+    transition: border-color 0.3s;
+}
+.vn-textbox:hover {
+    border-color: rgba(255,255,255,0.22);
+}
+
+/* 角色名标签 */
+.vn-name-tag {
+    position: absolute;
+    top: -18px;
+    left: 18px;
+    background: rgba(80, 60, 160, 0.9);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 4px 16px;
+    border-radius: 4px;
+    letter-spacing: 1px;
+    box-shadow: 0 2px 12px rgba(80, 60, 160, 0.4);
+}
+
+/* 对白文字 */
+.vn-dialogue {
+    color: #e8e8f0;
+    font-size: 16px;
+    line-height: 1.85;
+    min-height: 48px;
+    letter-spacing: 0.4px;
+}
+
+/* 打字机光标 */
+.vn-cursor {
+    color: rgba(255,255,255,0.7);
+    animation: vnCursorBlink 0.7s infinite;
+    font-weight: 300;
+}
+.vn-cursor.done {
+    display: none;
+}
+@keyframes vnCursorBlink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+}
+
+/* 继续指示器 */
+.vn-indicator {
+    position: absolute;
+    right: 18px;
+    bottom: 10px;
+    color: rgba(255,255,255,0.35);
+    font-size: 12px;
+    animation: vnBounce 1.2s infinite;
+    pointer-events: none;
+}
+.vn-indicator.hidden {
+    display: none;
+}
+@keyframes vnBounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(3px); }
+}
+
+/* ---- 功能按钮栏 ---- */
+.vn-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 860px;
+    margin: 6px auto 0;
+    padding: 0 4px;
+}
+.vn-toolbar-spacer {
+    flex: 1;
+}
+.vn-btn {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.55);
+    font-size: 11px;
+    letter-spacing: 2px;
+    padding: 4px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+}
+.vn-btn:hover {
+    background: rgba(255,255,255,0.15);
+    color: rgba(255,255,255,0.85);
+    border-color: rgba(255,255,255,0.2);
+}
+.vn-btn.active {
+    background: rgba(255,255,255,0.2);
+    color: #fff;
+    border-color: rgba(255,255,255,0.3);
+}
+
+/* ---- 选择支按钮 ---- */
+.vn-choices {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 860px;
+    margin: 10px auto 0;
+    padding: 0 4px;
+    align-items: center;
+}
+.vn-choices .guide-btn {
+    padding: 8px 28px;
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: rgba(80, 60, 160, 0.7);
+    color: #fff;
+    letter-spacing: 0.5px;
+    min-width: 200px;
+    text-align: center;
+    font-family: inherit;
+}
+.vn-choices .guide-btn:hover {
+    background: rgba(100, 75, 200, 0.85);
+    border-color: rgba(255,255,255,0.35);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px rgba(80, 60, 160, 0.4);
+}
+.vn-choices .guide-btn.secondary {
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.7);
+}
+.vn-choices .guide-btn.secondary:hover {
+    background: rgba(255,255,255,0.14);
+    border-color: rgba(255,255,255,0.2);
+    box-shadow: none;
+}
+
+/* ---- 引导步骤（向导模式，嵌入对话框上方） ---- */
+.vn-step-panel {
+    position: absolute;
+    bottom: 180px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 15;
+    background: rgba(10, 10, 30, 0.85);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 20px 28px;
+    max-width: 500px;
+    width: 90%;
+    color: #e8e8f0;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+}
+.vn-step-panel h2 {
+    font-size: 17px;
+    margin: 0 0 8px;
+    color: #fff;
+}
+.vn-step-panel .guide-step-desc {
+    font-size: 13px;
+    color: rgba(255,255,255,0.6);
+    margin: 0 0 14px;
+    line-height: 1.6;
+}
+.vn-step-list {
+    margin: 0 0 14px;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.vn-step-list li {
+    padding: 5px 12px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.06);
+    font-size: 12px;
+    color: rgba(255,255,255,0.4);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    border: 1px solid transparent;
+    transition: all 0.3s;
+}
+.vn-step-list li .guide-step-num {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.15);
+    color: rgba(255,255,255,0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+.vn-step-list li.done {
+    color: rgba(255,255,255,0.7);
+    background: rgba(16, 185, 129, 0.1);
+}
+.vn-step-list li.done .guide-step-num {
+    background: rgba(16, 185, 129, 0.5);
+    color: #fff;
+}
+.vn-step-list li.active {
+    color: #fff;
+    background: rgba(80, 60, 160, 0.2);
+    border-color: rgba(80, 60, 160, 0.4);
+}
+.vn-step-list li.active .guide-step-num {
+    background: rgba(80, 60, 160, 0.8);
+    color: #fff;
+}
+.vn-step-tip {
+    font-size: 12px;
+    color: rgba(255,255,255,0.4);
+    background: rgba(255,255,255,0.04);
+    padding: 8px 12px;
+    border-radius: 6px;
+    margin-bottom: 14px;
+    line-height: 1.5;
+    border-left: 2px solid rgba(80, 60, 160, 0.5);
+}
+.vn-step-panel .guide-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* ---- 召唤触发器 ---- */
+.vn-trigger {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 9998;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.2);
+    background: rgba(10,10,30,0.75);
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    transition: all 0.3s;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    padding: 4px;
+}
+.vn-trigger.visible {
+    display: flex;
+}
+.vn-trigger:hover {
+    transform: scale(1.12);
+    border-color: rgba(160, 120, 255, 0.6);
+    box-shadow: 0 6px 28px rgba(80, 60, 160, 0.4);
+}
+.vn-trigger-icon {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    display: block;
+}
+
+/* ---- 响应式 ---- */
+@media (max-width: 640px) {
+    .vn-textbox-container {
+        padding: 0 12px 10px;
+    }
+    .vn-textbox {
+        padding: 22px 16px 14px;
+        min-height: 80px;
+    }
+    .vn-dialogue {
+        font-size: 14px;
+        line-height: 1.7;
+    }
+    .vn-name-tag {
+        top: -16px;
+        left: 12px;
+        font-size: 11px;
+        padding: 3px 12px;
+    }
+    .vn-sprites {
+        bottom: 40px;
+        gap: 20px;
+    }
+    .vn-sprite img {
+        max-height: 72vh;
+        max-width: 65vw;
+    }
+    .vn-toolbar {
+        padding: 0 2px;
+        gap: 4px;
+    }
+    .vn-btn {
+        font-size: 10px;
+        letter-spacing: 1px;
+        padding: 3px 8px;
+    }
+    .vn-choices .guide-btn {
+        min-width: 160px;
+        font-size: 13px;
+    }
+    .vn-step-panel {
+        bottom: 140px;
+        max-width: 94%;
+        padding: 16px 18px;
+    }
+}

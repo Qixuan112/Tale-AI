@@ -25,10 +25,24 @@
             const topDot = document.getElementById('topbarStatusDot');
             const topText = document.getElementById('topbarStatusText');
             const online = data.running !== false;
-            if (dot) dot.classList.toggle('offline', !online);
-            if (text) text.textContent = online ? (window.t ? window.t('status.active') : 'Active') : (window.t ? window.t('status.stopped') : 'Stopped');
-            if (topDot) topDot.classList.toggle('offline', !online);
-            if (topText) topText.textContent = online ? (window.t ? window.t('topbar.systemStatus') : 'System Status') : (window.t ? window.t('topbar.systemOffline') : 'System Offline');
+            const reasonKey = data.offline_reason ? ('offline.' + data.offline_reason) : null;
+            const reasonText = reasonKey ? (window.t ? window.t(reasonKey) : reasonKey) : '';
+            if (dot) {
+                dot.classList.toggle('offline', !online);
+                if (reasonText) dot.title = reasonText;
+            }
+            if (text) {
+                const baseText = online ? (window.t ? window.t('status.active') : 'Active') : (window.t ? window.t('status.stopped') : 'Stopped');
+                text.textContent = baseText;
+            }
+            if (topDot) {
+                topDot.classList.toggle('offline', !online);
+                if (reasonText) topDot.title = reasonText;
+            }
+            if (topText) {
+                const baseText = online ? (window.t ? window.t('topbar.systemStatus') : 'System Status') : (window.t ? window.t('topbar.systemOffline') : 'System Offline');
+                topText.textContent = reasonText ? baseText + ' · ' + reasonText : baseText;
+            }
         } catch (e) {
             // 静默失败
         }
@@ -93,7 +107,12 @@
     // 全局工具函数
     window.formatTime = function (dateStr) {
         const d = new Date(dateStr);
-        return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        const lang = window.__i18nLang || navigator.language || 'zh-CN';
+        try {
+            return d.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' });
+        } catch (_) {
+            return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        }
     };
 
     window.escapeHtml = function (str) {

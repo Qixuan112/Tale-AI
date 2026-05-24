@@ -62,14 +62,15 @@
         <div class="title">Tale WebUI</div>
         <form id="loginForm">
             <div class="field">
-                <label>认证令牌</label>
-                <input type="text" id="tokenInput" placeholder="输入 6 位令牌" maxlength="6" autocomplete="off" autofocus>
+                <label data-i18n="login.title">认证令牌</label>
+                <input type="text" id="tokenInput" data-i18n-placeholder="login.placeholder" placeholder="输入 6 位令牌" maxlength="6" autocomplete="off" autofocus>
             </div>
-            <button type="submit" class="btn">登 录</button>
+            <button type="submit" class="btn" data-i18n="login.submit">登 录</button>
             <div class="error" id="errorMsg"></div>
         </form>
     </div>
 
+    <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
     <script>
         const form = document.getElementById('loginForm');
         const input = document.getElementById('tokenInput');
@@ -79,7 +80,7 @@
             e.preventDefault();
             const token = input.value.trim();
             if (!token) {
-                error.textContent = '请输入认证令牌';
+                error.textContent = t('login.emptyToken');
                 error.classList.add('show');
                 return;
             }
@@ -93,11 +94,11 @@
                 if (data.ok) {
                     window.location.href = data.redirect;
                 } else {
-                    error.textContent = data.error || '认证失败';
+                    error.textContent = data.error || t('login.authFailed');
                     error.classList.add('show');
                 }
             } catch {
-                error.textContent = '网络错误';
+                error.textContent = t('login.networkError');
                 error.classList.add('show');
             }
         });

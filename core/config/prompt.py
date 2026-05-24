@@ -361,14 +361,8 @@ def get_chat_prompt() -> str:
     return full_prompt
 
 
-# 为了兼容旧代码，保留 CHAT_PROMPT 变量
-# 但建议改用 get_chat_prompt() 函数获取动态提示词
-CHAT_PROMPT = get_chat_prompt()
-
-
-# PlanLLM 提示词 - 动态生成，从 character.yaml 导入角色信息
-# 使用 format_plan_prompt() 函数获取动态提示词
-PLAN_PROMPT = format_plan_prompt()
+# 旧代码使用 import-time 常量 CHAT_PROMPT/PLAN_PROMPT（已移除）。
+# 请始终使用 get_chat_prompt() / format_plan_prompt() 函数获取最新提示词。
 
 
 TOOL_PROMPT = """

@@ -343,6 +343,14 @@
         // 立即显示用户消息
         appendMessage('user', text);
         elMessageInput.value = '';
+        elMessageInput.focus();
+
+        // 显示"思考中"加载指示器
+        var thinkingEl = document.createElement('div');
+        thinkingEl.className = 'message assistant thinking';
+        thinkingEl.innerHTML = '<div class="avatar">A</div><div><div class="bubble"><span class="thinking-dots"><span></span><span></span><span></span></span></div></div>';
+        elChatMessages.appendChild(thinkingEl);
+        scrollToBottom();
 
         try {
             const res = await fetch('/api/chat/send', {
@@ -351,6 +359,10 @@
                 body: JSON.stringify({ message: text, conv_id: currentConvId })
             });
             const data = await res.json();
+            // 移除思考中指示器
+            if (thinkingEl && thinkingEl.parentNode) {
+                thinkingEl.parentNode.removeChild(thinkingEl);
+            }
             if (data.error) {
                 appendMessage('system', `${window.t ? window.t('chat.errorPrefix') : '[错误]'} ${data.error}`);
             } else {
@@ -359,6 +371,10 @@
                 await loadConversations();
             }
         } catch (e) {
+            // 移除思考中指示器
+            if (thinkingEl && thinkingEl.parentNode) {
+                thinkingEl.parentNode.removeChild(thinkingEl);
+            }
             appendMessage('system', `${window.t ? window.t('chat.networkErrorPrefix') : '[网络错误]'} ${e.message}`);
         } finally {
             isSending = false;

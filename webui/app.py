@@ -402,9 +402,17 @@ def page_logs():
 
 # ============ API：系统状态 ============
 
+def _detect_offline_reason() -> str:
+    """检测 ChatLLM 离线的原因"""
+    cfg = config_loader.chat_api
+    if not cfg.get("api_key"):
+        return "missing_api_key"
+    return "unknown"
+
 @app.route("/api/status")
 def api_status():
     running = _chatllm is not None
+    offline_reason = None if running else _detect_offline_reason()
     mem = None
     try:
         import psutil
@@ -423,6 +431,7 @@ def api_status():
 
     return jsonify({
         "running": running,
+        "offline_reason": offline_reason,
         "time": datetime.now().isoformat(),
         "conversations": len(conv_store.conversations),
         "adapters": adapters,
@@ -541,13 +550,16 @@ def api_plan_delete_event(entry_id):
 
 # ============ API：配置中心 ============
 
-CONFIG_DIR = Path("data/config")
+# 使用 ConfigLoader 的绝对路径避免 CWD 依赖
+from core.config.loader import config_loader as _cl
+CONFIG_DIR = Path(_cl._data_dir) / "config"
 CONFIG_FILES = {
     "character": "character.yaml",
     "behavior": "behavior.yaml",
     "platforms": "platforms.yaml",
     "services": "services.yaml",
-    "routing": "routing.yaml"
+    "routing": "routing.yaml",
+    "plugins": "plugins.yaml",
 }
 
 

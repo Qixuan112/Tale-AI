@@ -61,6 +61,34 @@
         </div>
     </div>
 
+    <!-- 新手快速开始卡片 -->
+    <div class="quickstart-card" id="quickstartCard" style="display:none">
+        <div class="quickstart-body">
+            <div class="quickstart-icon">
+                <img src="/static/img/mascot.png" alt="Tale" style="width:48px;height:auto;">
+            </div>
+            <div class="quickstart-content">
+                <h3>👋 欢迎使用 Tale！</h3>
+                <p>完成以下几步就能开始聊天啦～</p>
+                <div class="quickstart-steps">
+                    <a href="/config?focus=services" class="qs-step" id="qs-api">
+                        <span class="qs-check" id="qsApiCheck">⬜</span>
+                        <span>配置 AI 服务商（API Key）</span>
+                    </a>
+                    <a href="/config?focus=character" class="qs-step" id="qs-character">
+                        <span class="qs-check" id="qsCharCheck">⬜</span>
+                        <span>设定角色人设</span>
+                    </a>
+                    <a href="/config?focus=platforms" class="qs-step" id="qs-platforms">
+                        <span class="qs-check" id="qsPlatCheck">⬜</span>
+                        <span>配置聊天平台（可跳过）</span>
+                    </a>
+                </div>
+            </div>
+            <button class="qs-close" id="qsClose">&times;</button>
+        </div>
+    </div>
+
     <!-- 中间区域 -->
     <div class="mid-row">
         <div class="panel chart-panel">
@@ -437,6 +465,41 @@
     color: var(--text-muted);
 }
 
+/* 新手快速开始卡片 */
+.quickstart-card {
+    background: linear-gradient(135deg, var(--accent-light, #f0eeff), var(--card-bg, #fff));
+    border: 1px solid var(--accent, #6c5ce7);
+    border-radius: 14px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    position: relative;
+}
+.quickstart-body { display: flex; align-items: flex-start; gap: 16px; }
+.quickstart-icon { flex-shrink: 0; }
+.quickstart-content { flex: 1; min-width: 0; }
+.quickstart-content h3 { margin: 0 0 4px; font-size: 15px; color: var(--text-primary); }
+.quickstart-content p { margin: 0 0 12px; font-size: 13px; color: var(--text-secondary); }
+.quickstart-steps { display: flex; flex-direction: column; gap: 6px; }
+.qs-step {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px; border-radius: 8px;
+    background: var(--bg-primary, #fff); text-decoration: none;
+    color: var(--text-primary); font-size: 13px;
+    border: 1px solid var(--border, #e2e8f0);
+    transition: all 0.2s;
+}
+.qs-step:hover { border-color: var(--accent, #6c5ce7); background: var(--accent-light, #f5f3ff); }
+.qs-check { font-size: 14px; width: 20px; text-align: center; flex-shrink: 0; }
+.qs-step.done { opacity: 0.6; }
+.qs-step.done .qs-check { opacity: 0.5; }
+.qs-close {
+    position: absolute; top: 12px; right: 14px;
+    background: none; border: none; font-size: 22px;
+    color: var(--text-secondary); cursor: pointer;
+    padding: 0; line-height: 1;
+}
+.qs-close:hover { color: var(--text-primary); }
+
 /* 响应式 */
 @media (max-width: 1024px) {
     .stats-row { grid-template-columns: repeat(2, 1fr); }
@@ -578,6 +641,58 @@
             document.getElementById('sessionValue').textContent = statusData.conversations || 0;
             renderMiniBars('sessionBars', Math.min(statusData.conversations || 0, 7));
         } catch (e) {}
+
+        // 新手快速开始卡片
+        (function() {
+            var card = document.getElementById('quickstartCard');
+            var closeBtn = document.getElementById('qsClose');
+            if (!card) return;
+            if (localStorage.getItem('tale-qs-dismissed')) { card.style.display = 'none'; return; }
+
+            // 检查各步骤状态
+            var running = statusData.running !== false;
+            var apiCheck = document.getElementById('qsApiCheck');
+            var charCheck = document.getElementById('qsCharCheck');
+            var platCheck = document.getElementById('qsPlatCheck');
+
+            var qsApi = document.getElementById('qs-api');
+            var qsChar = document.getElementById('qs-character');
+            var qsPlat = document.getElementById('qs-platforms');
+
+            // API Key 配置了 = 系统能运行
+            if (running) {
+                if (apiCheck) { apiCheck.textContent = '✅'; qsApi.classList.add('done'); }
+            }
+            // 角色人设：检查 character.yaml 是否有内容（走 api 排查）
+            var p1 = fetch('/api/config/character/raw').then(function(r) { return r.text(); }).then(function(text) {
+                if (text && text.trim().length > 50 && text.indexOf('ChineseName') !== -1 && text.indexOf("''") === -1) {
+                    if (charCheck) { charCheck.textContent = '✅'; qsChar.classList.add('done'); }
+                }
+                return true;
+            }).catch(function() { return false; });
+            // 平台适配器：如果有启用的就算完成
+            var p2 = fetch('/api/adapters').then(function(r) { return r.json(); }).then(function(adapters) {
+                if (adapters.length > 0) {
+                    if (platCheck) { platCheck.textContent = '✅'; qsPlat.classList.add('done'); }
+                }
+                return true;
+            }).catch(function() { return false; });
+
+            // 全部完成则隐藏（等待所有异步检查完成再判断）
+            Promise.all([p1, p2]).then(function() {
+                var charDone = qsChar.classList.contains('done');
+                var platDone = qsPlat.classList.contains('done');
+                var allDone = running && charDone && platDone;
+                card.style.display = allDone ? 'none' : 'block';
+            });
+
+            if (closeBtn) {
+                closeBtn.onclick = function() {
+                    card.style.display = 'none';
+                    localStorage.setItem('tale-qs-dismissed', '1');
+                };
+            }
+        })();
 
         // 内存
         const memPercent = statusData.memory != null ? Math.round(statusData.memory) : 0;

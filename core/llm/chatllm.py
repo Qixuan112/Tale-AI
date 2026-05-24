@@ -1,6 +1,7 @@
 from typing import Optional
 
 from openai import OpenAI
+from ..bus import bus
 from ..config import MAX_CONTEXT
 from ..config.provide import get_character_prompt, get_dialogue_examples, config_loader
 from ..utils import get_logger
@@ -40,6 +41,9 @@ class ChatLLM:
         # Build initial messages from context
         self.messages = list(self.context.build_messages_head(self.cache_strategy))
 
+        # 监听配置变更以热更新
+        bus.on("config_reloaded", self._on_config_reloaded)
+
     def refresh_context(self):
         """Rebuild the system message(s) from context (call after config changes)."""
         new_head = self.context.build_messages_head(self.cache_strategy)
@@ -51,6 +55,25 @@ class ChatLLM:
             else:
                 break
         self.messages = new_head + self.messages[cut:]
+
+    def _on_config_reloaded(self):
+        """配置重载后热更新 API 客户端和角色上下文。"""
+        cfg = config_loader.chat_api
+        api_key = cfg.get("api_key", "")
+        base_url = cfg.get("url", "")
+        model = cfg.get("model", "")
+        if api_key and base_url:
+            self.client = OpenAI(api_key=api_key, base_url=base_url)
+        if model:
+            self.model = model
+        # 重建角色上下文
+        self.context = create_chat_context(
+            character_prompt=get_character_prompt(),
+            dialogue_examples=get_dialogue_examples(),
+            persona_additional_prompt=config_loader.persona.additional_prompt,
+        )
+        self.refresh_context()
+        logger.info("ChatLLM: 配置已热更新")
 
     def chat(self, user_input):
         """

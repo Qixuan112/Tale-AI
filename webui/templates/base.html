@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Tale WebUI{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/guide.css') }}">
     {% block extra_css %}{% endblock %}
     <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
 </head>
@@ -21,31 +22,31 @@
             </div>
 
             <nav class="sidebar-nav">
-                <a href="/dashboard" class="nav-item" data-page="dashboard">
+                <a href="/dashboard" class="nav-item" data-page="dashboard" title="Dashboard">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
                     <span class="label" data-i18n="nav.dashboard">Dashboard</span>
                 </a>
-                <a href="/chat" class="nav-item" data-page="chat">
+                <a href="/chat" class="nav-item" data-page="chat" title="Conversations">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
                     <span class="label" data-i18n="nav.conversations">Conversations</span>
                 </a>
-                <a href="/plan" class="nav-item" data-page="plan">
+                <a href="/plan" class="nav-item" data-page="plan" title="Schedule">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
                     <span class="label" data-i18n="nav.schedule">Schedule</span>
                 </a>
-                <a href="/config" class="nav-item" data-page="config">
+                <a href="/config" class="nav-item" data-page="config" title="Settings">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.67 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.67a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                     <span class="label" data-i18n="nav.settings">Settings</span>
                 </a>
-                <a href="/adapter" class="nav-item" data-page="adapter">
+                <a href="/adapter" class="nav-item" data-page="adapter" title="Adapters">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg>
                     <span class="label" data-i18n="nav.adapters">Adapters</span>
                 </a>
-                <a href="/tools" class="nav-item" data-page="tools">
+                <a href="/tools" class="nav-item" data-page="tools" title="Tools">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
                     <span class="label" data-i18n="nav.tools">Tools</span>
                 </a>
-                <a href="/logs" class="nav-item" data-page="logs">
+                <a href="/logs" class="nav-item" data-page="logs" title="Logs">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                     <span class="label" data-i18n="nav.logs">Logs</span>
                 </a>
@@ -104,6 +105,51 @@
     </div>
 
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+
+    <!-- 视觉小说风格引导系统 -->
+    <div class="vn-overlay" id="guideOverlay">
+        <!-- 场景背景 -->
+        <div class="vn-background" id="vnBackground">
+            <div class="vn-scene-gradient"></div>
+        </div>
+
+        <!-- 角色立绘 -->
+        <div class="vn-sprites" id="vnSprites">
+            <div class="vn-sprite" id="vnSpriteMain">
+                <img src="/static/img/mascot.png" alt="Tale助手" id="guideCharacterImg">
+            </div>
+        </div>
+
+        <!-- 底部对话框 -->
+        <div class="vn-textbox-container">
+            <div class="vn-textbox">
+                <div class="vn-name-tag" id="vnNameTag">Tali</div>
+                <div class="vn-dialogue" id="guideText">
+                    <span class="vn-text-content" id="vnTextContent"></span>
+                    <span class="vn-cursor" id="vnCursor">▌</span>
+                </div>
+                <div class="vn-indicator" id="vnIndicator">▼</div>
+            </div>
+
+            <!-- 功能按钮栏 -->
+            <div class="vn-toolbar">
+                <button class="vn-btn" id="vnBtnSkip" title="跳过引导">SKIP</button>
+                <button class="vn-btn" id="vnBtnAuto" title="自动播放">AUTO</button>
+                <span class="vn-toolbar-spacer"></span>
+                <button class="vn-btn" id="vnBtnClose" title="关闭">×</button>
+            </div>
+
+            <!-- 操作按钮（选择支） -->
+            <div class="vn-choices" id="guideActions"></div>
+        </div>
+    </div>
+
+    <!-- Tali 召唤触发器 -->
+    <div class="vn-trigger" id="guideTrigger" title="召唤 Tali">
+        <img src="/static/img/mascot.png" alt="Tali" class="vn-trigger-icon">
+    </div>
+
+    <script src="{{ url_for('static', filename='js/guide.js') }}"></script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>
