@@ -377,6 +377,47 @@
     display: block;
 }
 
+/* ---- VN 文本输入区 ---- */
+.vn-input-area {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+    align-items: center;
+}
+.vn-text-input {
+    flex: 1;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: #e8e8f0;
+    padding: 8px 14px;
+    border-radius: 4px;
+    font-size: 15px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+}
+.vn-text-input:focus {
+    border-color: rgba(160, 120, 255, 0.6);
+}
+.vn-text-input::placeholder {
+    color: rgba(255,255,255,0.3);
+}
+.vn-input-btn {
+    background: rgba(80, 60, 160, 0.7);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    font-family: inherit;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+.vn-input-btn:hover {
+    background: rgba(100, 75, 200, 0.85);
+}
+
 /* ---- 响应式 ---- */
 @media (max-width: 640px) {
     .vn-textbox-container {

@@ -89,6 +89,10 @@
         btnSkip: null,
         btnAuto: null,
         btnClose: null,
+        inputArea: null,
+        textInput: null,
+        inputBtn: null,
+        _pendingResolve: null,
 
         _initialized: false,
         _onboardingActive: false,
@@ -118,6 +122,9 @@
             this.btnSkip = document.getElementById('vnBtnSkip');
             this.btnAuto = document.getElementById('vnBtnAuto');
             this.btnClose = document.getElementById('vnBtnClose');
+            this.inputArea = document.getElementById('vnInputArea');
+            this.textInput = document.getElementById('vnTextInput');
+            this.inputBtn = document.getElementById('vnInputBtn');
 
             if (!this.overlay) return;
 
@@ -142,6 +149,22 @@
                     self._onTextBoxClick();
                 }
             });
+
+            // 文本输入确认按钮
+            if (this.inputBtn) {
+                this.inputBtn.addEventListener('click', function () {
+                    self._submitTextInput();
+                });
+            }
+            // 文本输入框 Enter 键
+            if (this.textInput) {
+                this.textInput.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        self._submitTextInput();
+                    }
+                });
+            }
 
             // SKIP 按钮
             if (this.btnSkip) {
@@ -292,7 +315,6 @@
             options = options || {};
 
             if (!this.overlay) return;
-            if (this._onboardingActive && !options._force) return;
 
             this._disableAuto();
 
@@ -349,6 +371,7 @@
 
         // ---- 隐藏对话覆盖层 ----
         hideDialog: function () {
+            this._hideTextInput();
             if (this.overlay) this.overlay.classList.remove('active');
             this._clearTypingTimer();
             this._disableAuto();
@@ -372,6 +395,231 @@
                 buttons: buttons || [],
                 _force: true
             });
+        },
+
+        // ---- 辅助：纯文本对话（无按钮） ----
+        say: function (text) {
+            var self = this;
+            return new Promise(function (resolve) {
+                self.showVNDialog(text, {
+                    onComplete: function () {
+                        resolve();
+                    }
+                });
+            });
+        },
+
+        // ---- 辅助：提问（选项按钮） ----
+        askChoice: function (question, choices) {
+            var self = this;
+            return new Promise(function (resolve) {
+                var buttons = choices.map(function (c) {
+                    return {
+                        text: c.text,
+                        primary: c.primary !== undefined ? c.primary : true,
+                        action: function () {
+                            resolve(c.value !== undefined ? c.value : c.text);
+                        }
+                    };
+                });
+                self.showVNDialog(question, {
+                    buttons: buttons
+                });
+            });
+        },
+
+        // ---- 辅助：提问（文本输入） ----
+        askText: function (question, placeholder) {
+            var self = this;
+            return new Promise(function (resolve) {
+                self._pendingResolve = resolve;
+                self.showVNDialog(question);
+                // 在打字完成后显示输入框
+                var checkTyping = setInterval(function () {
+                    if (!self._typingTimer && self._pendingResolve === resolve) {
+                        clearInterval(checkTyping);
+                        self._showTextInput(placeholder || '');
+                    }
+                }, 100);
+            });
+        },
+
+        // ---- 显示文本输入框 ----
+        _showTextInput: function (placeholder) {
+            if (this._autoHideTimer) {
+                clearTimeout(this._autoHideTimer);
+                this._autoHideTimer = null;
+            }
+            if (this.indicator) this.indicator.classList.add('hidden');
+            if (this.actionsContainer) this.actionsContainer.innerHTML = '';
+            if (this.inputArea) {
+                this.inputArea.style.display = 'flex';
+                if (this.textInput) {
+                    this.textInput.placeholder = placeholder;
+                    this.textInput.value = '';
+                    setTimeout(function (self) {
+                        self.focus();
+                    }, 150, this.textInput);
+                }
+            }
+        },
+
+        // ---- 隐藏文本输入框 ----
+        _hideTextInput: function () {
+            if (this.inputArea) this.inputArea.style.display = 'none';
+            if (this.textInput) this.textInput.value = '';
+        },
+
+        // ---- 提交文本输入 ----
+        _submitTextInput: function () {
+            var value = this.textInput ? this.textInput.value.trim() : '';
+            if (!value) return; // 空输入不处理
+            this._hideTextInput();
+            if (this._pendingResolve) {
+                var resolve = this._pendingResolve;
+                this._pendingResolve = null;
+                resolve(value);
+            }
+        },
+
+        // ---- 保存配置到服务器 ----
+        saveConfig: function (name, data) {
+            var self = this;
+            // 先 GET 现有配置，再合并新字段 POST 回去
+            return fetch('/api/config/' + name)
+                .then(function (r) { return r.json(); })
+                .then(function (existing) {
+                    var merged = Object.assign({}, existing || {}, data);
+                    return fetch('/api/config/' + name, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(merged)
+                    });
+                })
+                .then(function (r) { return r.json(); })
+                .then(function (result) {
+                    if (!result.ok) throw new Error('Save failed');
+                    return result;
+                })
+                .catch(function (err) {
+                    console.error('[Tali] 配置保存失败:', name, err);
+                    // 不中断流程，让用户继续
+                });
+        },
+
+        // ============================================
+        // 对话式引导配置（不离开 VN 覆盖层）
+        // ============================================
+        startConversationalConfig: async function () {
+            var self = this;
+            this._onboardingActive = true;
+
+            try {
+                // ── 第 1 步：选择服务商 ──
+                var provider = await this.askChoice(
+                    '首先来配置 AI 服务商吧！你想用哪个大模型？',
+                    [
+                        { text: 'DeepSeek', value: 'deepseek' },
+                        { text: 'OpenAI', value: 'openai' },
+                        { text: '自定义', value: 'custom' }
+                    ]
+                );
+
+                var providerName, baseUrl;
+                if (provider === 'deepseek') {
+                    providerName = 'DeepSeek';
+                    baseUrl = 'https://api.deepseek.com/v1';
+                    await this.say('DeepSeek 性价比超高，不错的选择！我帮你把地址都记好啦～');
+                } else if (provider === 'openai') {
+                    providerName = 'OpenAI';
+                    baseUrl = 'https://api.openai.com/v1';
+                    await this.say('OpenAI 生态丰富，GPT-4 能力很强哦！我帮你把地址填好了～');
+                } else {
+                    providerName = 'Custom';
+                    baseUrl = '';
+                    await this.say('自定义服务商也没问题，只要兼容 OpenAI 接口格式就行！');
+                }
+
+                // ── 第 2 步：API Key ──
+                var apiKey = await this.askText(
+                    '接下来需要 API Key～去官网申请一个然后粘贴给我吧！我会好好保管的～',
+                    'sk-...'
+                );
+
+                // ── 第 3 步：模型名称 ──
+                var defaultModel = provider === 'deepseek' ? 'deepseek-chat' : (provider === 'openai' ? 'gpt-4o' : '');
+                var modelPlaceholder = defaultModel || '模型名称';
+                var model = await this.askText(
+                    '使用的模型名称是什么？不填的话就用默认的啦～',
+                    modelPlaceholder
+                );
+                if (!model && defaultModel) model = defaultModel;
+                if (!model) model = '';
+
+                // 保存服务商信息到 services.yaml
+                var servicesData = {};
+                servicesData[providerName] = {
+                    type: 'llm',
+                    format: 'openai',
+                    api_key: apiKey || '',
+                    base_url: baseUrl,
+                    model: model
+                };
+                await this.saveConfig('services', servicesData);
+
+                // 保存路由到 routing.yaml
+                await this.saveConfig('routing', {
+                    main_llm: { provider: providerName }
+                });
+
+                var modelMsg = model ? '「' + model + '」，记住了！服务商这边全部搞定啦～' : '服务商这边搞定啦～回头记得去配置页补上模型名称哦！';
+                await this.say('收到！API Key 已保存～' + modelMsg);
+
+                // ── 第 4 步：角色名 ──
+                var charName = await this.askText(
+                    '来给你的 AI 角色起个响亮的名字吧！你想叫 TA 什么？',
+                    '比如：小灵、星辰、晓梦...'
+                );
+                if (!charName) charName = '未命名';
+                await this.say('「' + charName + '」——好名字！我喜欢～我帮你填上～');
+                await this.saveConfig('character', { character: { ChineseName: charName } });
+
+                // ── 第 5 步：性别 ──
+                var gender = await this.askChoice(
+                    charName + '的性别是什么呢？',
+                    [
+                        { text: '保密', value: '保密' },
+                        { text: '女', value: '女' },
+                        { text: '男', value: '男' }
+                    ]
+                );
+                await this.say('了解啦～');
+                await this.saveConfig('character', { character: { ChineseName: charName, gender: gender } });
+
+                // ── 第 6 步：完成 ──
+                await this.askChoice(
+                    '搞定啦！核心配置都填好了～你可以去仪表盘看看系统状态，或者去对话页面跟「' + charName + '」聊聊天！想手动调整更多细节的话，随时去配置中心哦～',
+                    [
+                        { text: '开始使用！', value: 'done' },
+                        { text: '去配置页看看', value: 'config', action: function () {
+                            window.location.href = '/config';
+                        }}
+                    ]
+                );
+
+                localStorage.setItem('tale-onboarded', '1');
+                this._onboardingActive = false;
+            } catch (e) {
+                // 用户 SKIP 或其他中断
+                console.warn('[Tali] 对话式引导中断:', e);
+            } finally {
+                this._hideTextInput();
+                // 确保总是标记完成（即使在流程中 SKIP）
+                if (!localStorage.getItem('tale-onboarded')) {
+                    localStorage.setItem('tale-onboarded', '1');
+                }
+                this._onboardingActive = false;
+            }
         },
 
         // ============================================
@@ -467,10 +715,7 @@
         // 引导流程（多步向导）
         // ============================================
         startOnboarding: function () {
-            this._onboardingActive = true;
-            this._currentStep = 0;
-            this.hideDialog();
-            this.renderStep(0);
+            this.startConversationalConfig();
         },
 
         renderStep: function (step) {
@@ -585,6 +830,11 @@
         skipOnboarding: function () {
             localStorage.setItem('tale-onboarded', '1');
             this._onboardingActive = false;
+            this._hideTextInput();
+            if (this._pendingResolve) {
+                this._pendingResolve(null);
+                this._pendingResolve = null;
+            }
             this._clearTypingTimer();
             this._disableAuto();
             if (this.overlay) this.overlay.classList.remove('active');
