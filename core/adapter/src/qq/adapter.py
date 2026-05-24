@@ -65,9 +65,10 @@ class QQAdapter(BaseAdapter):
         self._reconnect_task = None
         self._receive_task = None
 
+        self._running = True
+
         # 启动连接
         await self._connect()
-        self._running = True
 
         # 启动消息接收循环（保存引用以便正确清理）
         self._receive_task = asyncio.create_task(self._receive_loop())

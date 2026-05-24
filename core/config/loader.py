@@ -203,10 +203,21 @@ class ConfigLoader:
         return BotConfig(bot=bot_behavior, context=context, selfie=selfie)
 
     def _parse_adapters(self, data: dict) -> AdaptersConfig:
-        """解析适配器配置"""
-        qq_data = data.get("qq", {})
-        tg_data = data.get("telegram", {})
-        bili_data = data.get("bilibili", {})
+        """解析适配器配置，通过 adapter_type 字段匹配各平台条目"""
+        qq_data = {}
+        tg_data = {}
+        bili_data = {}
+
+        for key, value in data.items():
+            if not isinstance(value, dict):
+                continue
+            adapter_type = str(value.get("adapter_type", key)).lower()
+            if adapter_type == "qq" and not qq_data:
+                qq_data = value
+            elif adapter_type == "telegram" and not tg_data:
+                tg_data = value
+            elif adapter_type == "bilibili" and not bili_data:
+                bili_data = value
 
         qq_config = AdapterConfig(
             enabled=qq_data.get("enabled", False),
@@ -214,9 +225,9 @@ class ConfigLoader:
             desc=qq_data.get("desc", ""),
             bot_pid=str(qq_data.get("bot_pid", "")),
             owner_pid=str(qq_data.get("owner_pid", "")),
-            ws_uri=qq_data.get("ws_uri", ""),
+            ws_uri=qq_data.get("ws_url") or qq_data.get("ws_uri", ""),
             ws_listen_ip=qq_data.get("ws_listen_ip", ""),
-            ws_token=qq_data.get("ws_token", ""),
+            ws_token=qq_data.get("access_token") or qq_data.get("ws_token", ""),
             permission_mode=qq_data.get("permission_mode", "allow_list"),
             group_allow_list=qq_data.get("group_allow_list", []),
             user_allow_list=qq_data.get("user_allow_list", []),

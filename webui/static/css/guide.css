@@ -464,3 +464,23 @@
         padding: 16px 18px;
     }
 }
+
+/* ---- 通知铃铛指示器（消息存放箱） ---- */
+.topbar-icon-btn.has-notification {
+    position: relative;
+}
+.topbar-icon-btn.has-notification::after {
+    content: '';
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #ef4444;
+    animation: bellPulse 2s infinite;
+}
+@keyframes bellPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+}

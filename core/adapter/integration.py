@@ -102,62 +102,39 @@ class AdapterEventBridge:
         return self.manager
 
     def _load_adapter_configs(self):
-        """从配置加载器加载适配器配置并启动适配器"""
+        """从 platforms.yaml 直接加载适配器配置并加入待启动队列
+
+        遍历 platforms.yaml 中所有条目，按 adapter_type 分类，
+        使用实际条目名作为实例名，保留原始字段名传给适配器。
+        """
         if not self.config_loader:
             return
 
-        adapters_config = self.config_loader.adapters
+        platforms_data = self.config_loader._load_yaml("config/platforms.yaml")
 
-        # QQ 适配器
-        if hasattr(adapters_config, 'qq') and adapters_config.qq.enabled:
-            qq_config = adapters_config.qq
-            
-            # 处理 HTTP URL：从 ws_uri 推断，但使用标准端口
-            ws_uri = qq_config.ws_uri or "ws://localhost:3001"
-            if ":" in ws_uri.replace("://", ""):
-                # 提取 host 和 port
-                import re
-                match = re.match(r'(ws|wss)://([^:]+):(\d+)', ws_uri)
-                if match:
-                    protocol, host, ws_port = match.groups()
-                    http_protocol = "https" if protocol == "wss" else "http"
-                    # NapCat HTTP API 通常使用 ws_port - 1 或 3000
-                    http_port = int(ws_port) - 1 if int(ws_port) > 3000 else 3000
-                    http_url = f"{http_protocol}://{host}:{http_port}"
-                else:
-                    http_url = ws_uri.replace("ws://", "http://").replace("wss://", "https://")
-            else:
-                http_url = ws_uri.replace("ws://", "http://").replace("wss://", "https://")
-            
+        for instance_name, config in platforms_data.items():
+            if not isinstance(config, dict):
+                continue
+            if not config.get("enabled", False):
+                continue
+
+            adapter_type = str(config.get("adapter_type", "")).lower()
+            if adapter_type not in ("qq", "telegram", "bilibili"):
+                continue
+
+            # 去除元数据字段，保留适配器自身需要的配置
             config_dict = {
-                "ws_url": ws_uri,
-                "http_url": http_url,
-                "access_token": qq_config.ws_token or "",
-                "auto_reconnect": True,
-                "reconnect_interval": 5,
-                # 权限配置
-                "permission_mode": qq_config.permission_mode,
-                "group_allow_list": qq_config.group_allow_list,
-                "user_allow_list": qq_config.user_allow_list,
-                "group_deny_list": qq_config.group_deny_list,
-                "user_deny_list": qq_config.user_deny_list,
-                "waking_keywords": qq_config.waking_keywords,
-                # 身份配置
-                "bot_pid": qq_config.bot_pid,
-                "owner_pid": qq_config.owner_pid,
+                k: v for k, v in config.items()
+                if k not in ("enabled", "adapter_type")
             }
-            # 保存配置，稍后异步启动
-            self._pending_configs = getattr(self, '_pending_configs', [])
-            self._pending_configs.append(("qq", config_dict))
-            logger.info(f"[AdapterBridge] QQ adapter config loaded (will start when event loop is available)")
 
-        # Telegram 适配器（待实现）
-        if hasattr(adapters_config, 'telegram') and adapters_config.telegram.enabled:
-            logger.info(f"[AdapterBridge] Telegram adapter not yet implemented")
-
-        # BiliBili 适配器（待实现）
-        if hasattr(adapters_config, 'bilibili') and adapters_config.bilibili.enabled:
-            logger.info(f"[AdapterBridge] BiliBili adapter not yet implemented")
+            pending = getattr(self, '_pending_configs', [])
+            pending.append((instance_name, config_dict, adapter_type))
+            self._pending_configs = pending
+            logger.info(
+                "[AdapterBridge] %s adapter config loaded (instance=%s)",
+                adapter_type, instance_name,
+            )
 
     async def start_pending_adapters(self):
         """启动所有待启动的适配器
@@ -165,19 +142,25 @@ class AdapterEventBridge:
         应在事件循环运行后调用此方法。
         """
         pending = getattr(self, '_pending_configs', [])
-        for adapter_id, config in pending:
-            await self._start_adapter_async(adapter_id, config)
+        for item in pending:
+            if len(item) == 3:
+                adapter_id, config, adapter_type = item
+            else:
+                adapter_id, config = item
+                adapter_type = None
+            await self._start_adapter_async(adapter_id, config, adapter_type)
         self._pending_configs = []
 
-    async def _start_adapter_async(self, adapter_id: str, config: Dict[str, Any]):
+    async def _start_adapter_async(self, adapter_id: str, config: Dict[str, Any], adapter_type: str = None):
         """异步启动适配器
 
         Args:
-            adapter_id: 适配器ID
+            adapter_id: 适配器实例名
             config: 适配器配置
+            adapter_type: 适配器类型（如 qq, telegram）
         """
         try:
-            success = await self.manager.start_adapter(adapter_id, config)
+            success = await self.manager.start_adapter(adapter_id, config, adapter_type=adapter_type)
             if success:
                 logger.info(f"[AdapterBridge] {adapter_id} adapter started successfully")
             else:

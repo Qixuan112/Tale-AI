@@ -202,6 +202,14 @@
                 });
             }
 
+            // 顶部通知铃铛 → 召唤 Tali 帮助菜单
+            var notifyBtn = document.getElementById('topbarNotifyBtn');
+            if (notifyBtn) {
+                notifyBtn.addEventListener('click', function () {
+                    self.showHelpMenu();
+                });
+            }
+
             // 延迟启动
             setTimeout(function () { self.boot(); }, 800);
         },
@@ -446,6 +454,8 @@
 
         // ---- 显示文本输入框 ----
         _showTextInput: function (placeholder) {
+            // 清除自动隐藏定时器和回调，防止用户输入时对话框消失
+            this._onCompleteCallback = null;
             if (this._autoHideTimer) {
                 clearTimeout(this._autoHideTimer);
                 this._autoHideTimer = null;
@@ -482,14 +492,35 @@
             }
         },
 
+        // ---- 深合并辅助 ----
+        _deepMerge: function (target, source) {
+            var output = {};
+            for (var key in target) {
+                if (target.hasOwnProperty(key)) {
+                    output[key] = target[key];
+                }
+            }
+            for (var key in source) {
+                if (source.hasOwnProperty(key)) {
+                    if (typeof source[key] === 'object' && source[key] !== null && !Array.isArray(source[key]) &&
+                        typeof output[key] === 'object' && output[key] !== null && !Array.isArray(output[key])) {
+                        output[key] = this._deepMerge(output[key], source[key]);
+                    } else {
+                        output[key] = source[key];
+                    }
+                }
+            }
+            return output;
+        },
+
         // ---- 保存配置到服务器 ----
         saveConfig: function (name, data) {
             var self = this;
-            // 先 GET 现有配置，再合并新字段 POST 回去
+            // 先 GET 现有配置，再深度合并新字段 POST 回去
             return fetch('/api/config/' + name)
                 .then(function (r) { return r.json(); })
                 .then(function (existing) {
-                    var merged = Object.assign({}, existing || {}, data);
+                    var merged = self._deepMerge(existing || {}, data);
                     return fetch('/api/config/' + name, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -596,9 +627,12 @@
                 await this.say('了解啦～');
                 await this.saveConfig('character', { character: { ChineseName: charName, gender: gender } });
 
+                // 重载配置让系统尝试启动
+                await fetch('/api/system/reload', { method: 'POST' }).catch(function () {});
+
                 // ── 第 6 步：完成 ──
                 await this.askChoice(
-                    '搞定啦！核心配置都填好了～你可以去仪表盘看看系统状态，或者去对话页面跟「' + charName + '」聊聊天！想手动调整更多细节的话，随时去配置中心哦～',
+                    '搞定啦！核心配置都填好了～系统正在尝试启动，你可以去仪表盘看看状态，或者去对话页面跟「' + charName + '」聊聊天！想手动调整更多细节的话，随时去配置中心哦～',
                     [
                         { text: '开始使用！', value: 'done' },
                         { text: '去配置页看看', value: 'config', action: function () {
@@ -629,37 +663,31 @@
             var self = this;
             checkSystem().then(function (status) {
                 var onboarded = localStorage.getItem('tale-onboarded');
-                var needsSetup = !status.running;
 
-                if (needsSetup && !onboarded) {
-                    self.showVNDialog(self._pick(MESSAGES.welcome), {
-                        buttons: [
-                            { text: '开始引导', primary: true, action: function () {
-                                self.startOnboarding();
-                            }},
-                            { text: '稍后再说', action: function () {
-                                self._skipSetup();
-                            }}
-                        ]
-                    });
-                } else if (!status.running) {
-                    var reason = status.offline_reason === 'missing_api_key'
-                        ? self._pick(MESSAGES.waiting_api)
-                        : self._pick(MESSAGES.offline_tip);
-                    self.showVNDialog(reason, {
-                        buttons: [
-                            { text: '去配置', primary: true, action: function () {
-                                window.location.href = '/config';
-                            }},
-                            { text: '关闭', action: function () { self.hideDialog(); }}
-                        ]
-                    });
+                if (!onboarded) {
+                    // 首次启动 → 自动显示看板娘引导
+                    if (!status.running) {
+                        self.showVNDialog(self._pick(MESSAGES.welcome), {
+                            buttons: [
+                                { text: '开始引导', primary: true, action: function () {
+                                    self.startOnboarding();
+                                }},
+                                { text: '稍后再说', action: function () {
+                                    self._skipSetup();
+                                }}
+                            ]
+                        });
+                    } else {
+                        self.showVNDialog(self._pick(MESSAGES.running), {
+                            buttons: [
+                                { text: '知道了', action: function () { self.hideDialog(); }}
+                            ]
+                        });
+                        self._startIdleLoop();
+                    }
                 } else {
-                    self.showVNDialog(self._pick(MESSAGES.running), {
-                        buttons: [
-                            { text: '知道了', action: function () { self.hideDialog(); }}
-                        ]
-                    });
+                    // 后续访问 → 不弹对话框，只显示触发器 + 闲时提示
+                    if (self.trigger) self.trigger.classList.add('visible');
                     self._startIdleLoop();
                 }
             });
@@ -684,6 +712,62 @@
                     });
                 } else {
                     self.showVNDialog(self._pick(MESSAGES.summon));
+                }
+            });
+        },
+
+        // ---- 帮助菜单（通知铃铛入口） ----
+        showHelpMenu: function () {
+            if (this._onboardingActive) return;
+            if (this.overlay && this.overlay.classList.contains('active')) return;
+
+            var self = this;
+            this.say(self._pick(MESSAGES.summon)).then(function () {
+                return self.askChoice('有什么我可以帮你的吗？选一个话题吧～', [
+                    { text: '系统配置问题', value: 'config' },
+                    { text: '如何开始对话', value: 'chat' },
+                    { text: 'AI 不回复怎么办', value: 'no_reply' },
+                    { text: '平台适配器设置', value: 'platforms' },
+                    { text: '查看运行状态', value: 'status' },
+                    { text: '修改角色人设', value: 'character' }
+                ]);
+            }).then(function (choice) {
+                switch (choice) {
+                    case 'config':
+                        window.location.href = '/config';
+                        break;
+                    case 'chat':
+                        window.location.href = '/chat';
+                        break;
+                    case 'no_reply':
+                        checkSystem().then(function (status) {
+                            var msg = status.running
+                                ? '系统正在运行中～如果 AI 还是没回复，可能是没 @ 到它，或者被权限过滤了哦。去配置中心检查一下权限设置吧！'
+                                : '唔，系统还没启动呢……可能是缺 API Key 或模型没配好。要不要去配置页面看看？';
+                            self.showVNDialog(msg, {
+                                buttons: [
+                                    { text: '去配置', primary: true, action: function () {
+                                        window.location.href = '/config?focus=services';
+                                    }},
+                                    { text: '关闭', action: function () { self.hideDialog(); }}
+                                ]
+                            });
+                        });
+                        break;
+                    case 'platforms':
+                        window.location.href = '/config?focus=platforms';
+                        break;
+                    case 'status':
+                        checkSystem().then(function (status) {
+                            var msg = status.running
+                                ? '系统一切正常！正在运行中～有什么问题随时问我哦。'
+                                : '系统当前离线……可能是还没配置好 API Key 或者服务没启动。去配置页面检查一下吧！';
+                            self.say(msg);
+                        });
+                        break;
+                    case 'character':
+                        window.location.href = '/config?focus=character';
+                        break;
                 }
             });
         },
