@@ -525,6 +525,13 @@
 (function() {
     let chartData = [];
 
+    function escapeHtml(str) {
+        if (!str) return '';
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(str));
+        return div.innerHTML;
+    }
+
     // 渲染 mini bar（等高水平条，仅视觉占位，active 计数真实）
     function renderMiniBars(elId, activeCount) {
         const el = document.getElementById(elId);
@@ -724,7 +731,7 @@
                     <div class="adapter-row">
                         <div class="adapter-name">
                             ${icon}
-                            ${a.name || a.id}
+                            ${escapeHtml(a.name || a.id)}
                         </div>
                         <div class="adapter-state ${a.running ? 'active' : ''}">
                             ${a.running ? (window.t ? window.t('dash.active').toUpperCase() : 'ACTIVE') : (window.t ? window.t('dash.stopped').toUpperCase() : 'IDLE')}
@@ -747,10 +754,10 @@
             } else {
                 sb.innerHTML = entries.map(e => `
                     <div class="schedule-item">
-                        <span class="schedule-time">${e.start_time || '--:--'}</span>
+                        <span class="schedule-time">${escapeHtml(e.start_time || '--:--')}</span>
                         <div class="schedule-info">
-                            <div class="schedule-title">${e.title}</div>
-                            <div class="schedule-desc">${e.event_type || (window.t ? window.t('dash.general') : 'General')}</div>
+                            <div class="schedule-title">${escapeHtml(e.title)}</div>
+                            <div class="schedule-desc">${escapeHtml(e.event_type || (window.t ? window.t('dash.general') : 'General'))}</div>
                         </div>
                     </div>
                 `).join('');

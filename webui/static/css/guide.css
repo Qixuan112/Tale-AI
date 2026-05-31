@@ -5,13 +5,37 @@
    场景背景 + 角色立绘 + 底部对话框 + 打字机效果
    ============================================ */
 
+/* ---- CSS 自定义属性 ---- */
+:root {
+    --vn-accent: rgba(80, 60, 160, 1);
+    --vn-accent-hover: rgba(100, 75, 200, 1);
+    --vn-accent-light: rgba(160, 120, 255, 1);
+    --vn-text-primary: #e8e8f0;
+    --vn-text-white: #fff;
+    --vn-text-muted: rgba(255, 255, 255, 0.4);
+    --vn-text-secondary: rgba(255, 255, 255, 0.7);
+    --vn-bg-overlay: #000;
+    --vn-bg-dialog: rgba(10, 10, 30, 0.88);
+    --vn-bg-element: rgba(255, 255, 255, 0.08);
+    --vn-border-default: rgba(255, 255, 255, 0.12);
+    --vn-border-hover: rgba(255, 255, 255, 0.22);
+    --vn-state-success: rgba(16, 185, 129, 1);
+    --vn-state-danger: #ef4444;
+    --vn-shadow: rgba(0, 0, 0, 0.5);
+    --vn-accent-90: rgba(80, 60, 160, 0.9);
+    --vn-accent-80: rgba(80, 60, 160, 0.8);
+    --vn-accent-70: rgba(80, 60, 160, 0.7);
+    --vn-accent-40: rgba(80, 60, 160, 0.4);
+    --vn-accent-20: rgba(80, 60, 160, 0.2);
+}
+
 /* ---- 全屏覆盖层 ---- */
 .vn-overlay {
     position: fixed;
     inset: 0;
     z-index: 9999;
     display: none;
-    background: #000;
+    background: var(--vn-bg-overlay);
     overflow: hidden;
     user-select: none;
     -webkit-user-select: none;
@@ -64,6 +88,7 @@
     pointer-events: none;
 }
 .vn-sprite {
+    will-change: transform, opacity;
     animation: vnSpriteEnter 0.6s ease-out both;
 }
 .vn-sprite img {
@@ -72,7 +97,7 @@
     width: auto;
     height: auto;
     display: block;
-    filter: drop-shadow(0 8px 32px rgba(0,0,0,0.5));
+    filter: drop-shadow(0 8px 32px var(--vn-shadow));
 }
 @keyframes vnSpriteEnter {
     from {
@@ -97,8 +122,8 @@
 
 /* ---- 对话框 ---- */
 .vn-textbox {
-    background: rgba(10, 10, 30, 0.88);
-    border: 1px solid rgba(255,255,255,0.12);
+    background: var(--vn-bg-dialog);
+    border: 1px solid var(--vn-border-default);
     border-radius: 6px;
     padding: 28px 24px 18px;
     position: relative;
@@ -107,12 +132,12 @@
     min-height: 100px;
     box-shadow:
         0 -1px 0 rgba(255,255,255,0.06) inset,
-        0 8px 40px rgba(0,0,0,0.5);
+        0 8px 40px var(--vn-shadow);
     cursor: pointer;
     transition: border-color 0.3s;
 }
 .vn-textbox:hover {
-    border-color: rgba(255,255,255,0.22);
+    border-color: var(--vn-border-hover);
 }
 
 /* 角色名标签 */
@@ -120,19 +145,19 @@
     position: absolute;
     top: -18px;
     left: 18px;
-    background: rgba(80, 60, 160, 0.9);
-    color: #fff;
+    background: var(--vn-accent-90);
+    color: var(--vn-text-white);
     font-size: 13px;
     font-weight: 600;
     padding: 4px 16px;
     border-radius: 4px;
     letter-spacing: 1px;
-    box-shadow: 0 2px 12px rgba(80, 60, 160, 0.4);
+    box-shadow: 0 2px 12px var(--vn-accent-40);
 }
 
 /* 对白文字 */
 .vn-dialogue {
-    color: #e8e8f0;
+    color: var(--vn-text-primary);
     font-size: 16px;
     line-height: 1.85;
     min-height: 48px;
@@ -141,7 +166,8 @@
 
 /* 打字机光标 */
 .vn-cursor {
-    color: rgba(255,255,255,0.7);
+    will-change: opacity;
+    color: var(--vn-text-secondary);
     animation: vnCursorBlink 0.7s infinite;
     font-weight: 300;
 }
@@ -156,6 +182,7 @@
 /* 继续指示器 */
 .vn-indicator {
     position: absolute;
+    will-change: transform;
     right: 18px;
     bottom: 10px;
     color: rgba(255,255,255,0.35);
@@ -184,7 +211,7 @@
     flex: 1;
 }
 .vn-btn {
-    background: rgba(255,255,255,0.08);
+    background: var(--vn-bg-element);
     border: 1px solid rgba(255,255,255,0.1);
     color: rgba(255,255,255,0.55);
     font-size: 11px;
@@ -192,7 +219,7 @@
     padding: 4px 12px;
     border-radius: 3px;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: background-color 0.2s, color 0.2s, border-color 0.2s;
     font-family: inherit;
 }
 .vn-btn:hover {
@@ -202,7 +229,7 @@
 }
 .vn-btn.active {
     background: rgba(255,255,255,0.2);
-    color: #fff;
+    color: var(--vn-text-white);
     border-color: rgba(255,255,255,0.3);
 }
 
@@ -223,9 +250,9 @@
     font-size: 14px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s;
-    background: rgba(80, 60, 160, 0.7);
-    color: #fff;
+    transition: background-color 0.2s, border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+    background: var(--vn-accent-70);
+    color: var(--vn-text-white);
     letter-spacing: 0.5px;
     min-width: 200px;
     text-align: center;
@@ -235,12 +262,12 @@
     background: rgba(100, 75, 200, 0.85);
     border-color: rgba(255,255,255,0.35);
     transform: translateY(-1px);
-    box-shadow: 0 4px 20px rgba(80, 60, 160, 0.4);
+    box-shadow: 0 4px 20px var(--vn-accent-40);
 }
 .vn-choices .guide-btn.secondary {
-    background: rgba(255,255,255,0.08);
+    background: var(--vn-bg-element);
     border-color: rgba(255,255,255,0.1);
-    color: rgba(255,255,255,0.7);
+    color: var(--vn-text-secondary);
 }
 .vn-choices .guide-btn.secondary:hover {
     background: rgba(255,255,255,0.14);
@@ -261,13 +288,13 @@
     padding: 20px 28px;
     max-width: 500px;
     width: 90%;
-    color: #e8e8f0;
-    box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+    color: var(--vn-text-primary);
+    box-shadow: 0 8px 40px var(--vn-shadow);
 }
 .vn-step-panel h2 {
     font-size: 17px;
     margin: 0 0 8px;
-    color: #fff;
+    color: var(--vn-text-white);
 }
 .vn-step-panel .guide-step-desc {
     font-size: 13px;
@@ -288,12 +315,12 @@
     border-radius: 14px;
     background: rgba(255,255,255,0.06);
     font-size: 12px;
-    color: rgba(255,255,255,0.4);
+    color: var(--vn-text-muted);
     display: flex;
     align-items: center;
     gap: 5px;
     border: 1px solid transparent;
-    transition: all 0.3s;
+    transition: color 0.3s, background-color 0.3s, border-color 0.3s;
 }
 .vn-step-list li .guide-step-num {
     width: 18px;
@@ -309,25 +336,25 @@
     flex-shrink: 0;
 }
 .vn-step-list li.done {
-    color: rgba(255,255,255,0.7);
+    color: var(--vn-text-secondary);
     background: rgba(16, 185, 129, 0.1);
 }
 .vn-step-list li.done .guide-step-num {
     background: rgba(16, 185, 129, 0.5);
-    color: #fff;
+    color: var(--vn-text-white);
 }
 .vn-step-list li.active {
-    color: #fff;
-    background: rgba(80, 60, 160, 0.2);
-    border-color: rgba(80, 60, 160, 0.4);
+    color: var(--vn-text-white);
+    background: var(--vn-accent-20);
+    border-color: var(--vn-accent-40);
 }
 .vn-step-list li.active .guide-step-num {
     background: rgba(80, 60, 160, 0.8);
-    color: #fff;
+    color: var(--vn-text-white);
 }
 .vn-step-tip {
     font-size: 12px;
-    color: rgba(255,255,255,0.4);
+    color: var(--vn-text-muted);
     background: rgba(255,255,255,0.04);
     padding: 8px 12px;
     border-radius: 6px;
@@ -343,6 +370,7 @@
 
 /* ---- 召唤触发器 ---- */
 .vn-trigger {
+    will-change: transform;
     position: fixed;
     bottom: 20px;
     right: 20px;
@@ -357,7 +385,7 @@
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    transition: all 0.3s;
+    transition: transform 0.3s, border-color 0.3s, box-shadow 0.3s;
     box-shadow: 0 4px 20px rgba(0,0,0,0.3);
     padding: 4px;
 }
@@ -367,7 +395,7 @@
 .vn-trigger:hover {
     transform: scale(1.12);
     border-color: rgba(160, 120, 255, 0.6);
-    box-shadow: 0 6px 28px rgba(80, 60, 160, 0.4);
+    box-shadow: 0 6px 28px var(--vn-accent-40);
 }
 .vn-trigger-icon {
     width: 100%;
@@ -386,9 +414,9 @@
 }
 .vn-text-input {
     flex: 1;
-    background: rgba(255,255,255,0.08);
+    background: var(--vn-bg-element);
     border: 1px solid rgba(255,255,255,0.15);
-    color: #e8e8f0;
+    color: var(--vn-text-primary);
     padding: 8px 14px;
     border-radius: 4px;
     font-size: 15px;
@@ -403,15 +431,15 @@
     color: rgba(255,255,255,0.3);
 }
 .vn-input-btn {
-    background: rgba(80, 60, 160, 0.7);
+    background: var(--vn-accent-70);
     border: 1px solid rgba(255,255,255,0.2);
-    color: #fff;
+    color: var(--vn-text-white);
     padding: 8px 16px;
     border-radius: 4px;
     cursor: pointer;
     font-size: 16px;
     font-family: inherit;
-    transition: all 0.2s;
+    transition: background-color 0.2s;
     flex-shrink: 0;
 }
 .vn-input-btn:hover {
@@ -477,7 +505,7 @@
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    background: #ef4444;
+    background: var(--vn-state-danger);
     animation: bellPulse 2s infinite;
 }
 @keyframes bellPulse {

@@ -12,48 +12,14 @@
     // 引导消息库
     // ============================================
     var MESSAGES = {
-        welcome: [
-            '嗨嗨～我是 Tali！Tale-AI 的看板娘兼日常小管家～让我带你完成初始设置吧！',
-            '欢迎来到 Tale！我是 Tali～先配好服务商，就能一起搞数字生活啦！',
-            '初次见面！我是 Tali～系统还需要一点配置才能跑起来，跟我来吧～',
-        ],
-        waiting_api: [
-            '唔，还没有 API Key 呢～要先去配置一下 LLM 服务商哦！',
-            '系统现在还不能运行……先去填一下 API Key 吧，我在这儿等你～',
-        ],
-        all_done: [
-            '搞定啦！所有配置都完成咯～去跟 TA 聊聊天吧！',
-            '完美！系统已经准备好啦～点左侧"对话"就能开始，一起搞数字生活呀～',
-        ],
-        idle_tips: [
-            '今天日程搞定没？',
-            '有什么不懂的随时点我哦，我就在右下角～',
-            '点击配置中心可以修改所有设置，随时调整都行！',
-            '对话页面可以直接跟 AI 聊天哦，去试试嘛～',
-            '你去过仪表盘了吗？那里能看到系统运行状态呢！',
-            '唔，你又在忙……记得休息一下眼睛哦。',
-            '喝杯水吧，我帮你盯着系统～',
-        ],
-        night_tips: [
-            '唔，都这么晚了……明天再弄嘛，快去睡觉！',
-            '熬夜对身体不好哦！我记着呢，快去休息～',
-            '你又在熬夜……有什么明天再搞啦，我帮你看着。',
-        ],
-        offline_tip: [
-            '系统当前离线，可能是缺 API Key 哦～要我帮你看看吗？',
-            '唔，系统好像没在跑……要不要我帮你检查一下配置？',
-        ],
-        summon: [
-            '来啦来啦～有什么需要帮忙的吗？',
-            '嗯？在找什么功能吗？我帮你指路！',
-            '嘿嘿，我就知道你会点我～说吧说吧～',
-            '一起搞数字生活呀～',
-        ],
-        running: [
-            '系统已经在运行啦！一切正常～一起搞数字生活呀～',
-            '运行正常！今天也要一起加油哦～',
-            '状态良好～有什么我可以帮你的吗？',
-        ]
+        welcome: ['guide.welcome.0', 'guide.welcome.1', 'guide.welcome.2'],
+        waiting_api: ['guide.waiting_api.0', 'guide.waiting_api.1'],
+        all_done: ['guide.all_done.0', 'guide.all_done.1'],
+        idle_tips: ['guide.idle_tips.0', 'guide.idle_tips.1', 'guide.idle_tips.2', 'guide.idle_tips.3', 'guide.idle_tips.4', 'guide.idle_tips.5', 'guide.idle_tips.6'],
+        night_tips: ['guide.night_tips.0', 'guide.night_tips.1', 'guide.night_tips.2'],
+        offline_tip: ['guide.offline_tip.0', 'guide.offline_tip.1'],
+        summon: ['guide.summon.0', 'guide.summon.1', 'guide.summon.2', 'guide.summon.3'],
+        running: ['guide.running.0', 'guide.running.1', 'guide.running.2']
     };
 
     // ============================================
@@ -384,6 +350,10 @@
             this._clearTypingTimer();
             this._disableAuto();
             this._onCompleteCallback = null;
+            if (this._pendingResolve) {
+                this._pendingResolve(null);
+                this._pendingResolve = null;
+            }
             if (this.actionsContainer) this.actionsContainer.innerHTML = '';
 
             if (this._autoHideTimer) {
@@ -426,6 +396,9 @@
                         text: c.text,
                         primary: c.primary !== undefined ? c.primary : true,
                         action: function () {
+                            if (typeof c.action === 'function') {
+                                c.action.call(self);
+                            }
                             resolve(c.value !== undefined ? c.value : c.text);
                         }
                     };
@@ -548,11 +521,11 @@
             try {
                 // ── 第 1 步：选择服务商 ──
                 var provider = await this.askChoice(
-                    '首先来配置 AI 服务商吧！你想用哪个大模型？',
+                    this._t('guide.step1_question'),
                     [
-                        { text: 'DeepSeek', value: 'deepseek' },
-                        { text: 'OpenAI', value: 'openai' },
-                        { text: '自定义', value: 'custom' }
+                        { text: this._t('guide.step1_deepseek'), value: 'deepseek' },
+                        { text: this._t('guide.step1_openai'), value: 'openai' },
+                        { text: this._t('guide.step1_custom'), value: 'custom' }
                     ]
                 );
 
@@ -560,28 +533,28 @@
                 if (provider === 'deepseek') {
                     providerName = 'DeepSeek';
                     baseUrl = 'https://api.deepseek.com/v1';
-                    await this.say('DeepSeek 性价比超高，不错的选择！我帮你把地址都记好啦～');
+                    await this.say(this._t('guide.deepseek_reply'));
                 } else if (provider === 'openai') {
                     providerName = 'OpenAI';
                     baseUrl = 'https://api.openai.com/v1';
-                    await this.say('OpenAI 生态丰富，GPT-4 能力很强哦！我帮你把地址填好了～');
+                    await this.say(this._t('guide.openai_reply'));
                 } else {
                     providerName = 'Custom';
                     baseUrl = '';
-                    await this.say('自定义服务商也没问题，只要兼容 OpenAI 接口格式就行！');
+                    await this.say(this._t('guide.custom_reply'));
                 }
 
                 // ── 第 2 步：API Key ──
                 var apiKey = await this.askText(
-                    '接下来需要 API Key～去官网申请一个然后粘贴给我吧！我会好好保管的～',
-                    'sk-...'
+                    this._t('guide.step2_question'),
+                    this._t('guide.step2_placeholder')
                 );
 
                 // ── 第 3 步：模型名称 ──
                 var defaultModel = provider === 'deepseek' ? 'deepseek-chat' : (provider === 'openai' ? 'gpt-4o' : '');
-                var modelPlaceholder = defaultModel || '模型名称';
+                var modelPlaceholder = defaultModel || this._t('guide.step3_placeholder');
                 var model = await this.askText(
-                    '使用的模型名称是什么？不填的话就用默认的啦～',
+                    this._t('guide.step3_question'),
                     modelPlaceholder
                 );
                 if (!model && defaultModel) model = defaultModel;
@@ -603,28 +576,28 @@
                     main_llm: { provider: providerName }
                 });
 
-                var modelMsg = model ? '「' + model + '」，记住了！服务商这边全部搞定啦～' : '服务商这边搞定啦～回头记得去配置页补上模型名称哦！';
-                await this.say('收到！API Key 已保存～' + modelMsg);
+                var modelMsg = model ? this._t('guide.model_set', {model: model}) : this._t('guide.model_not_set');
+                await this.say(this._t('guide.apikey_saved') + modelMsg);
 
                 // ── 第 4 步：角色名 ──
                 var charName = await this.askText(
-                    '来给你的 AI 角色起个响亮的名字吧！你想叫 TA 什么？',
-                    '比如：小灵、星辰、晓梦...'
+                    this._t('guide.step4_question'),
+                    this._t('guide.step4_placeholder')
                 );
-                if (!charName) charName = '未命名';
-                await this.say('「' + charName + '」——好名字！我喜欢～我帮你填上～');
+                if (!charName) charName = this._t('guide.char_unnamed');
+                await this.say(this._t('guide.char_named', {name: charName}));
                 await this.saveConfig('character', { character: { ChineseName: charName } });
 
                 // ── 第 5 步：性别 ──
                 var gender = await this.askChoice(
-                    charName + '的性别是什么呢？',
+                    this._t('guide.step5_question', {name: charName}),
                     [
-                        { text: '保密', value: '保密' },
-                        { text: '女', value: '女' },
-                        { text: '男', value: '男' }
+                        { text: this._t('guide.gender_secret'), value: '保密' },
+                        { text: this._t('guide.gender_female'), value: '女' },
+                        { text: this._t('guide.gender_male'), value: '男' }
                     ]
                 );
-                await this.say('了解啦～');
+                await this.say(this._t('guide.step5_ack'));
                 await this.saveConfig('character', { character: { ChineseName: charName, gender: gender } });
 
                 // 重载配置让系统尝试启动
@@ -632,10 +605,10 @@
 
                 // ── 第 6 步：完成 ──
                 await this.askChoice(
-                    '搞定啦！核心配置都填好了～系统正在尝试启动，你可以去仪表盘看看状态，或者去对话页面跟「' + charName + '」聊聊天！想手动调整更多细节的话，随时去配置中心哦～',
+                    this._t('guide.done_title', {name: charName}),
                     [
-                        { text: '开始使用！', value: 'done' },
-                        { text: '去配置页看看', value: 'config', action: function () {
+                        { text: this._t('guide.done_use'), value: 'done' },
+                        { text: this._t('guide.done_config'), value: 'config', action: function () {
                             window.location.href = '/config';
                         }}
                     ]
@@ -664,15 +637,35 @@
             checkSystem().then(function (status) {
                 var onboarded = localStorage.getItem('tale-onboarded');
 
+                // 首次访问先自我介绍（sessionStorage 控制，同标签页仅一次）
+                if (!sessionStorage.getItem('tale-intro-shown')) {
+                    sessionStorage.setItem('tale-intro-shown', '1');
+                    self.showVNDialog(self._pick(MESSAGES.welcome), {
+                        buttons: [
+                            { text: self._t('guide.btn_gotit'), action: function () {
+                                self.hideDialog();
+                                // 自我介绍完：未配置则直接进引导，不弹第二个对话框
+                                if (!onboarded && !status.running) {
+                                    self.startOnboarding();
+                                } else {
+                                    if (self.trigger) self.trigger.classList.add('visible');
+                                    self._startIdleLoop();
+                                }
+                            }}
+                        ]
+                    });
+                    return;
+                }
+
+                // 后续访问
                 if (!onboarded) {
-                    // 首次启动 → 自动显示看板娘引导
                     if (!status.running) {
-                        self.showVNDialog(self._pick(MESSAGES.welcome), {
+                        self.showVNDialog(self._pick(MESSAGES.waiting_api), {
                             buttons: [
-                                { text: '开始引导', primary: true, action: function () {
+                                { text: self._t('guide.btn_start'), primary: true, action: function () {
                                     self.startOnboarding();
                                 }},
-                                { text: '稍后再说', action: function () {
+                                { text: self._t('guide.btn_later'), action: function () {
                                     self._skipSetup();
                                 }}
                             ]
@@ -680,13 +673,12 @@
                     } else {
                         self.showVNDialog(self._pick(MESSAGES.running), {
                             buttons: [
-                                { text: '知道了', action: function () { self.hideDialog(); }}
+                                { text: self._t('guide.btn_gotit'), action: function () { self.hideDialog(); }}
                             ]
                         });
                         self._startIdleLoop();
                     }
                 } else {
-                    // 后续访问 → 不弹对话框，只显示触发器 + 闲时提示
                     if (self.trigger) self.trigger.classList.add('visible');
                     self._startIdleLoop();
                 }
@@ -704,10 +696,10 @@
                 if (!status.running) {
                     self.showVNDialog(self._pick(MESSAGES.offline_tip), {
                         buttons: [
-                            { text: '去配置', primary: true, action: function () {
+                            { text: self._t('guide.btn_goconfig'), primary: true, action: function () {
                                 window.location.href = '/config';
                             }},
-                            { text: '关闭', action: function () { self.hideDialog(); }}
+                            { text: self._t('guide.btn_close'), action: function () { self.hideDialog(); }}
                         ]
                     });
                 } else {
@@ -723,13 +715,13 @@
 
             var self = this;
             this.say(self._pick(MESSAGES.summon)).then(function () {
-                return self.askChoice('有什么我可以帮你的吗？选一个话题吧～', [
-                    { text: '系统配置问题', value: 'config' },
-                    { text: '如何开始对话', value: 'chat' },
-                    { text: 'AI 不回复怎么办', value: 'no_reply' },
-                    { text: '平台适配器设置', value: 'platforms' },
-                    { text: '查看运行状态', value: 'status' },
-                    { text: '修改角色人设', value: 'character' }
+                return self.askChoice(self._t('guide.help_question'), [
+                    { text: self._t('guide.help_config'), value: 'config' },
+                    { text: self._t('guide.help_chat'), value: 'chat' },
+                    { text: self._t('guide.help_no_reply'), value: 'no_reply' },
+                    { text: self._t('guide.help_platforms'), value: 'platforms' },
+                    { text: self._t('guide.help_status'), value: 'status' },
+                    { text: self._t('guide.help_character'), value: 'character' }
                 ]);
             }).then(function (choice) {
                 switch (choice) {
@@ -742,14 +734,14 @@
                     case 'no_reply':
                         checkSystem().then(function (status) {
                             var msg = status.running
-                                ? '系统正在运行中～如果 AI 还是没回复，可能是没 @ 到它，或者被权限过滤了哦。去配置中心检查一下权限设置吧！'
-                                : '唔，系统还没启动呢……可能是缺 API Key 或模型没配好。要不要去配置页面看看？';
+                                ? self._t('guide.no_reply_running')
+                                : self._t('guide.no_reply_offline');
                             self.showVNDialog(msg, {
                                 buttons: [
-                                    { text: '去配置', primary: true, action: function () {
+                                    { text: self._t('guide.btn_goconfig'), primary: true, action: function () {
                                         window.location.href = '/config?focus=services';
                                     }},
-                                    { text: '关闭', action: function () { self.hideDialog(); }}
+                                    { text: self._t('guide.btn_close'), action: function () { self.hideDialog(); }}
                                 ]
                             });
                         });
@@ -760,8 +752,8 @@
                     case 'status':
                         checkSystem().then(function (status) {
                             var msg = status.running
-                                ? '系统一切正常！正在运行中～有什么问题随时问我哦。'
-                                : '系统当前离线……可能是还没配置好 API Key 或者服务没启动。去配置页面检查一下吧！';
+                                ? self._t('guide.status_running')
+                                : self._t('guide.status_offline');
                             self.say(msg);
                         });
                         break;
@@ -802,115 +794,6 @@
             this.startConversationalConfig();
         },
 
-        renderStep: function (step) {
-            var self = this;
-            if (!this.overlay) return;
-
-            var steps = [
-                {
-                    title: '第一步：配置 AI 服务商',
-                    desc: 'Tale 需要连接 AI 模型才能工作哦。填上 API Key 和模型名称就行～',
-                    tip: '推荐 DeepSeek、OpenAI 或任何兼容 OpenAI 接口的服务',
-                    action: function () { window.location.href = '/config?focus=services'; }
-                },
-                {
-                    title: '第二步：设定角色人设',
-                    desc: '给你的 AI 起名字、设性格、写爱好，让 TA 更有灵魂！人设越丰富，角色表现越棒～',
-                    tip: '可以先简单填几个，以后随时都能改',
-                    action: function () { window.location.href = '/config?focus=character'; }
-                },
-                {
-                    title: '第三步：选择聊天平台',
-                    desc: 'Tale 可以接入 QQ、Telegram、B站等平台。只在网页上聊的话这步跳过就好！',
-                    tip: '适配器可以在"适配器管理"页面配置',
-                    action: function () { window.location.href = '/config?focus=platforms'; }
-                },
-                {
-                    title: '全部完成！',
-                    desc: 'Tale 已经准备就绪啦！去跟你的 AI 小伙伴打个招呼吧～一起搞数字生活呀～',
-                    tip: '以后点右下角的问号按钮就能随时召唤我啦',
-                    action: function () {
-                        localStorage.setItem('tale-onboarded', '1');
-                        self._onboardingActive = false;
-                        self.hideDialog();
-                    }
-                }
-            ];
-
-            var s = steps[step] || steps[steps.length - 1];
-            var isLast = step >= steps.length - 1;
-
-            // 清理旧步骤面板
-            var oldPanel = this.overlay.querySelector('.vn-step-panel');
-            if (oldPanel) oldPanel.remove();
-
-            // 显示覆盖层
-            this.overlay.classList.add('active');
-            if (this.trigger) this.trigger.classList.remove('visible');
-
-            // 创建步骤面板
-            var stepContent = document.createElement('div');
-            stepContent.className = 'vn-step-panel';
-
-            // 步骤进度
-            var stepsHtml = '';
-            for (var i = 0; i < steps.length; i++) {
-                var cls = i < step ? 'done' : (i === step ? 'active' : '');
-                var num = i < step ? '✓' : (i + 1);
-                var label = steps[i].title.replace(/第.步：/, '');
-                stepsHtml += '<li class="' + cls + '"><span class="guide-step-num">' + num + '</span>' + label + '</li>';
-            }
-
-            // 导航按钮
-            var navHtml = '';
-            if (step > 0) {
-                navHtml += '<button class="guide-btn secondary" id="guideStepPrev">上一步</button>';
-            }
-            if (isLast) {
-                navHtml += '<button class="guide-btn" id="guideStepFinish">开始使用！</button>';
-            } else {
-                navHtml += '<button class="guide-btn" id="guideStepNext">下一步</button>';
-            }
-            navHtml += '<button class="guide-btn secondary" id="guideStepSkip">跳过引导</button>';
-
-            stepContent.innerHTML =
-                '<h2>' + s.title + '</h2>' +
-                '<p class="guide-step-desc">' + s.desc + '</p>' +
-                '<ul class="vn-step-list">' + stepsHtml + '</ul>' +
-                (s.tip ? '<div class="vn-step-tip">' + s.tip + '</div>' : '') +
-                '<div class="guide-actions">' + navHtml + '</div>';
-
-            this.overlay.appendChild(stepContent);
-
-            // 同时更新底部对话框显示简短提示
-            this.nameTag.textContent = 'Tali';
-            this._startTyping('来，跟着我一步一步搞定吧～');
-            if (this.indicator) this.indicator.classList.add('hidden');
-            if (this.actionsContainer) this.actionsContainer.innerHTML = '';
-
-            // 绑定按钮事件
-            var selfRef = this;
-            setTimeout(function () {
-                var prevBtn = document.getElementById('guideStepPrev');
-                var nextBtn = document.getElementById('guideStepNext');
-                var finishBtn = document.getElementById('guideStepFinish');
-                var skipBtn = document.getElementById('guideStepSkip');
-
-                if (prevBtn) prevBtn.addEventListener('click', function () {
-                    selfRef.renderStep(step - 1);
-                });
-                if (nextBtn) nextBtn.addEventListener('click', function () {
-                    selfRef.renderStep(step + 1);
-                });
-                if (finishBtn) finishBtn.addEventListener('click', function () {
-                    s.action();
-                });
-                if (skipBtn) skipBtn.addEventListener('click', function () {
-                    selfRef.skipOnboarding();
-                });
-            }, 0);
-        },
-
         skipOnboarding: function () {
             localStorage.setItem('tale-onboarded', '1');
             this._onboardingActive = false;
@@ -922,15 +805,16 @@
             this._clearTypingTimer();
             this._disableAuto();
             if (this.overlay) this.overlay.classList.remove('active');
-            // 清理步骤面板
-            var panel = this.overlay ? this.overlay.querySelector('.vn-step-panel') : null;
-            if (panel) panel.remove();
             this._startIdleLoop();
         },
 
         // ---- 工具 ----
         _pick: function (arr) {
-            return arr[Math.floor(Math.random() * arr.length)];
+            var key = arr[Math.floor(Math.random() * arr.length)];
+            return this._t(key);
+        },
+        _t: function(key, params) {
+            return (typeof window.t === 'function') ? window.t(key, params) : key;
         }
     };
 
@@ -945,11 +829,11 @@
                 var tab = document.querySelector('[data-tab="' + focus + '"]');
                 if (tab) tab.click();
                 var tips = {
-                    'services': '在这里填入你的 API Key 和模型名称就好～',
-                    'character': '这是角色设定页面，名字、性格、爱好都可以随意改！',
-                    'platforms': '这里配置 QQ、Telegram 等平台，目前可以先跳过哦～',
+                    'services': window.t('guide.step_tip_services'),
+                    'character': window.t('guide.step_tip_character'),
+                    'platforms': window.t('guide.step_tip_platforms'),
                 };
-                Guide.showVNDialog(tips[focus] || '在这个页面修改配置吧～');
+                Guide.showVNDialog(tips[focus] || window.t('guide.step_tip_default'));
             }, 500);
         }
     }
