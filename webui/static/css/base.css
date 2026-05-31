@@ -127,6 +127,13 @@ html, body {
 /* 导航 */
 .sidebar-nav {
     flex: 1;
+    overflow: visible;
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar-nav-inner {
+    flex: 1;
     padding: 8px 14px;
     display: flex;
     flex-direction: column;
@@ -182,6 +189,7 @@ html, body {
 /* ===== 侧边栏子菜单 ===== */
 .nav-item.has-submenu {
     position: relative;
+    margin: 2px 14px;
 }
 
 .nav-submenu {

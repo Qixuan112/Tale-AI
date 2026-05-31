@@ -161,8 +161,9 @@
             section.className = 'config-section';
             section.id = 'config-section-' + domain;
             section.setAttribute('data-domain', domain);
+            section.style.setProperty('--section-color', meta.color);
 
-            if (sectionCollapsedState[domain]) {
+            if (sectionCollapsedState[domain] !== false) {
                 section.classList.add('section-collapsed');
             }
 
@@ -241,13 +242,33 @@
         }
     }
 
-    // ============ Section 折叠 ============
+    // ============ Section 手风琴折叠 ============
 
     function toggleSection(domain) {
         var section = document.getElementById('config-section-' + domain);
         if (!section) return;
-        section.classList.toggle('section-collapsed');
-        sectionCollapsedState[domain] = section.classList.contains('section-collapsed');
+
+        var wasCollapsed = section.classList.contains('section-collapsed');
+
+        if (wasCollapsed) {
+            // 手风琴：先折叠所有其他 section
+            var allSections = document.querySelectorAll('.config-section');
+            for (var i = 0; i < allSections.length; i++) {
+                allSections[i].classList.add('section-collapsed');
+                var d = allSections[i].getAttribute('data-domain');
+                if (d) sectionCollapsedState[d] = true;
+            }
+            // 展开当前
+            section.classList.remove('section-collapsed');
+            sectionCollapsedState[domain] = false;
+            setTimeout(function() {
+                section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }, 100);
+        } else {
+            // 折叠当前
+            section.classList.add('section-collapsed');
+            sectionCollapsedState[domain] = true;
+        }
     }
 
     // ============ 搜索 ============
@@ -621,6 +642,14 @@
         var targetId = hash.replace('#', '');
         var target = document.getElementById(targetId);
         if (target) {
+            // 手风琴：先折叠所有
+            var allSections = document.querySelectorAll('.config-section');
+            for (var i = 0; i < allSections.length; i++) {
+                allSections[i].classList.add('section-collapsed');
+                var d = allSections[i].getAttribute('data-domain');
+                if (d) sectionCollapsedState[d] = true;
+            }
+            // 展开目标
             target.classList.remove('section-collapsed');
             var domain = target.getAttribute('data-domain');
             if (domain) {
