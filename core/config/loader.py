@@ -189,6 +189,8 @@ class ConfigLoader:
             max_buffer_messages=bot_data.get("max_buffer_messages", 5),
             min_message_delay=bot_data.get("min_message_delay", 0.8),
             max_message_delay=bot_data.get("max_message_delay", 1.5),
+            typing_speed=bot_data.get("typing_speed", 50.0),
+            typing_min_delay=bot_data.get("typing_min_delay", 0.5),
         )
 
         context = ContextConfig(

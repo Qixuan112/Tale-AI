@@ -32,26 +32,14 @@ logger = get_logger(__name__)
 
 def calculate_split_interval(text_length: int) -> float:
     """
-    根据文本长度计算发送间隔时间。
-    文本越短，间隔越长（给人阅读的时间）；文本越长，间隔越短（避免等待过久）。
+    模拟真人打字的发送延迟。
+    延迟 = max(字数 * 打字速度(ms/字) / 1000, 最小延迟)
     """
-    base = text_length * 0.5
-
-    # 不同长度区间对应的倍率
-    if text_length <= 10:
-        multiplier = 0.9
-    elif text_length <= 50:
-        multiplier = 0.7
-    elif text_length <= 100:
-        multiplier = 0.5
-    elif text_length <= 200:
-        multiplier = 0.3
-    else:
-        multiplier = 0.1
-
-    interval = base * multiplier
-    logger.debug("文本长度=%d，发送间隔=%.2f秒", text_length, interval)
-    return interval
+    bot = provide.config_loader.bot.bot
+    speed_ms = getattr(bot, 'typing_speed', 50.0)
+    min_delay = getattr(bot, 'typing_min_delay', 0.5)
+    delay = max(text_length * speed_ms / 1000.0, min_delay)
+    return round(delay, 2)
 
 
 class TaleCore:
@@ -369,12 +357,14 @@ class TaleCore:
             logger.error("处理消息时出错: %s", e, exc_info=True)
 
     async def _send_message_batch(self, processed: ProcessedMessage, messages: list, adapter_instance: str = None):
-        """批量发送消息，自动添加间隔"""
+        """批量发送消息，每条消息前模拟打字延迟（包括第一条）"""
         is_group = processed.group_id is not None
         target_id = processed.group_id if processed.group_id else processed.sender_id
         for msg in messages:
             reply_text = self._extract_message_text(msg)
             if reply_text:
+                # 打字延迟：每条消息发送前等待，模拟真人逐条打字
+                await asyncio.sleep(calculate_split_interval(len(reply_text)))
                 await self._send_reply(
                     adapter_instance or processed.platform.value,
                     target_id,
@@ -382,7 +372,6 @@ class TaleCore:
                     reply_to=processed.message_id,
                     is_group=is_group
                 )
-                await asyncio.sleep(calculate_split_interval(len(reply_text)))
 
     async def _resolve_follow_up(self, chatllm_reply: str, parsed: dict = None) -> list:
         """

@@ -104,8 +104,8 @@
                         { key: 'bot.max_memory_length', labelKey: 'field.behavior.memoryLen', labelDefault: '记忆长度', type: 'number', placeholder: '记住的消息条数', descKey: 'field.behavior.memoryLenDesc', descDefault: '角色能记住的最大消息数' },
                         { key: 'bot.max_message_interval', labelKey: 'field.behavior.msgInterval', labelDefault: '消息间隔', type: 'number', placeholder: '秒', descKey: 'field.behavior.msgIntervalDesc', descDefault: '回复消息的间隔时间（秒）' },
                         { key: 'bot.max_buffer_messages', labelKey: 'field.behavior.bufferMsg', labelDefault: '缓冲消息数', type: 'number', placeholder: '缓冲池大小', descKey: 'field.behavior.bufferMsgDesc', descDefault: '最大缓冲消息数' },
-                        { key: 'bot.min_message_delay', labelKey: 'field.behavior.minDelay', labelDefault: '最小延迟', type: 'number', placeholder: '秒', descKey: 'field.behavior.minDelayDesc', descDefault: '发送消息的最短延迟（秒）' },
-                        { key: 'bot.max_message_delay', labelKey: 'field.behavior.maxDelay', labelDefault: '最大延迟', type: 'number', placeholder: '秒', descKey: 'field.behavior.maxDelayDesc', descDefault: '发送消息的最长延迟（秒）' },
+                        { key: 'bot.typing_speed', labelKey: 'field.behavior.typingSpeed', labelDefault: '打字速度', type: 'range', min: 10, max: 200, step: 10, rangeDefault: 50, rangeUnit: 'ms/字', descKey: 'field.behavior.typingSpeedDesc', descDefault: '模拟真人打字速度，越低越快' },
+                        { key: 'bot.typing_min_delay', labelKey: 'field.behavior.typingMinDelay', labelDefault: '最短延迟', type: 'range', min: 0.1, max: 3, step: 0.1, rangeDefault: 0.5, rangeUnit: '秒', descKey: 'field.behavior.typingMinDelayDesc', descDefault: '即使消息很短也要等待的最少时间' },
                     ]
                 },
                 {
@@ -319,6 +319,24 @@
                 return '<div class="card-field inline">'
                     + '<span class="field-label">' + label + '</span>'
                     + '<input type="number" data-key="' + inputKey + '" data-type="number" value="' + (val != null ? val : '') + '" placeholder="' + (fieldDef.placeholder || '') + '">'
+                    + desc
+                    + '</div>';
+            }
+
+            if (fieldDef.type === 'range') {
+                var min = fieldDef.min || 0;
+                var max = fieldDef.max || 100;
+                var step = fieldDef.step || 1;
+                var unit = fieldDef.rangeUnit || '';
+                var currentVal = val != null && val !== '' ? val : (fieldDef.rangeDefault != null ? fieldDef.rangeDefault : min);
+                return '<div class="card-field">'
+                    + '<div class="range-label-row">'
+                    + '<span class="field-label">' + label + '</span>'
+                    + '<span class="range-value" data-range-display="' + inputKey + '">' + currentVal + (unit ? ' ' + unit : '') + '</span>'
+                    + '</div>'
+                    + '<div class="range-slider-row">'
+                    + '<input type="range" data-key="' + inputKey + '" data-type="range" value="' + currentVal + '" min="' + min + '" max="' + max + '" step="' + step + '">'
+                    + '</div>'
                     + desc
                     + '</div>';
             }
@@ -559,6 +577,17 @@
                     return;
                 }
             });
+
+            // range 滑动条实时更新数值显示
+            this.container.addEventListener('input', function (e) {
+                if (e.target.type === 'range' && e.target.dataset.key) {
+                    var display = self.container.querySelector('[data-range-display="' + e.target.dataset.key + '"]');
+                    if (display) {
+                        var unit = display.textContent.replace(/^[\d.]+/, '').trim();
+                        display.textContent = e.target.value + (unit ? ' ' + unit : '');
+                    }
+                }
+            });
         }
 
         _removeCard(cardId) {
@@ -710,6 +739,8 @@
                 } else if (keyType === 'number') {
                     value = el.value === '' ? 0 : Number(el.value);
                     if (isNaN(value)) value = 0;
+                } else if (keyType === 'range') {
+                    value = parseFloat(el.value) || 0;
                 } else {
                     value = el.value;
                 }

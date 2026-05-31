@@ -66,6 +66,8 @@ class BotBehaviorConfig:
     max_buffer_messages: int = 5
     min_message_delay: float = 0.8
     max_message_delay: float = 1.5
+    typing_speed: float = 50.0    # ms per character, simulates typing
+    typing_min_delay: float = 0.5  # minimum delay in seconds for short messages
 
 
 @dataclass
