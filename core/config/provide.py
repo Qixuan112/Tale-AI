@@ -29,6 +29,11 @@ from .loader import ConfigLoader, config_loader, provide_config
 def get_character_prompt() -> str:
     """根据 character.yaml 生成角色提示词"""
     cfg = config_loader.persona
+
+    # 自由格式人格描述优先 —— 直接返回，跳过结构化拼装
+    if cfg.raw_persona:
+        return cfg.raw_persona.strip()
+
     char = cfg.character
 
     prompt_parts = []

@@ -18,6 +18,18 @@
         character: {
             cards: [
                 {
+                    id: 'raw-persona',
+                    label: '人格',
+                    titleKey: 'card.char.rawPersona',
+                    titleDefault: '自由编辑',
+                    subtitleKey: 'card.char.rawPersonaDesc',
+                    subtitleDefault: '用你自己的话描述角色人格，随意写',
+                    color: '#f59e0b',
+                    fields: [
+                        { key: 'raw_persona', labelKey: 'field.char.rawPersona', labelDefault: '人格描述', type: 'textarea', placeholder: '用自然语言描述你的角色...\n\n比如：\n我是初念（Aurora），17岁，一个温柔又有点小腹黑的女孩子。\n我喜欢听雨声、看星星、写日记。\n我说话简短，一般不超过3-5个分条...' },
+                    ]
+                },
+                {
                     id: 'basic-info',
                     label: '基本信息',
                     titleKey: 'card.char.basicInfo',
@@ -291,9 +303,10 @@
             }
 
             if (fieldDef.type === 'textarea') {
+                var rows = fieldDef.key === 'raw_persona' ? 14 : 3;
                 return '<div class="card-field">'
                     + '<span class="field-label">' + label + '</span>'
-                    + '<textarea data-key="' + inputKey + '" rows="3" placeholder="' + (fieldDef.placeholder || '') + '">' + this._escapeHtml(val || '') + '</textarea>'
+                    + '<textarea data-key="' + inputKey + '" rows="' + rows + '" placeholder="' + (fieldDef.placeholder || '') + '">' + this._escapeHtml(val || '') + '</textarea>'
                     + desc
                     + '</div>';
             }

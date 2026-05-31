@@ -139,6 +139,7 @@ class ConfigLoader:
             character=character,
             additional_prompt=data.get("additional_prompt", ""),
             additional_examples=data.get("additional_examples", []),
+            raw_persona=data.get("raw_persona", ""),
         )
 
     def _parse_providers(self, data: dict) -> Dict[str, ProviderConfig]:

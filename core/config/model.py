@@ -136,6 +136,7 @@ class PersonaConfig:
     character: CharacterConfig = field(default_factory=CharacterConfig)
     additional_prompt: str = ""
     additional_examples: List[Dict[str, str]] = field(default_factory=list)
+    raw_persona: str = ""  # 自由格式人格描述，优先于结构化字段
 
 
 @dataclass

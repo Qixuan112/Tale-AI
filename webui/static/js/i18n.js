@@ -227,6 +227,8 @@
             'card.nameExists': '该名称已存在',
 
             // 卡片标题
+            'card.char.rawPersona': '自由编辑',
+            'card.char.rawPersonaDesc': '用你自己的话描述角色人格，随意写～',
             'card.char.basicInfo': '基本信息',
             'card.char.basicInfoDesc': '角色的身份标识',
             'card.char.language': '语言偏好',
@@ -246,6 +248,7 @@
             'card.plugin.add': '添加插件',
 
             // 字段标签
+            'field.char.rawPersona': '人格描述',
             'field.char.ChineseName': '中文名',
             'field.char.EnglishName': '英文名',
             'field.char.NickNames': '昵称',
@@ -646,6 +649,8 @@
             'card.nameExists': 'This name already exists',
 
             // Card titles
+            'card.char.rawPersona': 'Persona Script',
+            'card.char.rawPersonaDesc': 'Describe your character in your own words, free format',
             'card.char.basicInfo': 'Basic Info',
             'card.char.basicInfoDesc': 'Character identity',
             'card.char.language': 'Language',
@@ -665,6 +670,7 @@
             'card.plugin.add': 'Add Plugin',
 
             // Field labels
+            'field.char.rawPersona': 'Persona Script',
             'field.char.ChineseName': 'Chinese Name',
             'field.char.EnglishName': 'English Name',
             'field.char.NickNames': 'Nicknames',
