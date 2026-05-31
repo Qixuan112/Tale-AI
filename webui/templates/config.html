@@ -16,8 +16,8 @@
     <!-- 顶部操作栏：模式切换 + 搜索 -->
     <div class="config-topbar">
         <div class="config-mode-switch">
-            <button class="mode-btn active" data-mode="card" id="modeCardBtn">🃏 <span data-i18n="config.cardMode">卡片模式</span></button>
-            <button class="mode-btn" data-mode="source" id="modeSourceBtn">📄 <span data-i18n="config.sourceMode">源码模式</span></button>
+            <button class="mode-btn active" data-mode="card" id="modeCardBtn"><span data-i18n="config.cardMode">卡片模式</span></button>
+            <button class="mode-btn" data-mode="source" id="modeSourceBtn"><span data-i18n="config.sourceMode">源码模式</span></button>
         </div>
         <div class="config-search">
             <input type="text" id="configSearch" data-i18n-placeholder="config.searchPlaceholder" placeholder="搜索配置字段...">
@@ -75,12 +75,12 @@
     var yamlLib = null;
 
     var DOMAIN_META = {
-        character:  { icon: '👤', color: '#6366f1' },
-        behavior:   { icon: '🤖', color: '#10b981' },
-        platforms:  { icon: '🔌', color: '#06b6d4' },
-        services:   { icon: '☁️', color: '#3b82f6' },
-        routing:    { icon: '🔀', color: '#f59e0b' },
-        plugins:    { icon: '🧩', color: '#84cc16' },
+        character:  { label: '人设', color: '#6366f1' },
+        behavior:   { label: '行为', color: '#10b981' },
+        platforms:  { label: '平台', color: '#06b6d4' },
+        services:   { label: '服务', color: '#3b82f6' },
+        routing:    { label: '路由', color: '#f59e0b' },
+        plugins:    { label: '插件', color: '#84cc16' },
     };
 
     // ============ 工具函数 ============
@@ -153,7 +153,7 @@
 
         for (var i = 0; i < tabs.length; i++) {
             var domain = tabs[i].name;
-            var meta = DOMAIN_META[domain] || { icon: '📋', color: 'var(--accent)' };
+            var meta = DOMAIN_META[domain] || { label: '', color: 'var(--accent)' };
             var title = t('config.section.' + domain, tabs[i].label || domain);
             var desc = t('config.section.' + domain + 'Desc', '');
 
@@ -174,17 +174,17 @@
                     + '<select id="presetSelect" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:13px;">'
                     + '<option value="">— ' + t('config.presetPlaceholder', '预设列表') + ' —</option>'
                     + '</select>'
-                    + '<button class="btn btn-sm" id="btnPresetSave">💾 ' + t('config.presetSave', '另存为预设') + '</button>'
-                    + '<button class="btn btn-sm btn-danger" id="btnPresetDelete">🗑 ' + t('config.presetDelete', '删除预设') + '</button>'
-                    + '<button class="btn btn-sm" id="btnImport">📥 ' + t('config.import', '导入') + '</button>'
-                    + '<button class="btn btn-sm" id="btnExport">📤 ' + t('config.export', '导出') + '</button>'
+                    + '<button class="btn btn-sm" id="btnPresetSave">' + t('config.presetSave', '另存为预设') + '</button>'
+                    + '<button class="btn btn-sm btn-danger" id="btnPresetDelete">' + t('config.presetDelete', '删除预设') + '</button>'
+                    + '<button class="btn btn-sm" id="btnImport">' + t('config.import', '导入') + '</button>'
+                    + '<button class="btn btn-sm" id="btnExport">' + t('config.export', '导出') + '</button>'
                     + '</span>';
             }
 
             section.innerHTML = ''
                 + '<div class="section-header" data-action="toggle-section" data-domain="' + domain + '">'
                 + '<div class="section-header-left">'
-                + '<span class="section-icon" style="background:' + meta.color + '22;color:' + meta.color + ';">' + meta.icon + '</span>'
+                + '<span class="section-icon" style="background:' + meta.color + '22;color:' + meta.color + ';">' + meta.label + '</span>'
                 + '<div class="section-title-group">'
                 + '<div class="section-title">' + title + '</div>'
                 + (desc ? '<div class="section-desc">' + desc + '</div>' : '')

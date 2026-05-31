@@ -19,7 +19,7 @@
             cards: [
                 {
                     id: 'basic-info',
-                    icon: '👤',
+                    label: '基本信息',
                     titleKey: 'card.char.basicInfo',
                     titleDefault: '基本信息',
                     subtitleKey: 'card.char.basicInfoDesc',
@@ -36,7 +36,7 @@
                 },
                 {
                     id: 'language',
-                    icon: '🌐',
+                    label: '语言',
                     titleKey: 'card.char.language',
                     titleDefault: '语言偏好',
                     subtitleKey: 'card.char.languageDesc',
@@ -49,7 +49,7 @@
                 },
                 {
                     id: 'personality',
-                    icon: '🎨',
+                    label: '性格',
                     titleKey: 'card.char.personality',
                     titleDefault: '外貌与性格',
                     subtitleKey: 'card.char.personalityDesc',
@@ -65,7 +65,7 @@
                 },
                 {
                     id: 'dialogue-style',
-                    icon: '💬',
+                    label: '对话',
                     titleKey: 'card.char.dialogue',
                     titleDefault: '对话风格',
                     subtitleKey: 'card.char.dialogueDesc',
@@ -82,7 +82,7 @@
             cards: [
                 {
                     id: 'bot-behavior',
-                    icon: '🤖',
+                    label: '行为',
                     titleKey: 'card.behavior.bot',
                     titleDefault: '机器人行为',
                     subtitleKey: 'card.behavior.botDesc',
@@ -98,7 +98,7 @@
                 },
                 {
                     id: 'selfie',
-                    icon: '📷',
+                    label: '头像',
                     titleKey: 'card.behavior.selfie',
                     titleDefault: '个性化',
                     subtitleKey: 'card.behavior.selfieDesc',
@@ -116,7 +116,7 @@
             dynamic: true,
             dynamicItemSchema: {
                 idKey: null,  // 使用对象的顶层 key 作为 ID
-                icon: '🔌',
+                label: '适配器',
                 color: '#06b6d4',
                 titleKey: null,  // 使用 key 名作为标题
                 fields: [
@@ -140,7 +140,7 @@
             dynamic: true,
             dynamicItemSchema: {
                 idKey: null,
-                icon: '☁️',
+                label: '服务',
                 color: '#3b82f6',
                 titleKey: null,
                 fields: [
@@ -160,7 +160,7 @@
             cards: [
                 {
                     id: 'routing',
-                    icon: '🔀',
+                    label: '路由',
                     titleKey: 'card.routing.title',
                     titleDefault: '模型路由',
                     subtitleKey: 'card.routing.desc',
@@ -180,7 +180,7 @@
             dynamic: true,
             dynamicItemSchema: {
                 idKey: null,
-                icon: '🧩',
+                label: '插件',
                 color: '#84cc16',
                 titleKey: null,
                 fields: [
@@ -347,7 +347,7 @@
             var cardId = cardDef.id || cardData._cardId || '';
             var collapsed = this.collapsedCards[cardId] || false;
             var color = cardDef.color || 'var(--accent)';
-            var icon = cardDef.icon || '📋';
+            var label = cardDef.label || cardDef.titleDefault || '';
             var title = cardDef.titleKey ? this._t(cardDef.titleKey, cardDef.titleDefault) : (cardDef.titleDefault || cardId);
             var subtitle = cardDef.subtitleKey ? this._t(cardDef.subtitleKey, cardDef.subtitleDefault) : (cardDef.subtitleDefault || '');
 
@@ -370,7 +370,7 @@
 
             var html = '<div class="config-card' + (collapsed ? ' collapsed' : '') + '" data-card-id="' + cardId + '" style="--card-accent:' + color + ';--card-accent-bg:' + color + '18;">';
             html += '<div class="card-header" data-action="toggle" data-card="' + cardId + '">';
-            html += '<span class="card-icon" style="background:' + color + '18;">' + icon + '</span>';
+            html += '<span class="card-icon" style="background:' + color + '18;color:' + color + ';">' + label + '</span>';
             html += '<div class="card-title-group">';
             html += '<div class="card-title">' + title + '</div>';
             if (subtitle) html += '<div class="card-subtitle">' + subtitle + '</div>';
@@ -447,7 +447,6 @@
 
                 if (entries.length === 0) {
                     html += '<div class="card-empty-state">'
-                        + '<div class="empty-icon">📭</div>'
                         + '<div class="empty-text">' + this._t('card.empty', '暂无配置项，点击下方按钮添加') + '</div>'
                         + '</div>';
                 } else {
@@ -475,7 +474,6 @@
 
                 if (cards.length === 0) {
                     html2 += '<div class="card-empty-state">'
-                        + '<div class="empty-icon">📭</div>'
                         + '<div class="empty-text">' + this._t('card.empty', '暂无配置项') + '</div>'
                         + '</div>';
                 } else {
