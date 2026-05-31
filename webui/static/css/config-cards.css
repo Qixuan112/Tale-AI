@@ -424,7 +424,7 @@
 .config-sections {
     flex: 1;
     overflow-y: auto;
-    padding: 20px 28px 16px;
+    padding: 24px 28px 24px;
     display: flex;
     flex-direction: column;
     gap: 0;
@@ -469,9 +469,9 @@
 
 /* 折叠态：堆叠的扑克牌 */
 .config-section.section-collapsed {
-    max-height: 58px;
+    max-height: 64px;
     cursor: pointer;
-    margin-bottom: -4px;  /* 卡片微微重叠 */
+    margin-bottom: 4px;  /* 卡片之间留一点间距 */
 }
 
 /* 扇形偏移：每张牌依次右移、下沉 */
@@ -485,7 +485,7 @@
 /* 展开态：抽出的牌 */
 .config-section:not(.section-collapsed) {
     max-height: 3000px;
-    margin: 8px 0;
+    margin: 14px 0;
     z-index: 20 !important;
     transform: translateX(0) !important;
     border-color: var(--accent);
@@ -531,7 +531,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 20px;
+    padding: 16px 22px;
     cursor: pointer;
     user-select: none;
     transition: background 0.15s;
@@ -613,7 +613,7 @@
 
 /* Section 内容区 */
 .section-body {
-    padding: 0 20px 18px;
+    padding: 0 22px 22px;
 }
 
 .section-body .card-grid {
@@ -743,7 +743,7 @@
         padding: 0 14px 12px;
     }
     .section-header {
-        padding: 12px 14px;
+        padding: 14px 16px;
         flex-wrap: wrap;
         gap: 8px;
     }
@@ -751,7 +751,7 @@
         margin-left: 0;
     }
     .section-body {
-        padding: 0 14px 14px;
+        padding: 0 16px 16px;
     }
     #sourceModeContainer {
         padding: 0 14px 12px;
