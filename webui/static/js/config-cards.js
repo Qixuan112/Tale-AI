@@ -560,34 +560,123 @@
             }
         }
 
-        _addCard() {
-            var name = prompt(this._t('card.newName', '请输入名称：'));
-            if (!name || !name.trim()) return;
-            name = name.trim();
+        _showModal(title, placeholder) {
+            var self = this;
+            return new Promise(function(resolve) {
+                var overlay = document.createElement('div');
+                overlay.className = 'modal-overlay';
 
-            if (this.data[name]) {
-                alert(this._t('card.nameExists', '该名称已存在'));
-                return;
-            }
+                overlay.innerHTML = ''
+                    + '<div class="modal-dialog">'
+                    + '<div class="modal-dialog-header">' + self._escapeHtml(title) + '</div>'
+                    + '<div class="modal-dialog-body">'
+                    + '<input type="text" class="modal-input" placeholder="' + self._escapeHtml(placeholder || '') + '" autofocus>'
+                    + '<div class="modal-error"></div>'
+                    + '</div>'
+                    + '<div class="modal-dialog-footer">'
+                    + '<button class="modal-btn modal-cancel">' + (window.t ? window.t('common.cancel') : '取消') + '</button>'
+                    + '<button class="modal-btn primary modal-confirm">' + (window.t ? window.t('common.confirm') : '确认添加') + '</button>'
+                    + '</div>'
+                    + '</div>';
 
-            // 创建默认数据
-            var defaultData = {};
-            var fields = this.schema.dynamicItemSchema.fields || [];
-            for (var i = 0; i < fields.length; i++) {
-                var f = fields[i];
-                var parts = f.key.split('.');
-                var lastKey = parts[parts.length - 1];
-                if (f.type === 'boolean') {
-                    defaultData[lastKey] = false;
-                } else if (f.type === 'number') {
-                    defaultData[lastKey] = 0;
-                } else {
-                    defaultData[lastKey] = '';
+                document.body.appendChild(overlay);
+
+                var input = overlay.querySelector('.modal-input');
+                var errorEl = overlay.querySelector('.modal-error');
+                var confirmBtn = overlay.querySelector('.modal-confirm');
+                var cancelBtn = overlay.querySelector('.modal-cancel');
+
+                function close(val) {
+                    overlay.addEventListener('animationend', function() {
+                        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                    });
+                    overlay.style.opacity = '0';
+                    overlay.style.transition = 'opacity 0.15s';
+                    if (overlay.parentNode && val === null) {
+                        // 取消时立即移除
+                        overlay.parentNode.removeChild(overlay);
+                    }
+                    setTimeout(function() {
+                        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                    }, 200);
+                    resolve(val);
                 }
-            }
 
-            this.data[name] = defaultData;
-            this.render();
+                confirmBtn.addEventListener('click', function() {
+                    var val = input.value.trim();
+                    if (!val) {
+                        errorEl.textContent = self._t('card.nameRequired', '请输入名称');
+                        errorEl.style.display = 'block';
+                        input.focus();
+                        return;
+                    }
+                    close(val);
+                });
+
+                cancelBtn.addEventListener('click', function() {
+                    close(null);
+                });
+
+                overlay.addEventListener('click', function(e) {
+                    if (e.target === overlay) close(null);
+                });
+
+                input.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') confirmBtn.click();
+                    if (e.key === 'Escape') close(null);
+                });
+
+                setTimeout(function() { input.focus(); }, 150);
+            });
+        }
+
+        _addCard() {
+            var self = this;
+            this._showModal(
+                this._t('card.newTitle', '添加新项目'),
+                this._t('card.newPlaceholder', '请输入名称')
+            ).then(function(name) {
+                if (!name) return;
+
+                if (self.data[name]) {
+                    self._showToast(self._t('card.nameExists', '该名称已存在'));
+                    return;
+                }
+
+                var defaultData = {};
+                var fields = self.schema.dynamicItemSchema.fields || [];
+                for (var i = 0; i < fields.length; i++) {
+                    var f = fields[i];
+                    var parts = f.key.split('.');
+                    var lastKey = parts[parts.length - 1];
+                    if (f.type === 'boolean') {
+                        defaultData[lastKey] = false;
+                    } else if (f.type === 'number') {
+                        defaultData[lastKey] = 0;
+                    } else {
+                        defaultData[lastKey] = '';
+                    }
+                }
+
+                self.data[name] = defaultData;
+                self.render();
+            });
+        }
+
+        _showToast(msg) {
+            var toast = document.createElement('div');
+            toast.className = 'modal-toast';
+            toast.textContent = msg;
+            document.body.appendChild(toast);
+            requestAnimationFrame(function() {
+                toast.classList.add('visible');
+            });
+            setTimeout(function() {
+                toast.classList.remove('visible');
+                setTimeout(function() {
+                    if (toast.parentNode) toast.parentNode.removeChild(toast);
+                }, 300);
+            }, 2000);
         }
 
         // ---------- 数据收集 ----------

@@ -90,6 +90,75 @@
         return fallback || key;
     }
 
+    function showModal(title, placeholder) {
+        return new Promise(function(resolve) {
+            var overlay = document.createElement('div');
+            overlay.className = 'modal-overlay';
+
+            overlay.innerHTML = ''
+                + '<div class="modal-dialog">'
+                + '<div class="modal-dialog-header">' + title + '</div>'
+                + '<div class="modal-dialog-body">'
+                + '<input type="text" class="modal-input" placeholder="' + (placeholder || '') + '" autofocus>'
+                + '<div class="modal-error"></div>'
+                + '</div>'
+                + '<div class="modal-dialog-footer">'
+                + '<button class="modal-btn modal-cancel">' + t('common.cancel', '取消') + '</button>'
+                + '<button class="modal-btn primary modal-confirm">' + t('common.confirm', '确认添加') + '</button>'
+                + '</div>'
+                + '</div>';
+
+            document.body.appendChild(overlay);
+
+            var input = overlay.querySelector('.modal-input');
+            var errorEl = overlay.querySelector('.modal-error');
+            var confirmBtn = overlay.querySelector('.modal-confirm');
+
+            function close(val) {
+                overlay.style.opacity = '0';
+                overlay.style.transition = 'opacity 0.15s';
+                setTimeout(function() {
+                    if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                }, 200);
+                resolve(val);
+            }
+
+            confirmBtn.addEventListener('click', function() {
+                var val = input.value.trim();
+                if (!val) {
+                    errorEl.textContent = t('config.nameRequired', '请输入名称');
+                    errorEl.style.display = 'block';
+                    input.focus();
+                    return;
+                }
+                close(val);
+            });
+
+            overlay.querySelector('.modal-cancel').addEventListener('click', function() { close(null); });
+            overlay.addEventListener('click', function(e) { if (e.target === overlay) close(null); });
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') confirmBtn.click();
+                if (e.key === 'Escape') close(null);
+            });
+
+            setTimeout(function() { input.focus(); }, 150);
+        });
+    }
+
+    function showToast(msg) {
+        var toast = document.createElement('div');
+        toast.className = 'modal-toast';
+        toast.textContent = msg;
+        document.body.appendChild(toast);
+        requestAnimationFrame(function() { toast.classList.add('visible'); });
+        setTimeout(function() {
+            toast.classList.remove('visible');
+            setTimeout(function() {
+                if (toast.parentNode) toast.parentNode.removeChild(toast);
+            }, 300);
+        }, 2500);
+    }
+
     // ============ Monaco / js-yaml 加载 ============
 
     function loadScript(src) {
@@ -547,8 +616,11 @@
     });
 
     async function savePreset() {
-        var name = prompt('请输入预设名称：');
-        if (!name || !name.trim()) return;
+        var name = await showModal(
+            t('config.presetSaveTitle', '保存预设'),
+            t('config.presetSavePlaceholder', '请输入预设名称')
+        );
+        if (!name) return;
         var status = document.getElementById('saveStatus');
 
         if (!sourceMode && cardEditors['character']) {
@@ -585,7 +657,7 @@
         var select = document.getElementById('presetSelect');
         if (!select) return;
         var name = select.value;
-        if (!name) { alert('请先选择一个预设'); return; }
+        if (!name) { showToast(t('config.noPresetSelected', '请先选择一个预设')); return; }
         if (!confirm('确定要删除预设「' + name + '」吗？')) return;
         var status = document.getElementById('saveStatus');
         try {

@@ -149,6 +149,10 @@
             'config.presetPlaceholder': '预设列表',
             'config.presetSave': '另存为预设',
             'config.presetDelete': '删除预设',
+            'config.presetSaveTitle': '保存预设',
+            'config.presetSavePlaceholder': '请输入预设名称',
+            'config.nameRequired': '请输入名称',
+            'config.noPresetSelected': '请先选择一个预设',
 
             // config.html 新版 section 页面
             'config.section.character': '角色人设',
@@ -217,6 +221,9 @@
             'card.confirmRemove': '确定要删除「',
             'card.confirmRemoveEnd': '」吗？',
             'card.newName': '请输入名称：',
+            'card.newTitle': '添加新项目',
+            'card.newPlaceholder': '请输入名称',
+            'card.nameRequired': '请输入名称',
             'card.nameExists': '该名称已存在',
 
             // 卡片标题
@@ -561,6 +568,10 @@
             'config.presetPlaceholder': 'Presets',
             'config.presetSave': 'Save as Preset',
             'config.presetDelete': 'Delete Preset',
+            'config.presetSaveTitle': 'Save Preset',
+            'config.presetSavePlaceholder': 'Enter preset name',
+            'config.nameRequired': 'Please enter a name',
+            'config.noPresetSelected': 'Please select a preset first',
 
             // config.html new section-based page
             'config.section.character': 'Character Profile',
@@ -629,6 +640,9 @@
             'card.confirmRemove': 'Delete "',
             'card.confirmRemoveEnd': '"?',
             'card.newName': 'Enter name:',
+            'card.newTitle': 'Add New Item',
+            'card.newPlaceholder': 'Enter name',
+            'card.nameRequired': 'Please enter a name',
             'card.nameExists': 'This name already exists',
 
             // Card titles
