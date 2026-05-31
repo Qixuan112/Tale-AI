@@ -318,35 +318,31 @@ class PlanLLM:
     def generate_daily_plan(self, prompt: str) -> str:
         """
         制定每日计划
-        
+
         使用 LLM 生成一天的完整日程安排
-        
+
         Args:
             prompt: 计划制定请求
-            
+
         Returns:
             生成的计划文本
         """
         self._check_new_day()
-        
-        # 构建上下文
+
+        # 构建时间上下文
         context = self._build_plan_context()
-        
-        full_prompt = f"""
+
+        full_prompt = f"""当前时间信息：
 {context}
 
-用户请求：{prompt}
+请为此数字生命生成今日完整日程。"""
 
-请为今天制定一个完整的日程计划，包含具体的时间段和活动内容。
-请使用 JSON 格式输出。
-"""
-        
-        # 调用 LLM
+        # 调用 LLM（系统提示词已含 PLAN_TEMPLATE）
         response = self._call_llm(full_prompt)
-        
-        # 解析并保存日程
-        self._parse_and_save_plan(response)
-        
+
+        # 保存原始文本作为计划
+        self._save_plan_text(response)
+
         return response
     
     def add_event_from_request(self, request: str) -> str:
@@ -669,85 +665,14 @@ class PlanLLM:
         
         return "\n".join(context_parts)
     
-    def _parse_and_save_plan(self, plan_text: str):
-        """解析 JSON 格式的计划文本并保存为 DiaryEntry"""
+    def _save_plan_text(self, plan_text: str):
+        """保存 LLM 生成的日程文本（纯文本格式）"""
         if self._today_plan is None:
             self._today_plan = DailyPlan(date=self._current_date)
-        
-        try:
-            # 提取 JSON
-            json_str = self._extract_json(plan_text)
-            plan_data = json.loads(json_str)
-            
-            # 解析 entries
-            if "plan" in plan_data and "entries" in plan_data["plan"]:
-                for entry_data in plan_data["plan"]["entries"]:
-                    # 解析时间
-                    time_str = entry_data.get("time", "")
-                    if "-" in time_str:
-                        start_str, end_str = time_str.split("-")
-                        start_time = datetime.strptime(start_str.strip(), "%H:%M").time()
-                        end_time = datetime.strptime(end_str.strip(), "%H:%M").time()
-                    else:
-                        start_time = datetime.strptime(time_str.strip(), "%H:%M").time()
-                        end_time = None
-                    
-                    # 创建 DiaryEntry
-                    entry = DiaryEntry(
-                        id=entry_data.get("id", str(uuid.uuid4())[:8]),
-                        title=entry_data.get("title", "未命名"),
-                        description=entry_data.get("description", ""),
-                        event_type=EventType(entry_data.get("type", "other")),
-                        priority=Priority(entry_data.get("priority", "medium")),
-                        start_time=start_time,
-                        end_time=end_time,
-                        source="plan"
-                    )
-                    
-                    # 添加计划条目，检查冲突并自动调整时间
-                    if not self._today_plan.add_entry(entry):
-                        # 冲突，尝试找可用时间段
-                        duration = 60
-                        if entry.end_time:
-                            duration = int((datetime.combine(datetime.today(), entry.end_time) -
-                                          datetime.combine(datetime.today(), entry.start_time)).total_seconds() / 60)
-                        
-                        available_slot = self._today_plan.find_slot(
-                            duration_minutes=duration,
-                            after_time=entry.start_time
-                        )
-                        
-                        if available_slot:
-                            old_start = entry.start_time
-                            entry.start_time = available_slot
-                            if entry.end_time:
-                                duration_td = datetime.combine(datetime.today(), entry.end_time) - datetime.combine(datetime.today(), old_start)
-                                entry.end_time = (datetime.combine(datetime.today(), available_slot) + duration_td).time()
-                            
-                            if self._today_plan.add_entry(entry):
-                                logger.info("计划条目 '%s' 时间已调整为 %s（避免冲突）", entry.title, entry.start_time.strftime("%H:%M"))
-                            else:
-                                logger.warning("无法添加计划条目 '%s'：即使调整后仍有冲突", entry.title)
-                        else:
-                            logger.warning("无法添加计划条目 '%s'：时间冲突且找不到可用时间段", entry.title)
-                
-                # 排序并保存
-                self._today_plan._sort_entries()
-                
-            # 保存 summary
-            if "plan" in plan_data and "summary" in plan_data["plan"]:
-                self._today_plan.summary = plan_data["plan"]["summary"]
-            else:
-                self._today_plan.summary = plan_text[:500]
-                
-            self._save_today_plan()
-            logger.info("已保存 %d 个日程条目", len(self._today_plan.entries))
 
-        except Exception as e:
-            logger.error("解析计划失败: %s", e)
-            # 回退：保存原始文本
-            self._today_plan.summary = plan_text[:500]
-            self._save_today_plan()
+        self._today_plan.summary = plan_text.strip()
+        self._save_today_plan()
+        logger.info("已保存今日日程（文本格式，%d 字）", len(plan_text))
     
     def _extract_json(self, text: str) -> str:
         """从文本中提取 JSON"""

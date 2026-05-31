@@ -12,17 +12,13 @@ _IMPORT_FAILED = False
 try:
     from ...config.prompt import (
         CHAT_BASE_TEMPLATE,
-        PLAN_OPENING,
-        PLAN_CHARACTER_SUFFIX,
-        PLAN_BASE_TEMPLATE,
+        PLAN_TEMPLATE,
         FC_FORMAT_TEMPLATE,
     )
 except ImportError:
     _IMPORT_FAILED = True
     CHAT_BASE_TEMPLATE = ""
-    PLAN_OPENING = ""
-    PLAN_CHARACTER_SUFFIX = ""
-    PLAN_BASE_TEMPLATE = ""
+    PLAN_TEMPLATE = ""
     FC_FORMAT_TEMPLATE = ""
 
 from typing import List, Dict
@@ -111,32 +107,14 @@ def create_plan_context(
     """
     context = AgentContext("plan")
 
-    # Build character description (matches get_plan_character_info + format_plan_prompt)
-    char_desc = "## 关于这个角色\n- 名字：" + name
-    if english_name:
-        char_desc += "（" + english_name + "）"
-    char_desc += "\n- 年龄：" + str(age) + "岁\n- 性别：" + gender
-    if values:
-        char_desc += "\n- 性格特点：" + ', '.join(values)
-    char_desc += PLAN_CHARACTER_SUFFIX
+    # Use the new unified plan template with character name injected
+    plan_content = PLAN_TEMPLATE.replace("{character_name}", name) if PLAN_TEMPLATE else ""
 
-    # Section 1: opening + character info (matches position in format_plan_prompt).
-    # Trailing \n compensates for the single-\n section join so the output
-    # matches format_plan_prompt() which uses \n\n before the next block.
-    section1 = PLAN_OPENING + "\n\n" + char_desc if PLAN_OPENING else char_desc
     context.add_section(PromptSection(
-        name="plan_character_info",
-        content=section1 + "\n",
+        name="plan_template",
+        content=plan_content,
         cacheable=True,
         order=1,
-    ))
-
-    # Section 2: schedule template (the ## 你的职责 ... part)
-    context.add_section(PromptSection(
-        name="schedule_base_template",
-        content=PLAN_BASE_TEMPLATE.strip() if PLAN_BASE_TEMPLATE else "",
-        cacheable=True,
-        order=2,
     ))
 
     return context
