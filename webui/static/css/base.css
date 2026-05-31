@@ -148,6 +148,16 @@ html, body {
     font-weight: 500;
 }
 
+.nav-link-inner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-decoration: none;
+    color: inherit;
+    flex: 1;
+    min-width: 0;
+}
+
 .nav-item:hover {
     background: var(--bg-hover);
     color: var(--text-primary);
@@ -167,6 +177,71 @@ html, body {
 
 .nav-item.active svg {
     opacity: 1;
+}
+
+/* ===== 侧边栏子菜单 ===== */
+.nav-item.has-submenu {
+    position: relative;
+}
+
+.nav-submenu {
+    position: absolute;
+    left: 100%;
+    top: 0;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 6px;
+    min-width: 180px;
+    display: none;
+    z-index: 100;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    flex-direction: column;
+    gap: 2px;
+}
+
+.nav-item.has-submenu:hover .nav-submenu,
+.nav-submenu:hover {
+    display: flex;
+}
+
+.nav-submenu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.12s;
+    white-space: nowrap;
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+}
+
+.nav-submenu-item:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.nav-submenu-item .submenu-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+/* 响应式：窄侧边栏时子菜单位置调整 */
+@media (max-width: 900px) {
+    .nav-submenu {
+        left: 52px;
+        top: -4px;
+    }
 }
 
 /* 底部状态 */

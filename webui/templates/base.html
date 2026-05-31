@@ -34,10 +34,38 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
                     <span class="label" data-i18n="nav.schedule">Schedule</span>
                 </a>
-                <a href="/config" class="nav-item" data-page="config" title="Settings">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.67 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.67a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                <div class="nav-item has-submenu" data-page="config" title="Settings">
+                    <a href="/config" class="nav-link-inner">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.67 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.67a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                     <span class="label" data-i18n="nav.settings">Settings</span>
-                </a>
+                    </a>
+                    <div class="nav-submenu">
+                        <a href="/config#config-section-character" class="nav-submenu-item">
+                            <span class="submenu-dot" style="background:#6366f1;"></span>
+                            <span data-i18n="nav.submenu.character">角色人设</span>
+                        </a>
+                        <a href="/config#config-section-behavior" class="nav-submenu-item">
+                            <span class="submenu-dot" style="background:#10b981;"></span>
+                            <span data-i18n="nav.submenu.behavior">行为参数</span>
+                        </a>
+                        <a href="/config#config-section-platforms" class="nav-submenu-item">
+                            <span class="submenu-dot" style="background:#06b6d4;"></span>
+                            <span data-i18n="nav.submenu.platforms">平台适配器</span>
+                        </a>
+                        <a href="/config#config-section-services" class="nav-submenu-item">
+                            <span class="submenu-dot" style="background:#3b82f6;"></span>
+                            <span data-i18n="nav.submenu.services">AI 服务</span>
+                        </a>
+                        <a href="/config#config-section-routing" class="nav-submenu-item">
+                            <span class="submenu-dot" style="background:#f59e0b;"></span>
+                            <span data-i18n="nav.submenu.routing">模型路由</span>
+                        </a>
+                        <a href="/config#config-section-plugins" class="nav-submenu-item">
+                            <span class="submenu-dot" style="background:#84cc16;"></span>
+                            <span data-i18n="nav.submenu.plugins">插件管理</span>
+                        </a>
+                    </div>
+                </div>
                 <a href="/adapter" class="nav-item" data-page="adapter" title="Adapters">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg>
                     <span class="label" data-i18n="nav.adapters">Adapters</span>
@@ -107,7 +135,7 @@
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 
     <!-- 视觉小说风格引导系统 -->
-    <div class="vn-overlay" id="guideOverlay">
+    <div class="vn-overlay" id="guideOverlay" role="dialog" aria-modal="true" aria-label="Tali 引导对话框">
         <!-- 场景背景 -->
         <div class="vn-background" id="vnBackground">
             <div class="vn-scene-gradient"></div>
@@ -125,13 +153,13 @@
             <div class="vn-textbox">
                 <div class="vn-name-tag" id="vnNameTag">Tali</div>
                 <div class="vn-dialogue" id="guideText">
-                    <span class="vn-text-content" id="vnTextContent"></span>
-                    <span class="vn-cursor" id="vnCursor">▌</span>
+                    <span class="vn-text-content" id="vnTextContent" aria-live="polite"></span>
+                    <span class="vn-cursor" id="vnCursor" aria-hidden="true">▌</span>
                 </div>
-                <div class="vn-indicator" id="vnIndicator">▼</div>
+                <div class="vn-indicator" id="vnIndicator" aria-hidden="true">▼</div>
                 <!-- 文本输入区（Tali 提问时显示） -->
                 <div class="vn-input-area" id="vnInputArea" style="display:none">
-                    <input type="text" class="vn-text-input" id="vnTextInput" placeholder="">
+                    <input type="password" class="vn-text-input" id="vnTextInput" placeholder="">
                     <button class="vn-input-btn" id="vnInputBtn">→</button>
                 </div>
             </div>
@@ -145,14 +173,14 @@
             </div>
 
             <!-- 操作按钮（选择支） -->
-            <div class="vn-choices" id="guideActions"></div>
+            <div class="vn-choices" id="guideActions" role="group" aria-label="选择操作"></div>
         </div>
     </div>
 
     <!-- Tali 召唤触发器 -->
-    <div class="vn-trigger" id="guideTrigger" title="召唤 Tali">
+    <button class="vn-trigger" id="guideTrigger" aria-label="召唤 Tali">
         <img src="/static/img/mascot.png" alt="Tali" class="vn-trigger-icon">
-    </div>
+    </button>
 
     <script src="{{ url_for('static', filename='js/guide.js') }}"></script>
     {% block extra_js %}{% endblock %}
