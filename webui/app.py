@@ -21,6 +21,7 @@ import json
 import yaml
 import asyncio
 import logging
+import queue
 import threading
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
@@ -43,7 +44,25 @@ from core.tools.registry import get_registry
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.config['JSON_AS_ASCII'] = False
 app.add_template_global(lambda x: x, '_')
-app.secret_key = secrets.token_urlsafe(32)
+def _load_secret_key() -> str:
+    """Load persistent secret key from file, generating if needed."""
+    key_path = PROJECT_ROOT / "data" / "config" / "secret_key"
+    if key_path.exists():
+        return key_path.read_text(encoding="utf-8").strip()
+    key = secrets.token_urlsafe(32)
+    key_path.parent.mkdir(parents=True, exist_ok=True)
+    key_path.write_text(key, encoding="utf-8")
+    return key
+
+
+app.secret_key = _load_secret_key()
+
+
+def _generate_csrf_token() -> str:
+    """Get or create CSRF token for the current session."""
+    if 'csrf_token' not in session:
+        session['csrf_token'] = secrets.token_urlsafe(32)
+    return session['csrf_token']
 
 # ============ WebUI 认证 ============
 
@@ -94,6 +113,32 @@ def inject_plugin_nav():
     except Exception:
         items = []
     return {"plugin_nav_items": items}
+
+
+@app.before_request
+def _check_csrf():
+    """CSRF protection for state-changing API routes."""
+    if request.method in ('GET', 'HEAD', 'OPTIONS', 'TRACE'):
+        return
+    if request.path.startswith('/static/'):
+        return
+    if request.path == '/api/login':
+        return
+    token = request.headers.get('X-CSRF-Token')
+    if not token or token != session.get('csrf_token'):
+        return jsonify({"ok": False, "error": "CSRF token mismatch"}), 403
+
+
+@app.after_request
+def _set_security_headers(response):
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    return response
+
+
+@app.context_processor
+def inject_csrf_token():
+    return {'csrf_token': _generate_csrf_token()}
 
 
 # 线程池，用于执行同步的 LLM 调用
@@ -337,9 +382,21 @@ def _get_adapter_manager():
         pass
     return None
 
-# 日志内存队列（用于 SSE）
-LOG_QUEUE = []
+# 日志内存队列（用于 SSE，thread-safe 的 queue.Queue）
 MAX_LOGS = 500
+LOG_QUEUE = queue.Queue(maxsize=MAX_LOGS)
+
+
+def _put_log(record_dict):
+    """Put a log entry into the queue, discarding oldest when full."""
+    try:
+        LOG_QUEUE.put_nowait(record_dict)
+    except queue.Full:
+        try:
+            LOG_QUEUE.get_nowait()
+            LOG_QUEUE.put_nowait(record_dict)
+        except queue.Empty:
+            pass
 
 # 内存级指标缓存（Dashboard 实时数据）
 _metrics_cache = {
@@ -1022,7 +1079,8 @@ def api_tools_list():
 
 @app.route("/api/logs/modules")
 def api_logs_modules():
-    modules = sorted({l.get("module", "system") for l in LOG_QUEUE if l.get("module")})
+    logs_list = list(LOG_QUEUE.queue)
+    modules = sorted({l.get("module", "system") for l in logs_list if l.get("module")})
     if not modules:
         modules = ["system", "core", "adapter", "llm", "tools"]
     return jsonify(modules)
@@ -1059,29 +1117,37 @@ def api_plan_event_types():
 @app.route("/api/logs/stream")
 def api_logs_stream():
     def event_stream():
-        last_idx = len(LOG_QUEUE)
         while True:
-            if len(LOG_QUEUE) > last_idx:
-                for item in LOG_QUEUE[last_idx:]:
-                    yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
-                last_idx = len(LOG_QUEUE)
-            import time
-            time.sleep(0.3)
+            try:
+                item = LOG_QUEUE.get(timeout=5)
+                yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+                # Drain any additional accumulated items
+                while True:
+                    try:
+                        item = LOG_QUEUE.get_nowait()
+                        yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+                    except queue.Empty:
+                        break
+            except queue.Empty:
+                yield ": keepalive\n\n"
 
     return Response(event_stream(), mimetype="text/event-stream")
 
 
 @app.route("/api/logs", methods=["GET", "DELETE"])
 def api_logs():
-    global LOG_QUEUE
     if request.method == "DELETE":
-        cleared = len(LOG_QUEUE)
-        LOG_QUEUE = []
+        cleared = LOG_QUEUE.qsize()
+        while True:
+            try:
+                LOG_QUEUE.get_nowait()
+            except queue.Empty:
+                break
         return jsonify({"ok": True, "cleared": cleared})
 
     level = request.args.get("level", "")
     module = request.args.get("module", "")
-    logs = LOG_QUEUE
+    logs = list(LOG_QUEUE.queue)
     if level:
         logs = [l for l in logs if l.get("level") == level]
     if module:
@@ -1171,6 +1237,7 @@ class LogQueueHandler(logging.Handler):
 
     def __init__(self, level=logging.NOTSET):
         super().__init__(level)
+        self.queue = LOG_QUEUE
         # 简化格式，只取时间、级别、模块名和消息
         self.setFormatter(logging.Formatter("%(asctime)s||%(levelname)s||%(name)s||%(message)s", datefmt="%H:%M:%S"))
 
@@ -1192,14 +1259,12 @@ class LogQueueHandler(logging.Handler):
             # 清理 ANSI 转义码
             message = self._strip_ansi(message)
 
-            LOG_QUEUE.append({
+            _put_log({
                 "time": time_str,
                 "level": level,
                 "module": module.split(".")[-1],  # 只取最后一段作为模块名
                 "message": message
             })
-            if len(LOG_QUEUE) > MAX_LOGS:
-                LOG_QUEUE.pop(0)
         except Exception:
             pass
 
@@ -1214,14 +1279,12 @@ class LogInterceptor:
     def write(self, s):
         self.original.write(s)
         if s.strip():
-            LOG_QUEUE.append({
+            _put_log({
                 "time": datetime.now().strftime("%H:%M:%S"),
                 "level": "INFO",
                 "module": "system",
                 "message": s.rstrip("\n")
             })
-            if len(LOG_QUEUE) > MAX_LOGS:
-                LOG_QUEUE.pop(0)
 
     def flush(self):
         self.original.flush()

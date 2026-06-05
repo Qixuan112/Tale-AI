@@ -6,6 +6,7 @@
 
 import os
 import threading
+import logging
 from typing import Dict, List, Any, Optional
 
 import yaml
@@ -24,6 +25,171 @@ from .model import (
     PersonaConfig,
     ProvideConfig,
 )
+
+
+logger = logging.getLogger(__name__)
+
+
+# ============ Schema Validation ============
+
+_SCHEMAS = {
+    "character.yaml": {
+        "fields": {
+            "character": dict,
+            "additional_prompt": str,
+            "additional_examples": list,
+            "raw_persona": str,
+        },
+        "required": ["character"],
+        "nested": {
+            "character": {
+                "ChineseName": str,
+                "NickNames": list,
+                "EnglishName": str,
+                "gender": str,
+                "age": (str, int),
+                "birthday": str,
+                "appearance": str,
+                "language": dict,
+                "views": (str, list),
+                "values": list,
+                "hobbies": list,
+                "expressions": (dict, list),
+                "dialogue_style_imitation": list,
+            },
+        },
+    },
+    "behavior.yaml": {
+        "fields": {"bot": dict, "context": dict, "selfie": dict},
+        "required": [],
+        "nested": {
+            "bot": {
+                "max_memory_length": int,
+                "max_message_interval": (int, float),
+                "max_buffer_messages": int,
+                "min_message_delay": (int, float),
+                "max_message_delay": (int, float),
+                "typing_speed": (int, float),
+                "typing_min_delay": (int, float),
+            },
+            "context": {
+                "max_context": int,
+                "memory_enabled": bool,
+                "personality_strength": (int, float),
+            },
+            "selfie": {"path": str},
+        },
+    },
+    "services.yaml": {
+        "fields": {},
+        "required": [],
+        "provider_fields": {
+            "type": str,
+            "format": str,
+            "api_key": str,
+            "base_url": str,
+            "model": str,
+            "voice_name": str,
+            "timeout": (int, float),
+        },
+    },
+    "routing.yaml": {
+        "fields": {k: dict for k in ["main_llm", "plan_llm", "tool_llm", "vlm",
+                                      "util_model", "image", "tts", "stt"]},
+        "required": [],
+        "nested": {k: {"provider": str}
+                   for k in ["main_llm", "plan_llm", "tool_llm", "vlm",
+                             "util_model", "image", "tts", "stt"]},
+    },
+    "platforms.yaml": {
+        "fields": {},
+        "required": [],
+        "provider_fields": {
+            "enabled": bool,
+            "adapter_type": str, "desc": str,
+            "ws_url": str, "ws_uri": str, "http_url": str,
+            "access_token": str, "ws_token": str, "ws_listen_ip": str,
+            "auto_reconnect": bool, "reconnect_interval": (int, float),
+            "bot_pid": (str, int), "owner_pid": (str, int),
+            "bot_token": str, "bot_uid": (str, int),
+            "permission_mode": str,
+            "group_allow_list": list, "user_allow_list": list,
+            "group_deny_list": list, "user_deny_list": list,
+            "waking_keywords": list,
+            "listening_bvid": str,
+            "listening_interval": (int, float),
+            "message_process_interval": (int, float),
+            "sessdata": str, "bili_jct": str, "buvid3": str,
+            "dedeuserid": str, "ac_time_value": str,
+        },
+    },
+    "plugins.yaml": {
+        "fields": {"plugins": dict},
+        "required": [],
+    },
+}
+
+
+def _type_name(t):
+    """Return human-readable type name, handling type tuples."""
+    if isinstance(t, type):
+        return t.__name__
+    if isinstance(t, tuple):
+        return "|".join(x.__name__ for x in t)
+    return str(t)
+
+
+def _validate_config(config_name: str, data: dict) -> None:
+    """Validate config data against schema, logging warnings.
+    Never raises — config still loads with defaults for missing fields.
+    """
+    schema = _SCHEMAS.get(config_name)
+    if schema is None:
+        return
+
+    if not isinstance(data, dict):
+        logger.warning("[Config] %s: top-level is not a dict (got %s)", config_name, type(data).__name__)
+        return
+
+    # Required top-level fields
+    for field in schema.get("required", []):
+        if field not in data:
+            logger.warning("[Config] %s: missing required field '%s'", config_name, field)
+
+    # Unknown top-level keys
+    known = schema.get("fields", {})
+    if known:
+        for key in data:
+            if key not in known:
+                logger.warning("[Config] %s: unknown top-level key '%s'", config_name, key)
+
+    # Type-check top-level fields
+    for field, t in known.items():
+        if field in data and t is not None and not isinstance(data[field], t):
+            logger.warning("[Config] %s: field '%s' should be %s, got %s",
+                          config_name, field, _type_name(t), type(data[field]).__name__)
+
+    # Dynamic provider entries (services.yaml, platforms.yaml)
+    provider_fields = schema.get("provider_fields")
+    if provider_fields:
+        for key, value in data.items():
+            if isinstance(value, dict):
+                for field, t in provider_fields.items():
+                    if field in value and not isinstance(value[field], t):
+                        logger.warning("[Config] %s: field '%s.%s' should be %s, got %s",
+                                      config_name, key, field, _type_name(t),
+                                      type(value[field]).__name__)
+
+    # Nested dict fields
+    for parent_key, child_fields in schema.get("nested", {}).items():
+        parent = data.get(parent_key)
+        if not isinstance(parent, dict):
+            continue
+        for field, t in child_fields.items():
+            if field in parent and t is not None and not isinstance(parent[field], t):
+                logger.warning("[Config] %s: field '%s.%s' should be %s, got %s",
+                              config_name, parent_key, field, _type_name(t),
+                              type(parent[field]).__name__)
 
 
 class ConfigLoader:
@@ -62,7 +228,10 @@ class ConfigLoader:
             return {}
 
         with open(filepath, "r", encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
+            data = yaml.safe_load(f) or {}
+
+        _validate_config(os.path.basename(filename), data)
+        return data
 
     def _load_all_configs(self):
         """加载所有配置文件"""
