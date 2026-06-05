@@ -104,5 +104,13 @@ class ToolLLM:
         )
 
 
-# 创建全局实例
-toolllm = ToolLLM()
+# 全局实例（懒加载）
+toolllm: Optional[ToolLLM] = None
+
+
+def get_toolllm() -> ToolLLM:
+    """获取全局 ToolLLM 实例（懒初始化）"""
+    global toolllm
+    if toolllm is None:
+        toolllm = ToolLLM()
+    return toolllm

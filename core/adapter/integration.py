@@ -244,9 +244,16 @@ def get_bridge(event_bus=None, config_loader=None) -> AdapterEventBridge:
 
     Returns:
         AdapterEventBridge 实例
+
+    Raises:
+        RuntimeError: 桥接器未初始化且未提供必要参数
     """
     global _bridge_instance
     if _bridge_instance is None:
+        if event_bus is None or config_loader is None:
+            raise RuntimeError(
+                "Bridge not initialized. Call get_bridge(event_bus, config_loader) first."
+            )
         _bridge_instance = AdapterEventBridge(event_bus, config_loader)
     return _bridge_instance
 
