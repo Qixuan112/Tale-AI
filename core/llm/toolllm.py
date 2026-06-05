@@ -8,8 +8,6 @@ from ..tools.registry import (
 from ..utils import get_logger
 from .context import AgentContext, create_tool_context
 
-import json
-
 logger = get_logger(__name__)
 
 

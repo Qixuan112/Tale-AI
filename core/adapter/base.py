@@ -41,7 +41,7 @@ class BaseAdapter(ABC):
     def __init__(
         self,
         config: Dict[str, Any],
-        event_callback: Optional[Callable[[PlatformEvent], Awaitable[None]]] = None
+        event_callback: Optional[Callable[[PlatformEvent, str], Awaitable[None]]] = None
     ):
         """初始化适配器
 

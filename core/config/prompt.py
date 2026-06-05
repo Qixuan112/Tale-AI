@@ -205,11 +205,6 @@ PLAN_TEMPLATE = """# 角色
 # 正式任务
 请为数字生命 **{character_name}** 生成一份完整日程，时间随机，纯拟人状态，不要任何额外文字。"""
 
-# Keep these for backward compatibility (used by factory.py create_plan_context)
-PLAN_OPENING = PLAN_TEMPLATE
-PLAN_BASE_TEMPLATE = ""
-PLAN_CHARACTER_SUFFIX = ""
-
 # --- ToolLLM ---
 
 FC_FORMAT_TEMPLATE = """
@@ -329,10 +324,8 @@ def format_plan_prompt() -> str:
     
     if info['personality']:
         character_desc += "\n- 性格特点：" + ', '.join(info['personality'])
-    
-    character_desc += PLAN_CHARACTER_SUFFIX
 
-    return PLAN_OPENING + "\n\n" + character_desc + "\n\n" + PLAN_BASE_TEMPLATE
+    return PLAN_TEMPLATE + "\n\n" + character_desc
 
 
 def get_chat_prompt() -> str:

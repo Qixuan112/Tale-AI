@@ -36,7 +36,7 @@ class AdapterManager:
     def __init__(
         self,
         config: Optional[Dict[str, Any]] = None,
-        event_callback: Optional[Callable[[PlatformEvent], Awaitable[None]]] = None
+        event_callback: Optional[Callable[[PlatformEvent, str], Awaitable[None]]] = None
     ):
         """初始化管理器
 

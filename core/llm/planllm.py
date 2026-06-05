@@ -340,8 +340,27 @@ class PlanLLM:
         # 调用 LLM（系统提示词已含 PLAN_TEMPLATE）
         response = self._call_llm(full_prompt)
 
-        # 保存原始文本作为计划
+        # 保存原始文本作为计划摘要
         self._save_plan_text(response)
+
+        # 解析为结构化 DiaryEntry 条目
+        entries = self._parse_plan_to_entries(response)
+        if entries:
+            # 清空旧条目，用新计划替换
+            if self._today_plan:
+                self._today_plan.entries.clear()
+            else:
+                self._today_plan = DailyPlan(date=self._current_date)
+
+            for entry in entries:
+                success = self._today_plan.add_entry(entry)
+                if not success:
+                    logger.warning("日程条目 '%s' 时间冲突，已跳过", entry.title)
+
+            self._save_today_plan()
+            logger.info("已解析 %d 条日程条目并保存", len(self._today_plan.entries))
+        else:
+            logger.warning("未能从计划文本解析出结构化条目，仅保存文本摘要")
 
         return response
     
@@ -673,6 +692,100 @@ class PlanLLM:
         self._today_plan.summary = plan_text.strip()
         self._save_today_plan()
         logger.info("已保存今日日程（文本格式，%d 字）", len(plan_text))
+
+    def _parse_plan_to_entries(self, plan_text: str) -> List[DiaryEntry]:
+        """
+        Send a follow-up LLM call to convert the plan text into structured
+        DiaryEntry objects.
+
+        Args:
+            plan_text: The LLM-generated plan text
+
+        Returns:
+            List of DiaryEntry objects parsed from the plan
+        """
+        parse_prompt = f"""请将以下今日日程计划转换为结构化 JSON 数组。每个事件包含以下字段：
+
+- title: 事件标题
+- description: 事件描述
+- event_type: 事件类型 (wake/meal/work/study/social/entertainment/rest/exercise/appointment/task/sleep/other)
+- start_time: 开始时间 (HH:MM 格式, 24小时制)
+- end_time: 结束时间 (HH:MM 格式, 24小时制)
+- priority: 优先级 (high/medium/low)
+- location: 地点（可选，如无则为空字符串）
+
+日程计划文本：
+{plan_text}
+
+请严格以 JSON 数组格式输出，例如：
+[
+    {{
+        "title": "起床洗漱",
+        "description": "开始新的一天",
+        "event_type": "wake",
+        "start_time": "07:00",
+        "end_time": "07:30",
+        "priority": "high",
+        "location": ""
+    }}
+]
+
+注意：
+1. 确保时间是24小时制 HH:MM 格式
+2. 事件按时间顺序排列
+3. event_type 必须使用上述列表中的值
+4. 直接输出 JSON 数组，不要包含其他文本"""
+
+        try:
+            response = self._call_llm(parse_prompt)
+            json_str = self._extract_json(response)
+            events_data = json.loads(json_str)
+
+            # Ensure we got a list
+            if isinstance(events_data, dict):
+                # Some models wrap the array in a dict key
+                for key in ("events", "schedule", "plan", "entries"):
+                    if key in events_data:
+                        events_data = events_data[key]
+                        break
+                else:
+                    events_data = [events_data]
+
+            entries = []
+            for event_data in events_data:
+                try:
+                    # Map event_type string to EventType enum, with fallback
+                    event_type_str = event_data.get("event_type", "other").lower()
+                    try:
+                        event_type = EventType(event_type_str)
+                    except ValueError:
+                        logger.warning("未知事件类型 '%s'，使用 'other' 代替", event_type_str)
+                        event_type = EventType.OTHER
+
+                    start_time_str = event_data.get("start_time", "08:00")
+                    end_time_str = event_data.get("end_time")
+
+                    entry = DiaryEntry(
+                        id=str(uuid.uuid4()),
+                        title=event_data.get("title", "未命名事件"),
+                        description=event_data.get("description", ""),
+                        event_type=event_type,
+                        priority=Priority(event_data.get("priority", "medium")),
+                        start_time=datetime.strptime(start_time_str, "%H:%M").time(),
+                        end_time=datetime.strptime(end_time_str, "%H:%M").time() if end_time_str else None,
+                        location=event_data.get("location"),
+                        source="plan"
+                    )
+                    entries.append(entry)
+                except Exception as e:
+                    logger.warning("解析单个日程条目失败: %s", e)
+                    continue
+
+            return entries
+
+        except Exception as e:
+            logger.error("解析计划文本为结构化条目失败: %s", e)
+            return []
     
     def _extract_json(self, text: str) -> str:
         """从文本中提取 JSON"""

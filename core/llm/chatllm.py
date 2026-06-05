@@ -97,18 +97,26 @@ class ChatLLM:
         return assistant_reply
 
     def _trim_context(self):
-        """
-        修剪上下文，确保不超过 max_context 限制
-        策略：始终保留 system 消息，删除最早的用户-对话消息
+        """修剪上下文，确保不超过 max_context 限制。
+        始终保留所有 system 消息，从非 system 消息中成对删除最早的用户-助手回合。
         """
         while len(self.messages) > self.max_context:
-            if len(self.messages) >= 3:
-                del self.messages[1:3]
+            system_msgs = [m for m in self.messages if m.get("role") == "system"]
+            non_system = [m for m in self.messages if m.get("role") != "system"]
+
+            if len(non_system) >= 2:
+                # 删除最早的一对非 system 消息
+                non_system = non_system[2:]
+            elif len(non_system) == 1:
+                # 只剩一条，也删除
+                non_system = []
             else:
-                # 安全兜底：消息不足3条时直接截断到保留 system 消息
-                logger.warning("上下文不足3条但超过限制，强制保留 system 消息")
-                self.messages = [self.messages[0]]
-                break
+                # 没有任何非 system 消息可删，强制截断到只剩 system 消息
+                logger.warning("上下文超过限制但无可删除的非系统消息，强制保留 system 消息")
+                self.messages = system_msgs
+                return
+
+            self.messages = system_msgs + non_system
 
     def clear_history(self):
         """清空对话历史，只保留 system 消息"""
