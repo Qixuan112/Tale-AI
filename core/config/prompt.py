@@ -435,9 +435,22 @@ TOOL_PROMPT = """
 
 # 测试代码
 if __name__ == "__main__":
-    from ..utils import get_logger
-    _logger = get_logger(__name__)
-    _logger.info("=== CHAT_PROMPT 测试 ===")
-    _logger.info(CHAT_PROMPT[:1500])
-    _logger.info("\n... [截断] ...")
-    _logger.info("\n总长度: %d 字符", len(CHAT_PROMPT))
+    print("=== Tale-AI Prompt Templates Test ===")
+    print(f"CHAT_BASE_TEMPLATE: {len(CHAT_BASE_TEMPLATE)} chars")
+    print(f"PLAN_TEMPLATE:       {len(PLAN_TEMPLATE)} chars")
+    print(f"FC_FORMAT_TEMPLATE:  {len(FC_FORMAT_TEMPLATE)} chars")
+    print(f"TOOL_PROMPT:         {len(TOOL_PROMPT)} chars")
+    print()
+
+    # Demo get_chat_prompt()
+    chat_prompt = get_chat_prompt()
+    print(f"get_chat_prompt()  returns {len(chat_prompt)} chars")
+    print(chat_prompt[:500])
+    print("... [truncated]")
+    print()
+
+    # Demo format_plan_prompt()
+    plan_prompt = format_plan_prompt()
+    print(f"format_plan_prompt() returns {len(plan_prompt)} chars")
+    print(plan_prompt[:500])
+    print("... [truncated]")

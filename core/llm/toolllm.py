@@ -44,6 +44,18 @@ class ToolLLM:
                 tools_text=get_registry().get_tools_list_text(),
             )
 
+        # Apply context.yaml overrides (optional, fail gracefully)
+        try:
+            from .context.config import load_context_config
+            ctx_config = load_context_config()
+            agent_cfg = ctx_config.get_agent_config("tool")
+            if agent_cfg is not None:
+                agent_cfg.apply_to(self.context)
+                if agent_cfg.cache_strategy:
+                    self.cache_strategy = agent_cfg.cache_strategy
+        except Exception:
+            pass
+
     def generate_fc(self, action):
         """
         根据动作指令生成 Function Calling JSON

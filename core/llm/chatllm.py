@@ -38,6 +38,18 @@ class ChatLLM:
                 persona_additional_prompt=config_loader.persona.additional_prompt,
             )
 
+        # Apply context.yaml overrides (optional, fail gracefully)
+        try:
+            from .context.config import load_context_config
+            ctx_config = load_context_config()
+            agent_cfg = ctx_config.get_agent_config("chat")
+            if agent_cfg is not None:
+                agent_cfg.apply_to(self.context)
+                if agent_cfg.cache_strategy:
+                    self.cache_strategy = agent_cfg.cache_strategy
+        except Exception:
+            pass
+
         # Build initial messages from context
         self.messages = list(self.context.build_messages_head(self.cache_strategy))
 

@@ -94,6 +94,18 @@ class PlanLLM:
                 gender=info.get("gender", "未知"),
                 values=info.get("personality", []),
             )
+
+        # Apply context.yaml overrides (optional, fail gracefully)
+        try:
+            from .context.config import load_context_config
+            ctx_config = load_context_config()
+            agent_cfg = ctx_config.get_agent_config("plan")
+            if agent_cfg is not None:
+                agent_cfg.apply_to(self.context)
+                if agent_cfg.cache_strategy:
+                    self.cache_strategy = agent_cfg.cache_strategy
+        except Exception:
+            pass
         
         # 数据存储路径
         self.data_dir = Path("data/diary")
@@ -113,9 +125,6 @@ class PlanLLM:
         bus.on("config_reloaded", self._on_config_reloaded)
 
         self._load_data()
-
-        # 检查是否需要创建新日期的计划
-        self._check_new_day()
     
     def _get_plan_file_path(self, date: datetime.date) -> Path:
         """获取某日期程文件路径"""

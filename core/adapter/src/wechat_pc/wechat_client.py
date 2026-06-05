@@ -469,12 +469,12 @@ class WeChatClient:
                     # 更新记录，限制集合大小防止内存泄漏
                     merged_ids = current_ids | last_ids
                     if len(merged_ids) > MAX_MSG_ID_CACHE:
-                        merged_ids = current_ids
+                        merged_ids = set(list(merged_ids)[-MAX_MSG_ID_CACHE:])
                     self._last_msg_ids[current_chat] = merged_ids
 
                     merged_fps = current_fingerprints | last_fps
                     if len(merged_fps) > MAX_MSG_ID_CACHE:
-                        merged_fps = current_fingerprints
+                        merged_fps = set(list(merged_fps)[-MAX_MSG_ID_CACHE:])
                     self._last_msg_fingerprints[current_chat] = merged_fps
         except Exception as e:
             logger.debug(f"Fallback GetAllMessage failed: {e}")

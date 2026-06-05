@@ -191,15 +191,15 @@ class DailyPlan:
     
     def _check_conflict(self, new_entry: DiaryEntry) -> bool:
         """检查时间冲突"""
-        new_start = datetime.combine(datetime.today(), new_entry.start_time)
-        new_end = datetime.combine(datetime.today(), new_entry.end_time) if new_entry.end_time else new_start + timedelta(hours=1)
-        
+        new_start = datetime.combine(self.date, new_entry.start_time)
+        new_end = datetime.combine(self.date, new_entry.end_time) if new_entry.end_time else new_start + timedelta(hours=1)
+
         for entry in self.entries:
             if entry.id == new_entry.id:
                 continue
-            
-            exist_start = datetime.combine(datetime.today(), entry.start_time)
-            exist_end = datetime.combine(datetime.today(), entry.end_time) if entry.end_time else exist_start + timedelta(hours=1)
+
+            exist_start = datetime.combine(self.date, entry.start_time)
+            exist_end = datetime.combine(self.date, entry.end_time) if entry.end_time else exist_start + timedelta(hours=1)
             
             # 检查是否有重叠
             if (new_start < exist_end) and (new_end > exist_start):
@@ -251,11 +251,15 @@ class DailyPlan:
         # 从 after_time 开始，每30分钟检查一次
         current = datetime.combine(datetime.today(), after_time)
         end_of_day = datetime.combine(datetime.today(), time(23, 59))
-        
+        iterations = 0
+
         while current + timedelta(minutes=duration_minutes) <= end_of_day:
             slot_start = current.time()
             slot_end = (current + timedelta(minutes=duration_minutes)).time()
-            
+            iterations += 1
+            if iterations > 48:
+                break
+
             # 检查是否与现有条目冲突
             conflict = False
             for entry in self.entries:
@@ -272,11 +276,6 @@ class DailyPlan:
             
             if not conflict:
                 return slot_start
-            
-            # 安全检查：确保循环能推进，防止 entry_end 早于/等于当前检查点导致死循环
-            original_current = datetime.combine(datetime.today(), slot_start)
-            if current <= original_current:
-                current = original_current + timedelta(minutes=30)
         
         return None
     
@@ -381,7 +380,7 @@ class Goal:
             description=data["description"],
             category=data.get("category", "other"),
             priority=Priority(data.get("priority", "medium")),
-            target_date=datetime.fromisoformat(data["target_date"]).date() if data.get("target_date") else None,
+            target_date=datetime.fromisoformat(data.get("target_date")).date() if data.get("target_date") else None,
             created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now(),
             progress=data.get("progress", 0),
             status=data.get("status", "active"),
