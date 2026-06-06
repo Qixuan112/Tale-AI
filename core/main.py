@@ -36,8 +36,8 @@ def calculate_split_interval(text_length: int) -> float:
     延迟 = max(字数 * 打字速度(ms/字) / 1000, 最小延迟)
     """
     bot = config_loader.bot.bot
-    speed_ms = getattr(bot, 'typing_speed', 50.0)
-    min_delay = getattr(bot, 'typing_min_delay', 0.5)
+    speed_ms = getattr(bot, 'typing_speed', 200.0)
+    min_delay = getattr(bot, 'typing_min_delay', 2.0)
     delay = max(text_length * speed_ms / 1000.0, min_delay)
     return round(delay, 2)
 
@@ -379,10 +379,11 @@ class TaleCore:
             )
 
     async def _send_message_batch(self, processed: ProcessedMessage, messages: list, adapter_instance: str = None):
-        """批量发送消息，每条消息前模拟打字延迟（包括第一条）"""
+        """批量发送消息，每条消息前模拟打字延迟（包括第一条），句间额外停顿"""
         is_group = processed.group_id is not None
         target_id = processed.group_id if processed.group_id else processed.sender_id
-        for msg in messages:
+        inter_delay = getattr(config_loader.bot.bot, 'typing_inter_delay', 2.0)
+        for idx, msg in enumerate(messages):
             reply_text = self._extract_message_text(msg)
             if reply_text:
                 # 打字延迟：每条消息发送前等待，模拟真人逐条打字
@@ -394,6 +395,9 @@ class TaleCore:
                     reply_to=processed.message_id,
                     is_group=is_group
                 )
+                # 句与句之间的额外停顿（最后一条不等待）
+                if idx < len(messages) - 1:
+                    await asyncio.sleep(inter_delay)
 
     async def _resolve_follow_up(self, chatllm_reply: str, parsed: dict = None) -> list:
         """
