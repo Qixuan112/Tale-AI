@@ -399,19 +399,21 @@ MAX_LOGS = 500
 LOG_QUEUE = queue.Queue(maxsize=MAX_LOGS)
 LOG_FILE = Path(PROJECT_ROOT) / "data" / "logs" / "webui.log"
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+_log_lock = threading.Lock()
 
 
 def _put_log(record_dict):
     """写入日志：文件持久化 + 内存队列"""
-    # 文件持久化
+    # 文件持久化（带缓冲写入）
     try:
         ts = record_dict.get("time", "")
         lvl = record_dict.get("level", "INFO")
         mod = record_dict.get("module", "")
         msg = record_dict.get("message", "")
         line = f"[{ts}] [{lvl}] [{mod}] {msg}\n"
-        with open(LOG_FILE, "a", encoding="utf-8") as f:
-            f.write(line)
+        with _log_lock:
+            with open(LOG_FILE, "a", encoding="utf-8", buffering=1) as f:
+                f.write(line)
     except Exception:
         pass
     # 内存队列（用于 SSE 实时推送）
@@ -558,8 +560,12 @@ def api_chat_send():
     if conv_id is not None and conv_id != conv_store.current_id:
         conv_store.switch(conv_id)
 
-    reply = conv_store.send(message)
-    return jsonify({"reply": reply, "conv_id": conv_store.current_id})
+    try:
+        reply = conv_store.send(message)
+        return jsonify({"reply": reply, "conv_id": conv_store.current_id})
+    except Exception as e:
+        logger.error("发送消息失败: %s", e, exc_info=True)
+        return jsonify({"error": f"发送消息失败: {e}"}), 500
 
 
 @app.route("/api/chat/new", methods=["POST"])
