@@ -404,7 +404,11 @@
     }
 
     function switchToCardMode() {
-        if (!monacoEditor) return;
+        if (!monacoEditor) {
+            // Monaco 未初始化的可能性较低，做容错处理
+            alert('编辑器尚未加载，请稍后再试');
+            return;
+        }
         var yamlStr = monacoEditor.getValue();
         if (!yamlLib) {
             alert('js-yaml 未加载，无法切换到卡片模式');

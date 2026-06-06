@@ -877,15 +877,22 @@
         var focus = params.get('focus');
         if (focus && window.location.pathname === '/config') {
             setTimeout(function () {
-                var tab = document.querySelector('[data-tab="' + focus + '"]');
-                if (tab) tab.click();
+                // 使用 hash 导航展开对应 section（新版卡片布局无 tab）
+                window.location.hash = 'config-section-' + focus;
                 var tips = {
                     'services': window.t('guide.step_tip_services'),
                     'character': window.t('guide.step_tip_character'),
                     'platforms': window.t('guide.step_tip_platforms'),
                     'behavior': window.t('guide.step_tip_behavior'),
                 };
-                Guide.showVNDialog(tips[focus] || window.t('guide.step_tip_default'));
+                var tip = tips[focus];
+                if (tip) {
+                    Guide.showVNDialog(tip, {
+                        buttons: [
+                            { text: window.t('guide.btn_gotit') || '知道了', primary: true, action: function () { Guide.hideDialog(); }}
+                        ]
+                    });
+                }
             }, 500);
         }
     }
