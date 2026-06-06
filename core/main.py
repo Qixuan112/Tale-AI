@@ -68,17 +68,9 @@ class TaleCore:
         """初始化核心组件（幂等，可多次调用）"""
         if self.chat is not None:
             return
-        # 初始化 LLM
-        self.chat = ChatLLM(
-            api_key=CHAT_API_KEY,
-            model=CHAT_MODEL,
-            url=CHAT_URL
-        )
-        self.toolllm = ToolLLM(
-            api_key=PLAN_API_KEY,
-            model=PLAN_MODEL,
-            url=PLAN_URL
-        )
+
+        self.chat = self._init_chatllm()
+        self.toolllm = self._init_toolllm()
 
         # 初始化消息处理器（从配置加载）
         self._init_message_processor()
@@ -97,6 +89,28 @@ class TaleCore:
         self._init_plugin_manager()
 
         logger.info("核心组件初始化完成")
+
+    @staticmethod
+    def _init_chatllm():
+        if not CHAT_API_KEY:
+            logger.warning("ChatLLM 未配置 API Key，请通过 WebUI 配置服务商")
+            return None
+        try:
+            return ChatLLM(api_key=CHAT_API_KEY, model=CHAT_MODEL, url=CHAT_URL)
+        except Exception as e:
+            logger.warning("ChatLLM 初始化失败: %s", e)
+            return None
+
+    @staticmethod
+    def _init_toolllm():
+        if not PLAN_API_KEY:
+            logger.warning("ToolLLM 未配置 API Key，请通过 WebUI 配置服务商")
+            return None
+        try:
+            return ToolLLM(api_key=PLAN_API_KEY, model=PLAN_MODEL, url=PLAN_URL)
+        except Exception as e:
+            logger.warning("ToolLLM 初始化失败: %s", e)
+            return None
 
     def _init_message_processor(self):
         """初始化消息处理器"""
