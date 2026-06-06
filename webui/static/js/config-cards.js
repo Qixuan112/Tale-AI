@@ -120,6 +120,42 @@
                         { key: 'selfie.path', labelKey: 'field.behavior.selfiePath', labelDefault: '头像路径', type: 'text', placeholder: '自定义头像文件路径，留空使用默认' },
                     ]
                 },
+                {
+                    id: 'wake-settings',
+                    label: '唤醒',
+                    titleKey: 'card.behavior.wake',
+                    titleDefault: '唤醒设置',
+                    subtitleKey: 'card.behavior.wakeDesc',
+                    subtitleDefault: '群聊中触发机器人响应的方式',
+                    color: '#f97316',
+                    fields: [
+                        {
+                            key: 'wake.enable_keyword_wake',
+                            labelKey: 'field.wake.enableKeyword',
+                            labelDefault: '关键词唤醒',
+                            type: 'boolean',
+                            descKey: 'field.wake.enableKeywordDesc',
+                            descDefault: '开启后，群聊消息包含指定关键词时自动响应',
+                            showFields: ['wake.waking_keywords'],
+                        },
+                        {
+                            key: 'wake.waking_keywords',
+                            labelKey: 'field.wake.keywords',
+                            labelDefault: '唤醒关键词',
+                            type: 'array',
+                            placeholder: '添加关键词，如：初念',
+                            parentToggle: 'wake.enable_keyword_wake',
+                        },
+                        {
+                            key: 'wake.enable_quote_wake',
+                            labelKey: 'field.wake.enableQuote',
+                            labelDefault: '引用唤醒',
+                            type: 'boolean',
+                            descKey: 'field.wake.enableQuoteDesc',
+                            descDefault: '开启后，有人引用（回复）机器人发过的消息时自动响应',
+                        },
+                    ]
+                },
             ]
         },
 
@@ -287,10 +323,11 @@
             }
             var isSecret = fieldDef.type === 'password';
             var inputKey = fieldDef._dataKey || fieldDef.key;
+            var parentAttr = fieldDef.parentToggle ? ' data-parent-toggle="' + fieldDef.parentToggle + '"' : '';
 
             if (fieldDef.type === 'boolean') {
                 var checked = val ? ' checked' : '';
-                return '<div class="card-field">'
+                return '<div class="card-field"' + parentAttr + '>'
                     + '<div class="toggle-row">'
                     + '<span class="toggle-label">' + label + '</span>'
                     + '<label class="toggle-switch">'
@@ -304,7 +341,7 @@
 
             if (fieldDef.type === 'textarea') {
                 var rows = fieldDef.key === 'raw_persona' ? 14 : 3;
-                return '<div class="card-field">'
+                return '<div class="card-field"' + parentAttr + '>'
                     + '<span class="field-label">' + label + '</span>'
                     + '<textarea data-key="' + inputKey + '" rows="' + rows + '" placeholder="' + (fieldDef.placeholder || '') + '">' + this._escapeHtml(val || '') + '</textarea>'
                     + desc
@@ -316,7 +353,7 @@
             }
 
             if (fieldDef.type === 'number') {
-                return '<div class="card-field inline">'
+                return '<div class="card-field inline"' + parentAttr + '>'
                     + '<span class="field-label">' + label + '</span>'
                     + '<input type="number" data-key="' + inputKey + '" data-type="number" value="' + (val != null ? val : '') + '" placeholder="' + (fieldDef.placeholder || '') + '">'
                     + desc
@@ -329,7 +366,7 @@
                 var step = fieldDef.step || 1;
                 var unit = fieldDef.rangeUnit || '';
                 var currentVal = val != null && val !== '' ? val : (fieldDef.rangeDefault != null ? fieldDef.rangeDefault : min);
-                return '<div class="card-field">'
+                return '<div class="card-field"' + parentAttr + '>'
                     + '<div class="range-label-row">'
                     + '<span class="field-label">' + label + '</span>'
                     + '<span class="range-value" data-range-display="' + inputKey + '">' + currentVal + (unit ? ' ' + unit : '') + '</span>'
@@ -343,7 +380,7 @@
 
             // text / password / url / select
             var inputType = isSecret ? 'password' : (fieldDef.type || 'text');
-            return '<div class="card-field">'
+            return '<div class="card-field"' + parentAttr + '>'
                 + '<span class="field-label">' + label + (isSecret ? this._getStatusBadge(fieldDef, val) : '') + '</span>'
                 + '<input type="' + inputType + '" data-key="' + inputKey + '" value="' + this._escapeHtml(val || '') + '" placeholder="' + (fieldDef.placeholder || '') + '">'
                 + desc
@@ -362,7 +399,8 @@
                     + '</div>';
             }.bind(this)).join('');
 
-            return '<div class="card-field">'
+            var parentAttr = fieldDef.parentToggle ? ' data-parent-toggle="' + fieldDef.parentToggle + '"' : '';
+            return '<div class="card-field"' + parentAttr + '>'
                 + '<span class="field-label">' + label + '</span>'
                 + '<div class="card-array-editor" data-key="' + dataKey + '" id="' + listId + '">'
                 + itemsHtml
@@ -518,6 +556,21 @@
             }
 
             this._bindEvents();
+
+            // 初始化 parentToggle 可见性
+            var self = this;
+            var allCheckboxes = this.container.querySelectorAll('input[type="checkbox"][data-key]');
+            allCheckboxes.forEach(function(cb) {
+                var fieldDef = self._findFieldDef(null, cb.dataset.key);
+                if (fieldDef && fieldDef.showFields) {
+                    fieldDef.showFields.forEach(function(childKey) {
+                        var childField = self.container.querySelector('.card-field[data-parent-toggle="' + childKey + '"]');
+                        if (childField && !cb.checked) {
+                            childField.style.display = 'none';
+                        }
+                    });
+                }
+            });
         }
 
         // ---------- 事件处理 ----------
@@ -585,6 +638,22 @@
                     if (display) {
                         var unit = display.textContent.replace(/^[\d.]+/, '').trim();
                         display.textContent = e.target.value + (unit ? ' ' + unit : '');
+                    }
+                }
+            });
+
+            // Toggle 开关控制子字段显示/隐藏
+            this.container.addEventListener('change', function(e) {
+                if (e.target.type === 'checkbox' && e.target.dataset.key) {
+                    var key = e.target.dataset.key;
+                    var fieldDef = self._findFieldDef(null, key);
+                    if (fieldDef && fieldDef.showFields) {
+                        fieldDef.showFields.forEach(function(childKey) {
+                            var childField = self.container.querySelector('.card-field[data-parent-toggle="' + childKey + '"]');
+                            if (childField) {
+                                childField.style.display = e.target.checked ? '' : 'none';
+                            }
+                        });
                     }
                 }
             });
@@ -720,6 +789,19 @@
                 }, 300);
             }, 2000);
         }
+
+        _findFieldDef: function(cardId, key) {
+            var cards = this.schema.cards || [];
+            for (var i = 0; i < cards.length; i++) {
+                var card = cards[i];
+                if (cardId && card.id !== cardId) continue;
+                var fields = card.fields || [];
+                for (var j = 0; j < fields.length; j++) {
+                    if (fields[j].key === key) return fields[j];
+                }
+            }
+            return null;
+        },
 
         // ---------- 数据收集 ----------
 

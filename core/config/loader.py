@@ -19,6 +19,7 @@ from .model import (
     BotBehaviorConfig,
     ContextConfig,
     SelfieConfig,
+    WakeConfig,
     BotConfig,
     AdapterConfig,
     AdaptersConfig,
@@ -60,7 +61,7 @@ _SCHEMAS = {
         },
     },
     "behavior.yaml": {
-        "fields": {"bot": dict, "context": dict, "selfie": dict},
+        "fields": {"bot": dict, "context": dict, "selfie": dict, "wake": dict},
         "required": [],
         "nested": {
             "bot": {
@@ -78,6 +79,11 @@ _SCHEMAS = {
                 "personality_strength": (int, float),
             },
             "selfie": {"path": str},
+            "wake": {
+                "enable_keyword_wake": bool,
+                "waking_keywords": list,
+                "enable_quote_wake": bool,
+            },
         },
     },
     "services.yaml": {
@@ -351,6 +357,7 @@ class ConfigLoader:
         bot_data = data.get("bot", {})
         context_data = data.get("context", {})
         selfie_data = data.get("selfie", {})
+        wake_data = data.get("wake", {})
 
         bot_behavior = BotBehaviorConfig(
             max_memory_length=bot_data.get("max_memory_length", 10),
@@ -372,7 +379,13 @@ class ConfigLoader:
             path=selfie_data.get("path", ""),
         )
 
-        return BotConfig(bot=bot_behavior, context=context, selfie=selfie)
+        wake = WakeConfig(
+            enable_keyword_wake=wake_data.get("enable_keyword_wake", False),
+            waking_keywords=wake_data.get("waking_keywords", []),
+            enable_quote_wake=wake_data.get("enable_quote_wake", False),
+        )
+
+        return BotConfig(bot=bot_behavior, context=context, selfie=selfie, wake=wake)
 
     def _parse_adapters(self, data: dict) -> AdaptersConfig:
         """解析适配器配置，通过 adapter_type 字段匹配各平台条目"""

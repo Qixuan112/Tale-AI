@@ -142,10 +142,12 @@ class QQAdapter(BaseAdapter):
                     message = await self._ws.recv()
                     data = json.loads(message)
 
-                    # 解析事件
-                    event = self.parse_event(data)
-                    if event:
-                        await self.emit_event(event)
+                    if "status" in data:
+                        self._handle_api_response(data)
+                    elif "post_type" in data:
+                        event = self.parse_event(data)
+                        if event:
+                            await self.emit_event(event)
 
                 except websockets.exceptions.ConnectionClosed:
                     logger.info("[QQ] Connection closed")
@@ -206,11 +208,20 @@ class QQAdapter(BaseAdapter):
             group_id=str(group_id) if group_id else None,
         )
 
+    def _handle_api_response(self, data: Dict[str, Any]) -> None:
+        """处理 OneBot API 响应，缓存已发送消息的 ID"""
+        if data.get("status") == "ok":
+            message_id = data.get("data", {}).get("message_id")
+            if message_id:
+                from ...sent_message_cache import sent_message_cache
+                sent_message_cache.add(str(message_id))
+
     def _parse_message_content(self, message: Any) -> MessageContent:
         """解析OneBot消息段"""
         text_parts = []
         images = []
         at_targets = []
+        reply_to = None
 
         if isinstance(message, str):
             # CQ码格式
@@ -227,11 +238,14 @@ class QQAdapter(BaseAdapter):
                     images.append(data.get("url", data.get("file", "")))
                 elif seg_type == "at":
                     at_targets.append(data.get("qq", ""))
+                elif seg_type == "reply":
+                    reply_to = str(data.get("id", ""))
 
         return MessageContent(
             text=" ".join(text_parts) if text_parts else None,
             images=images,
             at_targets=at_targets,
+            reply_to=reply_to,
         )
 
     async def send_message(self, target_id: str, content: MessageContent, **kwargs) -> bool:

@@ -603,7 +603,54 @@
                 // 重载配置让系统尝试启动
                 await fetch('/api/system/reload', { method: 'POST' }).catch(function () {});
 
-                // ── 第 6 步：完成 ──
+                // ── 第 6 步：唤醒设置 ──
+                var wantWake = await this.askChoice(
+                    this._t('guide.step6_question'),
+                    [
+                        { text: this._t('guide.step6_yes'), value: 'yes' },
+                        { text: this._t('guide.step6_skip'), value: 'skip' }
+                    ]
+                );
+
+                if (wantWake === 'yes') {
+                    var enableKeyword = await this.askChoice(
+                        this._t('guide.step6_keyword_question'),
+                        [
+                            { text: this._t('guide.step6_enable'), value: 'yes' },
+                            { text: this._t('guide.step6_disable'), value: 'no' }
+                        ]
+                    );
+                    var keywords = [];
+                    if (enableKeyword === 'yes') {
+                        var kwInput = await this.askText(
+                            this._t('guide.step6_keyword_input'),
+                            this._t('guide.step6_keyword_placeholder')
+                        );
+                        if (kwInput) {
+                            keywords = kwInput.split(/[,，\s]+/).filter(function(k) { return k; });
+                        }
+                    }
+
+                    var enableQuote = await this.askChoice(
+                        this._t('guide.step6_quote_question'),
+                        [
+                            { text: this._t('guide.step6_enable'), value: 'yes' },
+                            { text: this._t('guide.step6_disable'), value: 'no' }
+                        ]
+                    );
+
+                    await this.saveConfig('behavior', {
+                        wake: {
+                            enable_keyword_wake: enableKeyword === 'yes',
+                            waking_keywords: keywords,
+                            enable_quote_wake: enableQuote === 'yes'
+                        }
+                    });
+
+                    await this.say(this._t('guide.step6_saved'));
+                }
+
+                // ── 第 7 步：完成 ──
                 await this.askChoice(
                     this._t('guide.done_title', {name: charName}),
                     [
@@ -721,7 +768,8 @@
                     { text: self._t('guide.help_no_reply'), value: 'no_reply' },
                     { text: self._t('guide.help_platforms'), value: 'platforms' },
                     { text: self._t('guide.help_status'), value: 'status' },
-                    { text: self._t('guide.help_character'), value: 'character' }
+                    { text: self._t('guide.help_character'), value: 'character' },
+                    { text: self._t('guide.help_wake'), value: 'wake' }
                 ]);
             }).then(function (choice) {
                 switch (choice) {
@@ -759,6 +807,9 @@
                         break;
                     case 'character':
                         window.location.href = '/config?focus=character';
+                        break;
+                    case 'wake':
+                        window.location.href = '/config?focus=behavior';
                         break;
                 }
             });
@@ -832,6 +883,7 @@
                     'services': window.t('guide.step_tip_services'),
                     'character': window.t('guide.step_tip_character'),
                     'platforms': window.t('guide.step_tip_platforms'),
+                    'behavior': window.t('guide.step_tip_behavior'),
                 };
                 Guide.showVNDialog(tips[focus] || window.t('guide.step_tip_default'));
             }, 500);

@@ -120,6 +120,15 @@ class ProcessorConfig:
     # 群聊是否需要@或唤醒词
     group_need_at_or_keyword: bool = True
 
+    # 关键词唤醒开关
+    enable_keyword_wake: bool = False
+
+    # 引用唤醒开关
+    enable_quote_wake: bool = False
+
+    # 已发送消息缓存（用于引用唤醒）
+    sent_message_cache: Optional[Any] = None
+
 
 class MessageProcessor:
     """消息处理器
@@ -276,10 +285,20 @@ class MessageProcessor:
                 return ResponseDecision.RESPOND, "at_bot"
 
             # 检查是否包含唤醒词
-            if message.text and self.config.waking_keywords:
+            if self.config.enable_keyword_wake and message.text and self.config.waking_keywords:
+                text_lower = message.text.lower()
                 for keyword in self.config.waking_keywords:
-                    if keyword in message.text:
+                    if keyword.lower() in text_lower:
                         return ResponseDecision.RESPOND, "waking_keyword"
+
+            # 检查引用唤醒
+            if (
+                self.config.enable_quote_wake
+                and message.reply_to
+                and self.config.sent_message_cache
+                and self.config.sent_message_cache.contains(message.reply_to)
+            ):
+                return ResponseDecision.RESPOND, "quote_wake"
 
             return ResponseDecision.IGNORE, "no_at_or_keyword"
 
@@ -310,11 +329,14 @@ class PlatformConfigBuilder:
     """
 
     @staticmethod
-    def from_qq_config(qq_config) -> ProcessorConfig:
+    def from_qq_config(qq_config, global_waking_keywords=None, enable_keyword_wake=False, enable_quote_wake=False) -> ProcessorConfig:
         """从 QQ 配置构建处理器配置
 
         Args:
             qq_config: QQ 适配器配置
+            global_waking_keywords: 全局唤醒关键词（与平台关键词合并）
+            enable_keyword_wake: 是否启用关键词唤醒
+            enable_quote_wake: 是否启用引用唤醒
 
         Returns:
             处理器配置
@@ -322,6 +344,23 @@ class PlatformConfigBuilder:
         waking_keywords = qq_config.waking_keywords
         if isinstance(waking_keywords, str):
             waking_keywords = [kw.strip() for kw in waking_keywords.split(",") if kw.strip()]
+        waking_keywords = waking_keywords or []
+
+        # 合并全局 + 平台关键词（全局优先，去重）
+        if global_waking_keywords:
+            seen = set()
+            merged = []
+            for kw in global_waking_keywords:
+                if kw not in seen:
+                    merged.append(kw)
+                    seen.add(kw)
+            for kw in waking_keywords:
+                if kw not in seen:
+                    merged.append(kw)
+                    seen.add(kw)
+            waking_keywords = merged
+
+        from .sent_message_cache import sent_message_cache
 
         return ProcessorConfig(
             permission_mode=qq_config.permission_mode or "allow_list",
@@ -329,8 +368,11 @@ class PlatformConfigBuilder:
             user_allow_list=qq_config.user_allow_list or [],
             group_deny_list=qq_config.group_deny_list or [],
             user_deny_list=qq_config.user_deny_list or [],
-            waking_keywords=waking_keywords or [],
+            waking_keywords=waking_keywords,
             bot_id=str(qq_config.bot_pid) if qq_config.bot_pid else "",
             private_always_respond=True,
             group_need_at_or_keyword=True,
+            enable_keyword_wake=enable_keyword_wake,
+            enable_quote_wake=enable_quote_wake,
+            sent_message_cache=sent_message_cache,
         )

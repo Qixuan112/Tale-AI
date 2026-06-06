@@ -31,6 +31,7 @@ from .message_processor import (
     ResponseDecision,
     PlatformConfigBuilder,
 )
+from .sent_message_cache import SentMessageCache, sent_message_cache
 
 __all__ = [
     # 基类
@@ -52,4 +53,7 @@ __all__ = [
     "ProcessedMessage",
     "ResponseDecision",
     "PlatformConfigBuilder",
+    # 消息缓存
+    "SentMessageCache",
+    "sent_message_cache",
 ]

@@ -51,6 +51,11 @@ bot:
 
 selfie:
   path: ""
+
+wake:
+  enable_keyword_wake: false
+  waking_keywords: []
+  enable_quote_wake: false
 """
 
 DEFAULT_PLATFORMS_YAML = """\

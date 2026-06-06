@@ -85,11 +85,20 @@ class SelfieConfig:
 
 
 @dataclass
+class WakeConfig:
+    """唤醒配置类"""
+    enable_keyword_wake: bool = False
+    waking_keywords: List[str] = field(default_factory=list)
+    enable_quote_wake: bool = False
+
+
+@dataclass
 class BotConfig:
     """完整的机器人配置类"""
     bot: BotBehaviorConfig = field(default_factory=BotBehaviorConfig)
     context: ContextConfig = field(default_factory=ContextConfig)
     selfie: SelfieConfig = field(default_factory=SelfieConfig)
+    wake: WakeConfig = field(default_factory=WakeConfig)
 
 
 @dataclass

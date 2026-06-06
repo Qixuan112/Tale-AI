@@ -102,8 +102,14 @@ class TaleCore:
         """初始化消息处理器"""
         # 从配置构建处理器配置
         qq_config = config_loader.adapters.qq
+        wake_config = config_loader.bot.wake
         if qq_config.enabled:
-            processor_config = PlatformConfigBuilder.from_qq_config(qq_config)
+            processor_config = PlatformConfigBuilder.from_qq_config(
+                qq_config,
+                global_waking_keywords=wake_config.waking_keywords,
+                enable_keyword_wake=wake_config.enable_keyword_wake,
+                enable_quote_wake=wake_config.enable_quote_wake,
+            )
             self.message_processor = MessageProcessor(processor_config)
             logger.info("消息处理器已初始化 (模式: %s)", processor_config.permission_mode)
         else:
