@@ -302,25 +302,25 @@ class DailyPlan:
     
     def format_display(self) -> str:
         """格式化显示"""
-        lines = [f"📅 {self.date.strftime('%Y年%m月%d日')} 日程安排", "=" * 40]
-        
+        lines = [f"{self.date.strftime('%Y-%m-%d')} 日程安排", "=" * 40]
+
         if not self.entries:
             lines.append("暂无安排")
         else:
             for entry in self.entries:
-                status_icon = {
-                    EventStatus.PENDING: "⏳",
-                    EventStatus.ONGOING: "▶️",
-                    EventStatus.COMPLETED: "✅",
-                    EventStatus.CANCELLED: "❌",
-                    EventStatus.MISSED: "⏰"
-                }.get(entry.status, "⏳")
-                
-                lines.append(f"{status_icon} {entry}")
-        
+                status_text = {
+                    EventStatus.PENDING: "[待办]",
+                    EventStatus.ONGOING: "[进行]",
+                    EventStatus.COMPLETED: "[完成]",
+                    EventStatus.CANCELLED: "[取消]",
+                    EventStatus.MISSED: "[错过]"
+                }.get(entry.status, "[待办]")
+
+                lines.append(f"{status_text} {entry}")
+
         if self.summary:
-            lines.extend(["", f"📝 总结: {self.summary}"])
-        
+            lines.extend(["", f"总结: {self.summary}"])
+
         return "\n".join(lines)
 
 
