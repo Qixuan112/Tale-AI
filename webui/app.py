@@ -302,14 +302,25 @@ class ConversationStore:
             conv["last_message"] = text[:60]
             conv["time"] = datetime.now().strftime("%H:%M")
 
+        # 先持久化用户消息（即时保存，即使后续 API 调用失败也不丢失）
+        self._messages[self.current_id] = self.chatllm.get_history()
+        self._save_messages(self.current_id)
+        self._save_index()
+
         # 在线程池中执行阻塞的 LLM 调用
         future = _executor.submit(self.chatllm.chat, text)
-        reply = future.result()
+        try:
+            reply = future.result()
+        except Exception as e:
+            # 即使 API 失败，用户消息已存盘，再存一次确保包含失败上下文
+            self._messages[self.current_id] = self.chatllm.get_history()
+            self._save_messages(self.current_id)
+            raise e
 
         if conv:
             conv["count"] = len(self.chatllm.get_history()) - 1  # 不含 system
 
-        # 持久化：保存元数据和消息
+        # 持久化：保存元数据和含回复的完整消息
         self._messages[self.current_id] = self.chatllm.get_history()
         self._save_messages(self.current_id)
         self._save_index()
@@ -383,13 +394,27 @@ def _get_adapter_manager():
         pass
     return None
 
-# 日志内存队列（用于 SSE，thread-safe 的 queue.Queue）
+# 日志：内存队列（用于 SSE）+ 文件持久化
 MAX_LOGS = 500
 LOG_QUEUE = queue.Queue(maxsize=MAX_LOGS)
+LOG_FILE = Path(PROJECT_ROOT) / "data" / "logs" / "webui.log"
+LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 
 def _put_log(record_dict):
-    """Put a log entry into the queue, discarding oldest when full."""
+    """写入日志：文件持久化 + 内存队列"""
+    # 文件持久化
+    try:
+        ts = record_dict.get("time", "")
+        lvl = record_dict.get("level", "INFO")
+        mod = record_dict.get("module", "")
+        msg = record_dict.get("message", "")
+        line = f"[{ts}] [{lvl}] [{mod}] {msg}\n"
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:
+        pass
+    # 内存队列（用于 SSE 实时推送）
     try:
         LOG_QUEUE.put_nowait(record_dict)
     except queue.Full:
@@ -1144,11 +1169,44 @@ def api_logs():
                 LOG_QUEUE.get_nowait()
             except queue.Empty:
                 break
+        # 也清空日志文件（轮转）
+        try:
+            if LOG_FILE.exists():
+                LOG_FILE.write_text("", encoding="utf-8")
+        except Exception:
+            pass
         return jsonify({"ok": True, "cleared": cleared})
 
     level = request.args.get("level", "")
     module = request.args.get("module", "")
     logs = list(LOG_QUEUE.queue)
+
+    # 内存日志不足 200 条时，从日志文件补充历史
+    if len(logs) < 200 and LOG_FILE.exists():
+        try:
+            file_lines = LOG_FILE.read_text(encoding="utf-8").strip().split("\n")
+            file_logs = []
+            import re as _re
+            for line in file_lines[-500:]:
+                m = _re.match(r'\[(.+?)\]\s+\[(.+?)\]\s+\[(.+?)\]\s+(.*)', line)
+                if m:
+                    file_logs.append({
+                        "time": m.group(1),
+                        "level": m.group(2),
+                        "module": m.group(3),
+                        "message": m.group(4),
+                    })
+            seen = set()
+            merged = []
+            for entry in file_logs + logs:
+                key = (entry.get("time", ""), entry.get("message", "")[:80])
+                if key not in seen:
+                    seen.add(key)
+                    merged.append(entry)
+            logs = merged[-200:]
+        except Exception:
+            pass
+
     if level:
         logs = [l for l in logs if l.get("level") == level]
     if module:
