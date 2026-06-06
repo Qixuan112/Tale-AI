@@ -6,6 +6,7 @@ from ..config import MAX_CONTEXT
 from ..config.provide import get_character_prompt, get_dialogue_examples, config_loader
 from ..utils import get_logger
 from .context import AgentContext, create_chat_context
+from .context.section import PromptSection
 
 logger = get_logger(__name__)
 
@@ -50,6 +51,9 @@ class ChatLLM:
         except Exception:
             pass
 
+        # Add dynamic plan section that injects today's schedule
+        self._add_plan_section()
+
         # Build initial messages from context
         self.messages = list(self.context.build_messages_head(self.cache_strategy))
 
@@ -68,6 +72,31 @@ class ChatLLM:
                 break
         self.messages = new_head + self.messages[cut:]
 
+    def _add_plan_section(self):
+        """Add a dynamic PromptSection that injects today's plan into the system prompt."""
+        def _get_plan_content():
+            from ..planllm import get_planllm
+            try:
+                planllm = get_planllm()
+                planllm.ensure_today_plan()
+                plan_text = planllm.get_today_plan_display()
+                return "\n\n## 今日日程\n" + plan_text
+            except Exception:
+                return ""
+
+        self.context.add_section(PromptSection(
+            name="today_plan",
+            content="",
+            cacheable=False,
+            order=100,
+            _content_provider=_get_plan_content,
+        ))
+
+    def refresh_plan(self):
+        """Refresh the plan section content and rebuild system messages."""
+        self._add_plan_section()
+        self.refresh_context()
+
     def _on_config_reloaded(self):
         """配置重载后热更新 API 客户端和角色上下文。"""
         cfg = config_loader.chat_api
@@ -84,6 +113,7 @@ class ChatLLM:
             dialogue_examples=get_dialogue_examples(),
             persona_additional_prompt=config_loader.persona.additional_prompt,
         )
+        self._add_plan_section()
         self.refresh_context()
         logger.info("ChatLLM: 配置已热更新")
 
