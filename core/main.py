@@ -65,11 +65,17 @@ class TaleCore:
         self.plugin_manager: Optional[Any] = None
         self._running = False
         self._shutdown_event: Optional[asyncio.Event] = None
+        self._llm_executor = None
 
     def initialize(self):
         """初始化核心组件（幂等，可多次调用）"""
         if self.chat is not None:
             return
+
+        import concurrent.futures
+        self._llm_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=8, thread_name_prefix="llm"
+        )
 
         self.chat = self._init_chatllm()
         self.toolllm = self._init_toolllm()
@@ -515,10 +521,13 @@ class TaleCore:
     async def _execute_actions(self, actions: list) -> list:
         """执行动作列表，返回所有执行结果"""
         results = []
+        loop = asyncio.get_running_loop()
         for i, action in enumerate(actions, 1):
             logger.info("ToolLLM 处理动作 %d/%d: %s", i, len(actions), action)
             try:
-                fc_output = await asyncio.to_thread(self.toolllm.generate_fc, action)
+                fc_output = await loop.run_in_executor(
+                    self._llm_executor, self.toolllm.generate_fc, action
+                )
                 logger.debug("ToolLLM 输出: %s", fc_output)
             except Exception as e:
                 logger.error("ToolLLM generate_fc 失败: %s", e)
@@ -527,7 +536,10 @@ class TaleCore:
             func_call = parse_function_call(fc_output)
             if func_call:
                 logger.info("执行工具: %s", func_call["name"])
-                tool_result = execute_function(func_call["name"], func_call["parameters"])
+                tool_result = await loop.run_in_executor(
+                    self._llm_executor,
+                    execute_function, func_call["name"], func_call["parameters"]
+                )
                 logger.info("执行结果: %s", tool_result)
                 results.append(tool_result)
             else:
@@ -552,16 +564,20 @@ class TaleCore:
 
         # 创建停止事件和线程
         stop_event = threading.Event()
-        spinner_thread = threading.Thread(target=spinning_think, args=(stop_event,))
+        spinner_thread = threading.Thread(
+            target=spinning_think, args=(stop_event,), daemon=True
+        )
         spinner_thread.start()
 
         try:
-            # 在线程池中执行同步 API 调用，避免阻塞事件循环
-            chatllm_reply = await asyncio.to_thread(self.chat.chat, user_input)
+            # 在专用线程池中执行同步 API 调用，避免阻塞事件循环
+            loop = asyncio.get_running_loop()
+            chatllm_reply = await loop.run_in_executor(
+                self._llm_executor, self.chat.chat, user_input
+            )
         finally:
-            # 停止动画并等待线程结束
+            # 停止动画（daemon 线程无需 join，进程退出时自动终止）
             stop_event.set()
-            spinner_thread.join()
 
         return chatllm_reply
 
