@@ -1,0 +1,9 @@
+{
+    "id": "workspace",
+    "name": "AI Workspace",
+    "version": "1.0.0",
+    "author": "Tale-AI",
+    "description": "AI 工作区：文件读写与沙盒命令执行",
+    "module": "plugin",
+    "hooks": ["tool", "prompt_section"]
+}

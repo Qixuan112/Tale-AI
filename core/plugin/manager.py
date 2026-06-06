@@ -292,6 +292,7 @@ class PluginManager:
 
     @staticmethod
     def _wire_tool(plugin: ToolProvider, plugin_id: str) -> list:
+        from functools import partial
         from ..function_caller import register_plugin_handler
         from ..tools.registry import get_registry
 
@@ -299,7 +300,7 @@ class PluginManager:
         registered = []
         for tool_def in plugin.get_tool_definitions():
             registry.register(tool_def)
-            register_plugin_handler(tool_def.name, plugin.execute_tool)
+            register_plugin_handler(tool_def.name, partial(plugin.execute_tool, tool_def.name))
             registered.append(tool_def.name)
             logger.info("  [%s] registered tool: %s", plugin_id, tool_def.name)
         return registered

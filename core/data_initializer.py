@@ -107,17 +107,9 @@ DEFAULT_SERVICES_YAML = """\
 """
 
 DEFAULT_PLUGINS_YAML = """\
-# ============================================
-# 插件配置 - plugins.yaml
-# 启用/禁用插件，覆盖默认配置
-# ============================================
-
 plugins:
-  # 示例：
-  # my_plugin:
-  #   enabled: true
-  #   config:
-  #     key: value
+  workspace:
+    enabled: true
 """
 
 DEFAULT_CONVERSATIONS_INDEX = {

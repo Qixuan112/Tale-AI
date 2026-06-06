@@ -9,8 +9,10 @@ from typing import Optional, Callable, Any, List
 from .spin_think import spinning_think
 from .bus import NextBus, bus
 from .llm import ChatLLM, get_planllm, ToolLLM
-from .config import CHAT_API_KEY, CHAT_MODEL, CHAT_URL
-from .config import PLAN_API_KEY, PLAN_MODEL, PLAN_URL
+from .config.provide import (
+    get_chat_api_key, get_chat_model, get_chat_url,
+    get_plan_api_key, get_plan_model, get_plan_url,
+)
 from .config import MAX_SPLIT_COUNT
 from .config.provide import config_loader
 from .parse_xml import parse_xml_msg, format_message_for_display
@@ -85,6 +87,9 @@ class TaleCore:
         # 注册 wechat_moments 专属处理器
         bus.on("wechat_moments_message", self._handle_wechat_moments_message)
 
+        # 监听配置热重载事件
+        bus.on("config_reloaded", self._on_config_reloaded)
+
         # 初始化插件管理器
         self._init_plugin_manager()
 
@@ -92,25 +97,43 @@ class TaleCore:
 
     @staticmethod
     def _init_chatllm():
-        if not CHAT_API_KEY:
+        api_key = get_chat_api_key()
+        model = get_chat_model()
+        url = get_chat_url()
+        if not api_key:
             logger.warning("ChatLLM 未配置 API Key，请通过 WebUI 配置服务商")
             return None
         try:
-            return ChatLLM(api_key=CHAT_API_KEY, model=CHAT_MODEL, url=CHAT_URL)
+            return ChatLLM(api_key=api_key, model=model, url=url)
         except Exception as e:
             logger.warning("ChatLLM 初始化失败: %s", e)
             return None
 
     @staticmethod
     def _init_toolllm():
-        if not PLAN_API_KEY:
+        api_key = get_plan_api_key()
+        model = get_plan_model()
+        url = get_plan_url()
+        if not api_key:
             logger.warning("ToolLLM 未配置 API Key，请通过 WebUI 配置服务商")
             return None
         try:
-            return ToolLLM(api_key=PLAN_API_KEY, model=PLAN_MODEL, url=PLAN_URL)
+            return ToolLLM(api_key=api_key, model=model, url=url)
         except Exception as e:
             logger.warning("ToolLLM 初始化失败: %s", e)
             return None
+
+    def _on_config_reloaded(self, event_data=None):
+        if self.chat is None:
+            self.chat = self._init_chatllm()
+            if self.chat is not None:
+                logger.info("ChatLLM 热重载初始化成功")
+        if self.toolllm is None:
+            self.toolllm = self._init_toolllm()
+            if self.toolllm is not None:
+                logger.info("ToolLLM 热重载初始化成功")
+        if self.toolllm is not None:
+            self.toolllm.rebuild_tool_definitions()
 
     def _init_message_processor(self):
         """初始化消息处理器"""
@@ -152,6 +175,10 @@ class TaleCore:
                 config=plugins_config,
             )
             self.plugin_manager.load_all_enabled()
+
+            # 插件可能注册了新工具，刷新工具定义
+            if self.toolllm is not None:
+                self.toolllm.rebuild_tool_definitions()
 
             # 延迟注入提示词段（需要 ChatLLM/ToolLLM 引用）
             self.plugin_manager._wire_prompt_sections(
