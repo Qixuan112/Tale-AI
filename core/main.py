@@ -337,6 +337,19 @@ class TaleCore:
             first_messages = parsed.get("messages", [])
             needs_follow_up = parsed.get("tool") or parsed.get("plan") or parsed.get("actions")
 
+            # ChatLLM 可能返回不包含 <msg> XML 标签的文本（如纯文本回复）
+            # 此时 parse_xml_msg 返回空消息列表但不报错，导致回复被静默丢弃
+            if not first_messages and not needs_follow_up:
+                logger.warning("ChatLLM 返回了非 XML 格式回复，直接作为纯文本发送")
+                await self._send_reply(
+                    adapter_instance or processed.platform.value,
+                    target_id,
+                    chatllm_reply,
+                    reply_to=processed.message_id,
+                    is_group=is_group
+                )
+                return
+
             if needs_follow_up:
                 # 多轮对话：先发送首条回复
                 await self._send_message_batch(
