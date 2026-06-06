@@ -6,3 +6,9 @@ beautifulsoup4>=4.12.0
 pyyaml>=6.0
 flask>=3.0.0
 openai>=1.0.0
+pillow>=10.0.0
+psutil>=5.9.0
+pyperclip>=1.8.0
+filelock>=3.12.0
+pywin32>=306; sys_platform == 'win32'
+comtypes>=1.4.0; sys_platform == 'win32'
