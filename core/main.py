@@ -35,7 +35,7 @@ def calculate_split_interval(text_length: int) -> float:
     模拟真人打字的发送延迟。
     延迟 = max(字数 * 打字速度(ms/字) / 1000, 最小延迟)
     """
-    bot = provide.config_loader.bot.bot
+    bot = config_loader.bot.bot
     speed_ms = getattr(bot, 'typing_speed', 50.0)
     min_delay = getattr(bot, 'typing_min_delay', 0.5)
     delay = max(text_length * speed_ms / 1000.0, min_delay)
