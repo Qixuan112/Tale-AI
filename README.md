@@ -18,7 +18,7 @@
 - **Multi-Platform** — QQ / WeChat PC (incl. Moments) / WebSocket, hot-pluggable adapters
 - **Plugin System** — 6 extension points, auto-discovery via manifest.json
 
-> 🇨🇳 中文版 README 请见 [docs/README.zh.md](docs/README.zh.md)
+> 中文版 README 请见 [docs/README.zh.md](docs/README.zh.md)
 
 ---
 
@@ -33,7 +33,7 @@ python main.py              # Start core + WebUI → http://127.0.0.1:32456
 
 On first run, config files are auto-created in `data/config/`. Edit `services.yaml` with your API keys and start chatting.
 
-> 🔒 **Security**: WebUI binds to localhost by default. Always add authentication behind a reverse proxy before exposing it.
+> **Security**: WebUI binds to localhost by default. Always add authentication behind a reverse proxy before exposing it.
 
 ---
 

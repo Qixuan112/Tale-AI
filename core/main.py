@@ -355,6 +355,15 @@ class TaleCore:
 
         except Exception as e:
             logger.error("处理消息时出错: %s", e, exc_info=True)
+            # 给用户回显错误提示
+            error_msg = f"[系统] 处理消息时出了点状况：{e}"
+            await self._send_reply(
+                adapter_instance or processed.platform.value,
+                target_id,
+                error_msg,
+                reply_to=processed.message_id,
+                is_group=is_group
+            )
 
     async def _send_message_batch(self, processed: ProcessedMessage, messages: list, adapter_instance: str = None):
         """批量发送消息，每条消息前模拟打字延迟（包括第一条）"""
@@ -472,6 +481,10 @@ class TaleCore:
         """
         if not user_input:
             return ""
+
+        if self.chat is None:
+            logger.error("ChatLLM 未初始化")
+            return "[系统错误] ChatLLM 未初始化，请检查 services.yaml 配置"
 
         # 创建停止事件和线程
         stop_event = threading.Event()

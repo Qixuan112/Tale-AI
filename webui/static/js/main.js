@@ -104,6 +104,26 @@
     refreshStatus();
     setInterval(refreshStatus, 10000);
 
+    // ===== 全局 fetch 拦截：自动附加 CSRF Token =====
+    const origFetch = window.fetch;
+    window.fetch = function (url, opts) {
+        opts = opts || {};
+        if (opts.method && opts.method !== 'GET' && opts.method !== 'HEAD') {
+            opts.headers = opts.headers || {};
+            if (opts.headers instanceof Headers) {
+                if (!opts.headers.has('X-CSRF-Token')) {
+                    opts.headers.set('X-CSRF-Token', window.csrfToken);
+                }
+            } else if (Array.isArray(opts.headers)) {
+                const has = opts.headers.some(h => h[0].toLowerCase() === 'x-csrf-token');
+                if (!has) opts.headers.push(['X-CSRF-Token', window.csrfToken]);
+            } else {
+                opts.headers['X-CSRF-Token'] = window.csrfToken;
+            }
+        }
+        return origFetch.call(this, url, opts);
+    };
+
     // 全局工具函数
     window.formatTime = function (dateStr) {
         const d = new Date(dateStr);
