@@ -43,6 +43,20 @@
                 const baseText = online ? (window.t ? window.t('topbar.systemStatus') : 'System Status') : (window.t ? window.t('topbar.systemOffline') : 'System Offline');
                 topText.textContent = reasonText ? baseText + ' · ' + reasonText : baseText;
             }
+
+            // 显示系统告警
+            var alertContainer = document.getElementById('topbarAlertMsg');
+            if (alertContainer) {
+                if (data.alerts && data.alerts.length > 0) {
+                    var firstAlert = data.alerts[0];
+                    var msg = firstAlert.message;
+                    if (window.t) msg = window.t('alert.' + firstAlert.key) || firstAlert.message;
+                    alertContainer.textContent = msg;
+                    alertContainer.style.display = '';
+                } else {
+                    alertContainer.style.display = 'none';
+                }
+            }
         } catch (e) {
             // 静默失败
         }

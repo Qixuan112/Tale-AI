@@ -514,6 +514,19 @@ def api_status():
     if mem is not None and mem > 85:
         alerts.append({"level": "danger", "message": f"内存占用过高: {mem:.1f}%"})
 
+    # routing 未配置但 services 已配置时提醒
+    providers = config_loader.providers
+    has_services = any(
+        p.api_key for p in providers.values()
+    )
+    routing_provider = config_loader.models.main_llm.provider
+    if has_services and not routing_provider:
+        alerts.append({
+            "level": "warning",
+            "key": "routing_not_configured",
+            "message": "模型路由未配置，已自动使用第一个可用服务商，建议前往路由设置明确指定"
+        })
+
     return jsonify({
         "running": running,
         "offline_reason": offline_reason,
