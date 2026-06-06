@@ -1,5 +1,6 @@
 from typing import Optional
 
+import httpx
 from openai import OpenAI
 from ..config import provide
 from ..tools.registry import (
@@ -33,6 +34,7 @@ class ToolLLM:
         self.client = OpenAI(
             api_key=api_key or provide.TOOL_API_KEY,
             base_url=url or provide.TOOL_URL,
+            timeout=httpx.Timeout(30.0, connect=10.0),
         )
         self.model = model or provide.TOOL_MODEL
         self.cache_strategy = cache_strategy

@@ -1,5 +1,6 @@
 from typing import Optional
 
+import httpx
 from openai import OpenAI
 from ..bus import bus
 from ..config import MAX_CONTEXT
@@ -25,7 +26,8 @@ class ChatLLM:
             context: 可选的 AgentContext；缺省时通过工厂函数自动创建
             cache_strategy: "single_message"（默认，向后兼容）或 "multi_message"
         """
-        self.client = OpenAI(api_key=api_key, base_url=url)
+        self.client = OpenAI(api_key=api_key, base_url=url,
+                              timeout=httpx.Timeout(120.0, connect=10.0))
         self.model = model
         self.max_context = max_context
         self.cache_strategy = cache_strategy
@@ -104,7 +106,8 @@ class ChatLLM:
         base_url = cfg.get("url", "")
         model = cfg.get("model", "")
         if api_key and base_url:
-            self.client = OpenAI(api_key=api_key, base_url=base_url)
+            self.client = OpenAI(api_key=api_key, base_url=base_url,
+                                  timeout=httpx.Timeout(120.0, connect=10.0))
         if model:
             self.model = model
         # 重建角色上下文

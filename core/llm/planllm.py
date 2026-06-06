@@ -9,6 +9,8 @@ PlanLLM - 日程规划与记事本管理系统
 5. 双向同步：PlanLLM ↔ 当日记事本 ↔ 长期记事本
 """
 
+import httpx
+
 import os
 import json
 import uuid
@@ -78,6 +80,7 @@ class PlanLLM:
         self.client = OpenAI(
             api_key=api_key or provide.PLAN_API_KEY,
             base_url=url or provide.PLAN_URL,
+            timeout=httpx.Timeout(120.0, connect=10.0),
         )
         self.model = model or provide.PLAN_MODEL
         self.max_context = max_context
@@ -217,7 +220,8 @@ class PlanLLM:
         base_url = cfg.get("url")
         model = cfg.get("model")
         if api_key and base_url:
-            self.client = OpenAI(api_key=api_key, base_url=base_url)
+            self.client = OpenAI(api_key=api_key, base_url=base_url,
+                                  timeout=httpx.Timeout(120.0, connect=10.0))
         if model:
             self.model = model
         # 重建角色上下文
