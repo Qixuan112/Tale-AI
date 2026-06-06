@@ -78,12 +78,13 @@ def _generate_token() -> str:
 def _load_webui_token() -> str:
     token_path = PROJECT_ROOT / "data" / "config" / "webui_token"
     if token_path.exists():
+        print(f"\n  WebUI 认证令牌文件：{token_path}")
         return token_path.read_text(encoding="utf-8").strip()
     # 首次启动自动生成
     token = _generate_token()
     token_path.parent.mkdir(parents=True, exist_ok=True)
     token_path.write_text(token, encoding="utf-8")
-    print(f"\n  WebUI 认证令牌: {token}\n")
+    print(f"\n  WebUI 认证令牌（首次启动）: {token}")
     return token
 
 

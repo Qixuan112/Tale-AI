@@ -302,6 +302,7 @@
             'login.emptyToken': '请输入认证令牌',
             'login.authFailed': '认证失败',
             'login.networkError': '网络错误',
+            'login.hint': '令牌在首次启动时自动生成，存储在 data/config/webui_token 文件中，或查看启动日志',
 
             // adapter.html
             'adapter.title': '适配器管理',
@@ -728,6 +729,7 @@
             'login.emptyToken': 'Please enter auth token',
             'login.authFailed': 'Authentication failed',
             'login.networkError': 'Network error',
+            'login.hint': 'Token is auto-generated on first startup, stored in data/config/webui_token, or check startup logs',
 
             // adapter.html
             'adapter.title': 'Adapter Management',
