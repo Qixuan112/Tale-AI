@@ -498,7 +498,13 @@ class ConfigLoader:
     def get_active_provider(self, model_type: str) -> Optional[ProviderConfig]:
         model_mapping = getattr(self._config.models, model_type, None)
         if model_mapping and model_mapping.provider:
-            return self._config.providers.get(model_mapping.provider)
+            provider = self._config.providers.get(model_mapping.provider)
+            if provider:
+                return provider
+        # routing 未配置或 provider 名不匹配 → 回退到第一个可用 provider
+        providers = self._config.providers
+        if providers:
+            return list(providers.values())[0]
         return None
 
     def get_api_config(self, model_type: str = "main_llm") -> Dict[str, str]:
