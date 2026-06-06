@@ -154,26 +154,26 @@ class TaleCore:
 
         logger.debug("[平台消息] [%s] %s: %s", platform, sender_name, text)
 
-    def _handle_private_message(self, event_data: dict):
+    async def _handle_private_message(self, event_data: dict):
         """处理私聊消息"""
-        asyncio.create_task(self._process_message_event(event_data))
+        await self._process_message_event(event_data)
 
-    def _handle_group_message(self, event_data: dict):
+    async def _handle_group_message(self, event_data: dict):
         """处理群消息"""
-        asyncio.create_task(self._process_message_event(event_data))
+        await self._process_message_event(event_data)
 
     def _handle_qq_message(self, event_data: dict):
         """处理 QQ 特定消息"""
         # 可以在这里添加 QQ 特定的处理逻辑
         pass
 
-    def _handle_wechat_moments_message(self, event_data: dict):
+    async def _handle_wechat_moments_message(self, event_data: dict):
         """处理微信朋友圈消息
 
         朋友圈动态走 `wechat_moments_message` 通道到达事件总线，
         此处将朋友圈事件转换为消息处理流程，让 LLM 层能感知朋友圈动态。
         """
-        asyncio.create_task(self._process_moments_event(event_data))
+        await self._process_moments_event(event_data)
 
     async def _process_moments_event(self, event_data: dict):
         """处理微信朋友圈动态事件

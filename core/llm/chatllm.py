@@ -75,7 +75,7 @@ class ChatLLM:
     def _add_plan_section(self):
         """Add a dynamic PromptSection that injects today's plan into the system prompt."""
         def _get_plan_content():
-            from ..planllm import get_planllm
+            from . import get_planllm
             try:
                 planllm = get_planllm()
                 planllm.ensure_today_plan()

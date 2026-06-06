@@ -66,12 +66,9 @@ class QQAdapter(BaseAdapter):
         self._receive_task = None
 
         self._running = True
-
-        # 启动连接
         await self._connect()
-
-        # 启动消息接收循环（保存引用以便正确清理）
         self._receive_task = asyncio.create_task(self._receive_loop())
+        logger.info(f"[QQ] Adapter started, connecting to {self.ws_url}")
 
     async def stop(self):
         """停止QQ适配器"""
@@ -111,21 +108,27 @@ class QQAdapter(BaseAdapter):
             self._ws = await websockets.connect(self.ws_url, additional_headers=headers)
             logger.info(f"[QQ] Connected to {self.ws_url}")
         except Exception as e:
-            logger.info(f"[QQ] Connection failed: {e}")
-            if self.auto_reconnect:
-                self._schedule_reconnect()
+            logger.error(f"[QQ] Connection failed: {e}")
+            self._ws = None
+            raise
 
     def _schedule_reconnect(self):
         """调度重连"""
         if not self._running:
             return
+        self._reconnect_task = asyncio.create_task(self._reconnect_loop())
 
-        async def reconnect():
-            await asyncio.sleep(self.reconnect_interval)
-            if self._running:
-                await self._connect()
-
-        self._reconnect_task = asyncio.create_task(reconnect())
+    async def _reconnect_loop(self):
+        """重连循环：等待间隔 → 重新连接 → 重启接收循环"""
+        await asyncio.sleep(self.reconnect_interval)
+        try:
+            await self._connect()
+            logger.info(f"[QQ] Reconnected, restarting receive loop")
+            await self._receive_loop()
+        except Exception as e:
+            logger.error(f"[QQ] Reconnect failed: {e}")
+            if self.auto_reconnect and self._running:
+                self._schedule_reconnect()
 
     async def _receive_loop(self):
         """消息接收循环"""
