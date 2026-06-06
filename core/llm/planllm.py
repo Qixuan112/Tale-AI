@@ -77,12 +77,10 @@ class PlanLLM:
             context: 可选的 AgentContext；缺省时通过工厂函数自动创建
             cache_strategy: "single_message"（默认）或 "multi_message"
         """
-        self.client = OpenAI(
-            api_key=api_key or provide.PLAN_API_KEY,
-            base_url=url or provide.PLAN_URL,
-            timeout=httpx.Timeout(120.0, connect=10.0),
-        )
+        self._api_key = api_key or provide.PLAN_API_KEY
+        self._base_url = url or provide.PLAN_URL
         self.model = model or provide.PLAN_MODEL
+        self.client = None  # 惰性初始化，见 _get_client()
         self.max_context = max_context
         self.cache_strategy = cache_strategy
 
@@ -129,6 +127,16 @@ class PlanLLM:
 
         self._load_data()
     
+    def _get_client(self) -> OpenAI:
+        """惰性获取 OpenAI 客户端，避免启动时因凭据缺失而阻塞"""
+        if self.client is None:
+            self.client = OpenAI(
+                api_key=self._api_key,
+                base_url=self._base_url,
+                timeout=httpx.Timeout(120.0, connect=10.0),
+            )
+        return self.client
+
     def _get_plan_file_path(self, date: datetime.date) -> Path:
         """获取某日期程文件路径"""
         return self.data_dir / f"plan_{date.isoformat()}.json"
@@ -219,9 +227,13 @@ class PlanLLM:
         api_key = cfg.get("api_key")
         base_url = cfg.get("url")
         model = cfg.get("model")
-        if api_key and base_url:
-            self.client = OpenAI(api_key=api_key, base_url=base_url,
+        if api_key:
+            self._api_key = api_key
+            self._base_url = base_url  # 为空时 OpenAI 会用默认值
+            self.client = OpenAI(api_key=self._api_key, base_url=self._base_url or None,
                                   timeout=httpx.Timeout(120.0, connect=10.0))
+        else:
+            self.client = None
         if model:
             self.model = model
         # 重建角色上下文
@@ -659,7 +671,7 @@ class PlanLLM:
             {"role": "user", "content": prompt}
         ]
         
-        response = self.client.chat.completions.create(
+        response = self._get_client().chat.completions.create(
             model=self.model,
             messages=messages
         )
