@@ -32,6 +32,7 @@ python main.py              # Start core + WebUI → http://127.0.0.1:32456
 ```
 
 On first run, config files are auto-created in `data/config/`. Edit `services.yaml` with your API keys and start chatting.
+> **Configuration Guide**: See [docs/config-guide.md](docs/config-guide.md) for detailed instructions — YAML vs `.env`, WebUI setup, and common pitfalls.
 
 > **Security**: WebUI binds to localhost by default. Always add authentication behind a reverse proxy before exposing it.
 

@@ -4,7 +4,12 @@ Tale AI — 统一入口
 启动核心引擎 + WebUI 管理面板。
 """
 
+import os
 import threading
+
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 # 首次启动时确保 data/ 目录和默认配置就绪
 from core.data_initializer import initialize_data

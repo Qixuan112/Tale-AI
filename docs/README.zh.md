@@ -30,6 +30,7 @@ python main.py              # 启动核心服务 + WebUI → http://127.0.0.1:32
 ```
 
 首次运行自动创建 `data/config/` 配置文件，编辑 `services.yaml` 填入 API Key 即可开始对话。
+> **配置填写指南**：详见 [docs/config-guide.md](config-guide.md) — YAML vs .env、WebUI 面板配置、常见排错。
 
 > **安全提示**：WebUI 默认仅监听 `127.0.0.1`。如需远程访问，务必在反向代理后添加认证层，切勿直接暴露公网。
 

@@ -104,6 +104,7 @@ CLAUDE.md
 # ──────────────────────────────────────────────
 docs/*
 !docs/README.zh.md
+!docs/config-guide.md
 
 # ──────────────────────────────────────────────
 # Project Specific - TODO
