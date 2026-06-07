@@ -535,6 +535,10 @@ class ConfigLoader:
         return self.get_api_config("generic_llm")
 
     @property
+    def vlm_api(self) -> Dict[str, str]:
+        return self.get_api_config("vlm")
+
+    @property
     def max_context(self) -> int:
         return self._config.bot.context.max_context
 

@@ -473,6 +473,8 @@
             'plugins.toggleSuccess': '操作成功',
             'plugins.toggleFailed': '操作失败',
             'plugins.hooks': '扩展点',
+            'field.routing.vlm': '多模态模型',
+            'field.service.fetchModels': '获取模型列表',
         },
         en: {
             // base.html sidebar
@@ -937,6 +939,8 @@
             'plugins.toggleSuccess': 'Successful',
             'plugins.toggleFailed': 'Operation failed',
             'plugins.hooks': 'Hooks',
+            'field.routing.vlm': 'VLM Model',
+            'field.service.fetchModels': 'Fetch Models',
         }
     };
 

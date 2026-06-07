@@ -8,7 +8,7 @@ from typing import Optional, Callable, Any, List
 
 from .spin_think import spinning_think
 from .bus import NextBus, bus
-from .llm import ChatLLM, get_planllm, ToolLLM
+from .llm import ChatLLM, get_planllm, ToolLLM, get_vlm_llm
 from .config.provide import (
     get_chat_api_key, get_chat_model, get_chat_url,
     get_plan_api_key, get_plan_model, get_plan_url,
@@ -373,6 +373,17 @@ class TaleCore:
         target_id = processed.group_id if processed.group_id else processed.sender_id
 
         try:
+            # 条件图片识别：有图片 + 满足触发条件时先用 VLM 识别
+            if processed.images and self._should_recognize_image(processed):
+                try:
+                    vlm_llm = get_vlm_llm()
+                    vlm_result = vlm_llm.chat_with_image(processed.text or "", processed.images)
+                    if vlm_result:
+                        logger.info("VLM 图片识别结果: %s", vlm_result[:200])
+                        user_input = f"{user_input}\n\n[图片识别结果]\n{vlm_result}"
+                except Exception as e:
+                    logger.warning("VLM 图片识别失败: %s", e)
+
             chatllm_reply = await self._call_chatllm(user_input)
             parsed = parse_xml_msg(chatllm_reply)
 
@@ -545,6 +556,26 @@ class TaleCore:
             else:
                 logger.warning("无法解析 Function Calling")
         return results
+
+    def _should_recognize_image(self, processed) -> bool:
+        """判断是否应触发图片识别。
+        条件：@提及 / 引用回复 / 纯贴图(有图无文字) / 唤醒关键词
+        """
+        if getattr(processed, "at_targets", None):
+            return True
+        if getattr(processed, "reply_to", None):
+            return True
+        text = getattr(processed, "text", "") or ""
+        images = getattr(processed, "images", []) or []
+        if not text.strip() and images:
+            return True
+        wake_keywords = config_loader.bot.wake.waking_keywords
+        if wake_keywords and text:
+            text_lower = text.lower()
+            for kw in wake_keywords:
+                if kw.lower() in text_lower:
+                    return True
+        return False
 
     async def _call_chatllm(self, user_input: str) -> str:
         """调用 ChatLLM 生成回复（非阻塞，使用线程池执行同步 API 调用）

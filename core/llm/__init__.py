@@ -2,6 +2,7 @@ from .chatllm import ChatLLM
 from .planllm import PlanLLM, get_planllm, add_event, get_today_schedule, add_goal
 from .toolllm import ToolLLM, get_toolllm
 from .generic import GenericLLM, get_generic_llm
+from .vlm import VlmLLM, get_vlm_llm
 from .diary_models import (
     DiaryEntry, DailyPlan, Goal, LongTermGoals,
     EventType, Priority, EventStatus
@@ -18,6 +19,8 @@ __all__ = [
     'ToolLLM',
     'GenericLLM',
     'get_generic_llm',
+    'VlmLLM',
+    'get_vlm_llm',
     'get_toolllm',
     'get_planllm',
     'add_event',

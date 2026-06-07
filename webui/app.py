@@ -291,7 +291,7 @@ class ConversationStore:
                 return c
         return None
 
-    def send(self, text: str) -> str:
+    def send(self, text: str, images: list = None) -> str:
         if self.chatllm is None:
             return "[错误] ChatLLM 未初始化，请检查 services.yaml 配置"
         if self.current_id is None:
@@ -299,20 +299,31 @@ class ConversationStore:
 
         conv = self._get_conv(self.current_id)
         if conv:
-            conv["last_message"] = text[:60]
+            conv["last_message"] = text[:60] if text else "[图片]"
             conv["time"] = datetime.now().strftime("%H:%M")
 
-        # 先持久化用户消息（即时保存，即使后续 API 调用失败也不丢失）
+        # 持久化用户消息
         self._messages[self.current_id] = self.chatllm.get_history()
         self._save_messages(self.current_id)
         self._save_index()
 
+        # 图片识别—有图时用 VLM 识别后注入
+        full_text = text or ""
+        if images:
+            try:
+                from core.llm.vlm import get_vlm_llm
+                vlm = get_vlm_llm()
+                vlm_result = vlm.chat_with_image(full_text, images)
+                if vlm_result:
+                    full_text = f"{full_text}\n\n[图片识别结果]\n{vlm_result}"
+            except Exception as e:
+                logger.warning("VLM 图片识别失败: %s", e)
+
         # 在线程池中执行阻塞的 LLM 调用
-        future = _executor.submit(self.chatllm.chat, text)
+        future = _executor.submit(self.chatllm.chat, full_text)
         try:
             reply = future.result()
         except Exception as e:
-            # 即使 API 失败，用户消息已存盘，再存一次确保包含失败上下文
             self._messages[self.current_id] = self.chatllm.get_history()
             self._save_messages(self.current_id)
             raise e
@@ -571,15 +582,16 @@ def api_chat_send():
     data = request.get_json() or {}
     message = data.get("message", "").strip()
     conv_id = data.get("conv_id")
+    images = data.get("images", [])
 
-    if not message:
+    if not message and not images:
         return jsonify({"error": "Message cannot be empty"}), 400
 
     if conv_id is not None and conv_id != conv_store.current_id:
         conv_store.switch(conv_id)
 
     try:
-        reply = conv_store.send(message)
+        reply = conv_store.send(message, images=images)
         return jsonify({"reply": reply, "conv_id": conv_store.current_id})
     except Exception as e:
         logger.error("发送消息失败: %s", e, exc_info=True)
@@ -1265,6 +1277,48 @@ def api_login():
 def api_logout():
     session.pop("webui_authed", None)
     return jsonify({"ok": True})
+
+
+# ============ 模型获取 API ============
+
+@app.route("/api/services/<provider_name>/models")
+def api_fetch_models(provider_name):
+    """获取指定服务商的可用模型列表"""
+    try:
+        provider = config_loader.get_provider(provider_name)
+        if not provider:
+            return jsonify({"ok": False, "error": f"服务商 {provider_name} 不存在"}), 404
+        if not provider.api_key or not provider.base_url:
+            return jsonify({"ok": False, "error": "该服务商未配置 api_key 或 base_url"}), 400
+
+        from openai import OpenAI
+        client = OpenAI(api_key=provider.api_key, base_url=provider.base_url)
+        models = client.models.list()
+        model_list = [{"id": m.id, "owned_by": getattr(m, "owned_by", "")} for m in models]
+        return jsonify({"ok": True, "models": model_list})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ============ 图片上传 API ============
+
+@app.route("/api/chat/upload", methods=["POST"])
+def api_chat_upload():
+    """上传聊天图片到 data/temp/"""
+    try:
+        from core.utils.temp_manager import temp_manager
+        if "file" not in request.files:
+            return jsonify({"ok": False, "error": "未找到文件"}), 400
+        file = request.files["file"]
+        if file.filename == "":
+            return jsonify({"ok": False, "error": "文件名为空"}), 400
+        image_data = file.read()
+        import time
+        filename = f"chat_{int(time.time()*1000)}_{file.filename}"
+        saved_path = temp_manager.save_image(image_data, filename)
+        return jsonify({"ok": True, "path": saved_path})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 # ============ 插件管理 API ============

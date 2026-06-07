@@ -198,6 +198,7 @@
                     { key: 'base_url', labelKey: 'field.service.baseUrl', labelDefault: 'Base URL', type: 'text', placeholder: 'https://api.example.com/v1' },
                     { key: 'model', labelKey: 'field.service.model', labelDefault: '模型名称', type: 'text', placeholder: 'model-name' },
                 ],
+                ],
                 statusField: 'api_key',  // 根据 api_key 是否填写显示状态
             },
             addButtonKey: 'card.service.add',
@@ -219,6 +220,7 @@
                         { key: 'plan_llm.provider', labelKey: 'field.routing.planLLM', labelDefault: '计划模型', type: 'text', placeholder: '提供商名称' },
                         { key: 'tool_llm.provider', labelKey: 'field.routing.toolLLM', labelDefault: '工具调用模型', type: 'text', placeholder: '提供商名称' },
                         { key: 'generic_llm.provider', labelKey: 'field.routing.genericLLM', labelDefault: '通用LLM', type: 'text', placeholder: '通用场景（XML修复/插件调用等），可复用主对话模型' },
+                        { key: 'vlm.provider', labelKey: 'field.routing.vlm', labelDefault: '多模态模型', type: 'text', placeholder: '支持图片识别的 VLM 模型' },
                     ]
                 },
             ]
@@ -366,11 +368,19 @@
 
             // text / password / url / select
             var inputType = isSecret ? 'password' : (fieldDef.type || 'text');
-            return '<div class="card-field"' + parentAttr + '>'
+            var html = '<div class="card-field"' + parentAttr + '>'
                 + '<span class="field-label">' + label + (isSecret ? this._getStatusBadge(fieldDef, val) : '') + '</span>'
                 + '<input type="' + inputType + '" data-key="' + inputKey + '" value="' + this._escapeHtml(val || '') + '" placeholder="' + (fieldDef.placeholder || '') + '">'
                 + desc
                 + '</div>';
+            // 模型字段追加"获取模型"按钮
+            if (inputKey.endsWith('model')) {
+                var providerName = this.currentCardProvider || '';
+                html += '<div class="card-field"><button class="btn-fetch-models" onclick="window.fetchModels(\'' + this._escapeHtml(providerName) + '\')" style="font-size:0.78rem;padding:4px 12px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;">' + (window.t('field.service.fetchModels') || '获取模型列表') + '</button>'
+                    + '<div class="model-dropdown" id="modelDropdown-' + this._escapeHtml(providerName) + '" style="display:none;position:absolute;left:0;right:0;max-height:200px;overflow-y:auto;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;margin-top:4px;z-index:200;box-shadow:0 4px 12px rgba(0,0,0,0.15);"></div>'
+                    + '</div>';
+            }
+            return html;
         }
 
         _renderArrayField(fieldDef, label, desc, inputKey) {
@@ -511,8 +521,10 @@
                             titleDefault: entries[i].key,
                             _isDynamic: true,
                         });
+                        this.currentCardProvider = entries[i].key;
                         html += this._renderCard(cardDef, entries[i].data);
                     }
+                    this.currentCardProvider = null;
                 }
 
                 // 添加按钮
@@ -900,3 +912,71 @@
     window.CONFIG_CARD_SCHEMA = SCHEMA;
 
 })();
+
+// ===== 全局模型获取函数 =====
+
+window.fetchModels = function (providerName) {
+    var dropdown = document.getElementById('modelDropdown-' + providerName);
+    if (!dropdown) return;
+
+    if (dropdown.style.display === 'block') {
+        dropdown.style.display = 'none';
+        return;
+    }
+
+    dropdown.innerHTML = '<div style="padding:8px;color:var(--text-secondary);font-size:0.8rem;">加载中...</div>';
+    dropdown.style.display = 'block';
+
+    fetch('/api/services/' + encodeURIComponent(providerName) + '/models')
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (!data.ok) {
+                dropdown.innerHTML = '<div style="padding:8px;color:#ef4444;font-size:0.8rem;">' + (data.error || '获取失败') + '</div>';
+                return;
+            }
+            var models = data.models || [];
+            if (!models.length) {
+                dropdown.innerHTML = '<div style="padding:8px;color:var(--text-secondary);font-size:0.8rem;">无可用模型</div>';
+                return;
+            }
+            var html = '<input type="text" id="modelSearch-' + providerName + '" placeholder="搜索模型..." style="width:100%;border:none;border-bottom:1px solid var(--border);padding:6px 8px;font-size:0.78rem;background:var(--bg);color:var(--text);box-sizing:border-box;" oninput="window.filterModels(\'' + providerName + '\')">';
+            models.forEach(function (m) {
+                var mid = (m.id || '').replace(/'/g, "\\'");
+                html += '<div class="model-item" onclick="window.selectModel(\'' + providerName + '\',\'' + mid + '\')" style="padding:6px 12px;cursor:pointer;font-size:0.82rem;border-bottom:1px solid var(--border);" data-model-id="' + (m.id || '') + '">'
+                    + '<span>' + (m.id || '') + '</span>'
+                    + (m.owned_by ? ' <span style="color:var(--text-secondary);font-size:0.7rem;">' + m.owned_by + '</span>' : '')
+                    + '</div>';
+            });
+            dropdown.innerHTML = html;
+        })
+        .catch(function () {
+            dropdown.innerHTML = '<div style="padding:8px;color:#ef4444;font-size:0.8rem;">网络错误</div>';
+        });
+};
+
+window.selectModel = function (providerName, modelId) {
+    var dropdown = document.getElementById('modelDropdown-' + providerName);
+    if (dropdown) dropdown.style.display = 'none';
+    var cards = document.querySelectorAll('.config-card');
+    cards.forEach(function (card) {
+        var titleEl = card.querySelector('.card-title');
+        if (titleEl && titleEl.textContent.trim() === providerName) {
+            var input = card.querySelector('input[data-key$="model"]');
+            if (input) {
+                input.value = modelId;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        }
+    });
+};
+
+window.filterModels = function (providerName) {
+    var searchInput = document.getElementById('modelSearch-' + providerName);
+    var dropdown = document.getElementById('modelDropdown-' + providerName);
+    if (!searchInput || !dropdown) return;
+    var q = searchInput.value.toLowerCase();
+    dropdown.querySelectorAll('.model-item').forEach(function (item) {
+        var id = (item.getAttribute('data-model-id') || '').toLowerCase();
+        item.style.display = id.indexOf(q) !== -1 ? '' : 'none';
+    });
+};

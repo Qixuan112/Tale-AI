@@ -576,7 +576,8 @@
                     main_llm: { provider: providerName },
                     plan_llm: { provider: providerName },
                     tool_llm: { provider: providerName },
-                    generic_llm: { provider: providerName }
+                    generic_llm: { provider: providerName },
+                    vlm: { provider: providerName }
                 });
 
                 var modelMsg = model ? this._t('guide.model_set', {model: model}) : this._t('guide.model_not_set');

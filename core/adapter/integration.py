@@ -201,6 +201,7 @@ class AdapterEventBridge:
         target_adapters: Optional[list] = None,
         target_id: Optional[str] = None,
         text: Optional[str] = None,
+        images: Optional[list] = None,
         **kwargs
     ) -> Dict[str, bool]:
         """广播消息到多个适配器
@@ -209,6 +210,7 @@ class AdapterEventBridge:
             target_adapters: 目标适配器列表，None表示所有
             target_id: 目标ID
             text: 文本内容
+            images: 图片路径列表
             **kwargs: 其他参数
 
         Returns:
@@ -218,7 +220,7 @@ class AdapterEventBridge:
             logger.info("[AdapterBridge] Manager not initialized")
             return {}
 
-        return await self.manager.broadcast(target_adapters, target_id, text, **kwargs)
+        return await self.manager.broadcast(target_adapters, target_id, text, images=images, **kwargs)
 
     async def stop_all(self):
         """停止所有适配器"""

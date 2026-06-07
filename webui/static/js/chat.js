@@ -19,6 +19,7 @@
     let conversations = [];
     let currentConvId = null;
     let isSending = false;
+    var uploadedImages = [];
 
     // ===== 初始化 =====
     async function init() {
@@ -335,17 +336,20 @@
     // ===== 发送消息 =====
     async function sendMessage() {
         const text = elMessageInput.value.trim();
-        if (!text || isSending) return;
+        if ((!text && !uploadedImages.length) || isSending) return;
 
         isSending = true;
         elBtnSend.disabled = true;
 
-        // 立即显示用户消息
-        appendMessage('user', text);
+        if (text) {
+            appendMessage('user', text);
+        }
+        if (uploadedImages.length) {
+            appendMessage('user', '[图片 ' + uploadedImages.length + ' 张]');
+        }
         elMessageInput.value = '';
         elMessageInput.focus();
 
-        // 显示"思考中"加载指示器
         var thinkingEl = document.createElement('div');
         thinkingEl.className = 'message assistant thinking';
         thinkingEl.innerHTML = '<div class="avatar">A</div><div><div class="bubble"><span class="thinking-dots"><span></span><span></span><span></span></span></div></div>';
@@ -353,10 +357,13 @@
         scrollToBottom();
 
         try {
+            var body = { message: text, conv_id: currentConvId, images: uploadedImages.slice() };
+            uploadedImages = [];
+            renderPreviews();
             const res = await fetch('/api/chat/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text, conv_id: currentConvId })
+                body: JSON.stringify(body)
             });
             const data = await res.json();
             // 移除思考中指示器
@@ -450,6 +457,70 @@
     });
     elBtnNewChat.addEventListener('click', newConversation);
     elBtnClearChat.addEventListener('click', clearConversation);
+
+    // ===== 图片上传与粘贴 =====
+    var $imageInput = document.getElementById('imageInput');
+    var $btnImage = document.getElementById('btnImage');
+    var $imagePreview = document.getElementById('imagePreview');
+
+    if ($btnImage && $imageInput) {
+        $btnImage.addEventListener('click', function () { $imageInput.click(); });
+        $imageInput.addEventListener('change', function (e) {
+            uploadFiles(Array.from(e.target.files));
+            e.target.value = '';
+        });
+    }
+
+    document.addEventListener('paste', function (e) {
+        if (document.activeElement !== elMessageInput) return;
+        var items = e.clipboardData && e.clipboardData.items;
+        if (!items) return;
+        var files = [];
+        for (var i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf('image') !== -1) {
+                files.push(items[i].getAsFile());
+            }
+        }
+        if (files.length) {
+            e.preventDefault();
+            uploadFiles(files);
+        }
+    });
+
+    function uploadFiles(files) {
+        files.forEach(function (file) {
+            var formData = new FormData();
+            formData.append('file', file);
+            fetch('/api/chat/upload', { method: 'POST', body: formData })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (data.ok) {
+                        uploadedImages.push(data.path);
+                        renderPreviews();
+                    }
+                })
+                .catch(function (e) { console.error('Image upload failed:', e); });
+        });
+    }
+
+    function renderPreviews() {
+        if (!$imagePreview) return;
+        $imagePreview.innerHTML = '';
+        uploadedImages.forEach(function (path, idx) {
+            var div = document.createElement('div');
+            div.style.cssText = 'position:relative;width:48px;height:48px;border-radius:6px;overflow:hidden;border:1px solid var(--border);flex-shrink:0;';
+            var img = document.createElement('img');
+            img.src = '/' + path;
+            img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+            var btn = document.createElement('span');
+            btn.textContent = '×';
+            btn.style.cssText = 'position:absolute;top:0;right:0;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;line-height:1;padding:1px 4px;cursor:pointer;border-radius:0 0 0 4px;';
+            btn.onclick = function () { uploadedImages.splice(idx, 1); renderPreviews(); };
+            div.appendChild(img);
+            div.appendChild(btn);
+            $imagePreview.appendChild(div);
+        });
+    }
 
     // ===== 暴露全局接口（供 card-view.js 使用）=====
     window.switchConversation = switchConversation;

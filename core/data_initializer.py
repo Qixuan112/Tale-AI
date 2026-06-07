@@ -99,6 +99,13 @@ plan_llm:
 # ============================================
 generic_llm:
   provider: ""
+
+# ============================================
+# 多模态模型 (VLM) — 用于图片识别与视觉理解
+# 可复用主对话模型的 provider，需使用支持 vision 的模型
+# ============================================
+vlm:
+  provider: ""
 """
 
 DEFAULT_SERVICES_YAML = """\
@@ -144,6 +151,7 @@ def ensure_data_dirs():
         "data/conversations",
         "data/diary",
         "data/files",
+        "data/temp",
         "plugins",
     ]
     for d in dirs:
