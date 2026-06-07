@@ -43,7 +43,7 @@ class PluginManager:
         if plugins_dir is None:
             plugins_dir = Path(__file__).parent.parent.parent / "plugins"
         self._plugins_dir = plugins_dir
-        self._runtime_configs = config or {}
+        self._runtime_configs = self._normalize_configs(config or {})
         self._plugins: Dict[str, PluginBase] = {}
         self._hook_registrations: Dict[str, Dict[str, list]] = {}
         self._pending_prompt_sections: Dict[str, List[tuple]] = {}
@@ -51,6 +51,19 @@ class PluginManager:
         if not PluginManager._scanned:
             self._scan_plugins(plugins_dir)
             PluginManager._scanned = True
+
+    @staticmethod
+    def _normalize_configs(config: dict) -> Dict[str, PluginRuntimeConfig]:
+        """Normalize raw dicts to PluginRuntimeConfig objects."""
+        normalized = {}
+        for pid, cfg in config.items():
+            if isinstance(cfg, PluginRuntimeConfig):
+                normalized[pid] = cfg
+            elif isinstance(cfg, dict):
+                normalized[pid] = PluginRuntimeConfig.from_dict(pid, cfg)
+            else:
+                normalized[pid] = cfg
+        return normalized
 
     # ------------------------------------------------------------------
     # Discovery
