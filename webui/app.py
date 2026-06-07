@@ -528,7 +528,7 @@ def api_status():
     all_adapters = AdapterManager.list_adapters() if manager else []
     # 简单告警：内存过高
     if mem is not None and mem > 85:
-        alerts.append({"level": "danger", "message": f"内存占用过高: {mem:.1f}%"})
+        alerts.append({"level": "danger", "key": "high_memory", "message": f"内存占用过高: {mem:.1f}%"})
 
     # routing 未配置但 services 已配置时提醒
     providers = config_loader.providers
@@ -1350,11 +1350,12 @@ def api_plugins():
 def api_plugin_toggle(plugin_id):
     """启用/禁用插件"""
     try:
+        from core.plugin import PluginManager
         core = get_core()
-        if not core or not core.plugin_manager:
-            return jsonify({"ok": False, "error": "插件管理器未初始化"}), 500
-
-        pm = core.plugin_manager
+        if core and core.plugin_manager:
+            pm = core.plugin_manager
+        else:
+            pm = PluginManager()
         data = request.get_json(silent=True) or {}
         enabled = data.get("enabled", True)
 
