@@ -106,6 +106,9 @@
                         { key: 'bot.max_buffer_messages', labelKey: 'field.behavior.bufferMsg', labelDefault: '缓冲消息数', type: 'number', placeholder: '缓冲池大小', descKey: 'field.behavior.bufferMsgDesc', descDefault: '最大缓冲消息数' },
                         { key: 'bot.typing_speed', labelKey: 'field.behavior.typingSpeed', labelDefault: '打字速度', type: 'range', min: 10, max: 200, step: 10, rangeDefault: 50, rangeUnit: 'ms/字', descKey: 'field.behavior.typingSpeedDesc', descDefault: '模拟真人打字速度，越低越快' },
                         { key: 'bot.typing_min_delay', labelKey: 'field.behavior.typingMinDelay', labelDefault: '最短延迟', type: 'range', min: 0.1, max: 3, step: 0.1, rangeDefault: 0.5, rangeUnit: '秒', descKey: 'field.behavior.typingMinDelayDesc', descDefault: '即使消息很短也要等待的最少时间' },
+                        { key: 'context.max_context', labelKey: 'field.behavior.maxContext', labelDefault: '上下文长度', type: 'number', placeholder: '保留的对话条数', descKey: 'field.behavior.maxContextDesc', descDefault: 'ChatLLM 保留的最近对话条数' },
+                        { key: 'context.chat_context_enabled', labelKey: 'field.behavior.chatContextEnabled', labelDefault: '启用聊天上下文', type: 'boolean' },
+                        { key: 'context.chat_context_window', labelKey: 'field.behavior.chatContextWindow', labelDefault: '聊天上下文窗口', type: 'range', min: 0, max: 50, step: 1, rangeDefault: 10, rangeUnit: '条', descKey: 'field.behavior.chatContextWindowDesc', descDefault: '响应时附带上方最近几条聊天记录' },
                     ]
                 },
                 {

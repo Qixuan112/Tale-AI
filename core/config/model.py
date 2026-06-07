@@ -75,6 +75,8 @@ class BotBehaviorConfig:
 class ContextConfig:
     """上下文配置类"""
     max_context: int = 10
+    chat_context_window: int = 10
+    chat_context_enabled: bool = True
     memory_enabled: bool = True
     personality_strength: float = 0.8
 

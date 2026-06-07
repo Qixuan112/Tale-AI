@@ -49,6 +49,14 @@ bot:
   typing_speed: 50
   typing_min_delay: 0.5
 
+# 上下文设置
+context:
+  max_context: 10
+  chat_context_window: 10
+  chat_context_enabled: true
+  memory_enabled: true
+  personality_strength: 0.8
+
 selfie:
   path: ""
 

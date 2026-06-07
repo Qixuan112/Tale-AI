@@ -66,6 +66,7 @@ class TaleCore:
         self._running = False
         self._shutdown_event: Optional[asyncio.Event] = None
         self._llm_executor = None
+        self._chat_context_buffer: Dict[str, list] = {}
 
     def initialize(self):
         """初始化核心组件（幂等，可多次调用）"""
@@ -295,6 +296,9 @@ class TaleCore:
         # 3. 使用 MessageProcessor 处理消息
         processed = self.message_processor.process(platform_event)
 
+        # 3.5 将消息存入上下文缓冲区（无论决策如何都记录）
+        self._store_to_context_buffer(processed)
+
         # 4. 根据决策处理
         if processed.decision == ResponseDecision.RESPOND:
             await self._handle_respond_message(processed, adapter_instance=adapter_instance)
@@ -354,6 +358,34 @@ class TaleCore:
             logger.error("重建 PlatformEvent 失败: %s", e)
             return None
 
+    def _store_to_context_buffer(self, processed: ProcessedMessage):
+        """将消息存入上下文缓冲区，用于滑动窗口上下文。"""
+        key = processed.group_id or processed.sender_id
+        if not key or not processed.text:
+            return
+        if key not in self._chat_context_buffer:
+            self._chat_context_buffer[key] = []
+        import time
+        self._chat_context_buffer[key].append({
+            "sender": processed.sender_name,
+            "text": processed.text,
+            "time": time.strftime("%H:%M"),
+        })
+        # 限制缓冲区大小，防止内存泄漏
+        if len(self._chat_context_buffer[key]) > 100:
+            self._chat_context_buffer[key] = self._chat_context_buffer[key][-100:]
+
+    def _build_context_window(self, processed: ProcessedMessage, window: int) -> str:
+        """从缓冲区获取最近 N 条消息作为上下文。"""
+        key = processed.group_id or processed.sender_id
+        if not key or not self._chat_context_buffer.get(key):
+            return ""
+        recent = self._chat_context_buffer[key][-window:]
+        lines = []
+        for msg in recent:
+            lines.append(f"[{msg['sender']}] {msg['text']}")
+        return "\n".join(lines)
+
     async def _handle_respond_message(self, processed: ProcessedMessage, adapter_instance: str = None):
         """处理需要响应的消息
 
@@ -383,6 +415,15 @@ class TaleCore:
                         user_input = f"{user_input}\n\n[图片识别结果]\n{vlm_result}"
                 except Exception as e:
                     logger.warning("VLM 图片识别失败: %s", e)
+
+            # 追加滑动上下文窗口
+            if processed.text:
+                ctx_window_cfg = config_loader.bot.context
+                if ctx_window_cfg.chat_context_enabled and ctx_window_cfg.chat_context_window > 0:
+                    ctx = self._build_context_window(processed, ctx_window_cfg.chat_context_window)
+                    if ctx:
+                        logger.debug("追加上下文窗口 (%d 条)", ctx_window_cfg.chat_context_window)
+                        user_input = f"以下是最近的聊天记录：\n{ctx}\n\n---\n{user_input}"
 
             chatllm_reply = await self._call_chatllm(user_input)
             parsed = parse_xml_msg(chatllm_reply)

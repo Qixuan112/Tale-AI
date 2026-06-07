@@ -372,6 +372,8 @@ class ConfigLoader:
 
         context = ContextConfig(
             max_context=context_data.get("max_context", 10),
+            chat_context_window=context_data.get("chat_context_window", 10),
+            chat_context_enabled=context_data.get("chat_context_enabled", True),
             memory_enabled=context_data.get("memory_enabled", True),
             personality_strength=context_data.get("personality_strength", 0.8),
         )
