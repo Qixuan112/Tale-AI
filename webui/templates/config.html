@@ -58,6 +58,7 @@
 }
 </style>
 
+<script src="{{ url_for('static', filename='js/config-cards.js') }}"></script>
 <script>
 (function() {
     'use strict';
@@ -803,8 +804,4 @@
     init();
 })();
 </script>
-{% endblock %}
-
-{% block extra_js %}
-<script src="{{ url_for('static', filename='js/config-cards.js') }}"></script>
 {% endblock %}
