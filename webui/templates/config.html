@@ -757,7 +757,7 @@
     // ============ 初始化 ============
 
     async function init() {
-        await loadJsYaml();
+        loadJsYaml();  // 非阻塞加载，仅源码模式需要
         loadMonaco();  // 后台加载
 
         try {
