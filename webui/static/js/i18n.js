@@ -18,6 +18,7 @@
             'nav.settings': '设置',
             'nav.adapters': '适配器',
             'nav.tools': '工具',
+            'nav.plugins': '插件管理',
             'nav.logs': '日志',
             'theme.toggle': '切换主题',
             'theme.dark': '深色模式',
@@ -456,6 +457,22 @@
             'guide.step6_saved': '唤醒设置保存好啦！回头也可以去配置中心的行为参数里随时调整～',
             'guide.help_wake': '设置唤醒方式',
             'guide.step_tip_behavior': '这里是行为参数设置，唤醒方式在最下面的"唤醒设置"卡片里哦～',
+
+            // plugins.html
+            'plugins.title': '插件管理',
+            'plugins.subtitle': '管理已安装的内置与第三方插件',
+            'plugins.builtin': '内置插件',
+            'plugins.builtinBadge': '内置',
+            'plugins.thirdParty': '第三方插件',
+            'plugins.version': '版本',
+            'plugins.author': '作者',
+            'plugins.description': '描述',
+            'plugins.loading': '加载中...',
+            'plugins.noPlugins': '暂无插件',
+            'plugins.loadFailed': '加载失败',
+            'plugins.toggleSuccess': '操作成功',
+            'plugins.toggleFailed': '操作失败',
+            'plugins.hooks': '扩展点',
         },
         en: {
             // base.html sidebar
@@ -465,6 +482,7 @@
             'nav.settings': 'Settings',
             'nav.adapters': 'Adapters',
             'nav.tools': 'Tools',
+            'nav.plugins': 'Plugins',
             'nav.logs': 'Logs',
             'theme.toggle': 'Toggle Theme',
             'theme.dark': 'Dark Mode',
@@ -903,6 +921,22 @@
             'guide.step6_saved': "Wake settings saved! You can always adjust them in the Behavior section of Config Center~",
             'guide.help_wake': 'Wake-up Settings',
             'guide.step_tip_behavior': 'This is the behavior settings page. Wake-up settings are in the "Wake Settings" card at the bottom~',
+
+            // plugins.html
+            'plugins.title': 'Plugin Management',
+            'plugins.subtitle': 'Manage built-in and third-party plugins',
+            'plugins.builtin': 'Built-in Plugins',
+            'plugins.builtinBadge': 'Built-in',
+            'plugins.thirdParty': 'Third-party Plugins',
+            'plugins.version': 'Version',
+            'plugins.author': 'Author',
+            'plugins.description': 'Description',
+            'plugins.loading': 'Loading...',
+            'plugins.noPlugins': 'No plugins found',
+            'plugins.loadFailed': 'Failed to load',
+            'plugins.toggleSuccess': 'Successful',
+            'plugins.toggleFailed': 'Operation failed',
+            'plugins.hooks': 'Hooks',
         }
     };
 

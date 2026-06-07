@@ -50,12 +50,47 @@ def parse_xml_msg(xml_data):
         try:
             root = ET.fromstring(f"<root>{sanitized}</root>")
         except ET.ParseError:
+            # 降级策略1.5：尝试用通用 LLM 修复 XML
+            repaired = _try_repair_xml(cleaned_data, str(e))
+            if repaired is not None:
+                return repaired
             # 降级策略2：直接提取文本内容作为回退
             logger.warning("XML 二次解析失败，回退到纯文本提取")
             return _fallback_extract(cleaned_data, str(e))
         return _parse_root(root)
 
     return _parse_root(root)
+
+
+def _try_repair_xml(raw_xml: str, error_msg: str):
+    """用通用 LLM 尝试修复格式错误的 XML。
+    成功返回 _parse_root(root) 的 dict，失败返回 None。
+    """
+    try:
+        from .llm.generic import get_generic_llm
+        from .config.prompt import XML_REPAIR_SYSTEM_PROMPT
+
+        generic = get_generic_llm()
+        user_msg = f"解析错误：{error_msg}\n\n需要修复的文本：\n{raw_xml}"
+        repaired = generic.chat(XML_REPAIR_SYSTEM_PROMPT, user_msg)
+
+        if not repaired:
+            return None
+
+        # 清理可能的 markdown 代码块包裹
+        repaired = repaired.strip()
+        if repaired.startswith("```"):
+            repaired = re.sub(r'^```(?:xml)?\s*', '', repaired)
+            repaired = re.sub(r'\s*```$', '', repaired)
+
+        root = ET.fromstring(f"<root>{repaired}</root>")
+        logger.info("通用 LLM 成功修复 XML")
+        return _parse_root(root)
+    except ET.ParseError:
+        return None
+    except Exception as e:
+        logger.warning("XML 修复 agent 调用失败: %s", e)
+        return None
 
 
 def _sanitize_xml(data: str) -> str:

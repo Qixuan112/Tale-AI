@@ -573,7 +573,10 @@
 
                 // 保存路由到 routing.yaml
                 await this.saveConfig('routing', {
-                    main_llm: { provider: providerName }
+                    main_llm: { provider: providerName },
+                    plan_llm: { provider: providerName },
+                    tool_llm: { provider: providerName },
+                    generic_llm: { provider: providerName }
                 });
 
                 var modelMsg = model ? this._t('guide.model_set', {model: model}) : this._t('guide.model_not_set');

@@ -480,6 +480,11 @@ def page_tools():
     return render_template("tools.html")
 
 
+@app.route("/plugins")
+def page_plugins():
+    return render_template("plugins.html")
+
+
 @app.route("/logs")
 def page_logs():
     return render_template("logs.html")
@@ -1278,6 +1283,7 @@ def api_plugins():
                 "author": manifest.author,
                 "description": manifest.description,
                 "hooks": manifest.hooks,
+                "builtin": manifest.builtin,
             })
         core = get_core()
         loaded = core.plugin_manager.list_loaded() if core and core.plugin_manager else []

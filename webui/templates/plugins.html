@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Plugins — Tale WebUI{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tools.css') }}">
+<style>
+    .page-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; }
+    .page-header h1 { font-size:1.4rem; font-weight:600; margin:0; }
+    .page-header .subtitle { font-size:0.85rem; color:var(--text-secondary); margin-top:4px; }
+    .plugin-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:16px; }
+    .plugin-card {
+        background:var(--card-bg); border:1px solid var(--border);
+        border-radius:12px; padding:20px; display:flex; flex-direction:column; gap:12px;
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .plugin-card:hover { border-color:var(--accent); box-shadow:0 2px 12px rgba(99,102,241,0.08); }
+    .plugin-card-header { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+    .plugin-card-title { display:flex; align-items:center; gap:8px; }
+    .plugin-card-title h3 { font-size:1.05rem; font-weight:600; margin:0; }
+    .badge {
+        display:inline-block; padding:2px 8px; border-radius:6px;
+        font-size:0.72rem; font-weight:500; line-height:1.4;
+    }
+    .badge-builtin { background:#e0e7ff; color:#4338ca; }
+    .badge-thirdparty { background:#fef3c7; color:#92400e; }
+    .badge-enabled { background:#d1fae5; color:#065f46; }
+    .badge-disabled { background:#fee2e2; color:#991b1b; }
+    .plugin-card-meta { display:flex; flex-wrap:wrap; gap:12px; font-size:0.78rem; color:var(--text-secondary); }
+    .plugin-card-meta span { display:flex; align-items:center; gap:4px; }
+    .plugin-card-desc { font-size:0.85rem; color:var(--text-secondary); line-height:1.5; }
+    .plugin-card-hooks { display:flex; flex-wrap:wrap; gap:4px; }
+    .hook-tag { padding:1px 8px; border-radius:4px; font-size:0.7rem; background:var(--bg-tertiary); color:var(--text-secondary); }
+    .plugin-card-actions { display:flex; align-items:center; gap:8px; margin-top:auto; }
+    .toggle-switch { position:relative; display:inline-block; width:44px; height:24px; cursor:pointer; }
+    .toggle-switch input { opacity:0; width:0; height:0; }
+    .toggle-slider { position:absolute; inset:0; background:#cbd5e1; border-radius:24px; transition:0.2s; }
+    .toggle-slider::before { content:""; position:absolute; height:18px; width:18px; left:3px; bottom:3px; background:#fff; border-radius:50%; transition:0.2s; }
+    .toggle-switch input:checked+.toggle-slider { background:var(--accent); }
+    .toggle-switch input:checked+.toggle-slider::before { transform:translateX(20px); }
+    .section-title { font-size:0.9rem; font-weight:600; color:var(--text-secondary); margin:24px 0 12px; padding-bottom:6px; border-bottom:1px solid var(--border); }
+    .section-title:first-child { margin-top:0; }
+    .state-loading { text-align:center; padding:48px; color:var(--text-secondary); }
+    .state-empty { text-align:center; padding:48px; color:var(--text-secondary); }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 data-i18n="plugins.title">插件管理</h1>
+        <p class="subtitle" data-i18n="plugins.subtitle">管理已安装的内置与第三方插件</p>
+    </div>
+</div>
+
+<div id="pluginstatus" class="state-loading">
+    <span data-i18n="plugins.loading">加载中...</span>
+</div>
+
+<div id="pluginlist" style="display:none;">
+    <div class="section-title" data-i18n="plugins.builtin">内置插件</div>
+    <div id="builtin-grid" class="plugin-grid"></div>
+    <div class="section-title" data-i18n="plugins.thirdParty">第三方插件</div>
+    <div id="thirdparty-grid" class="plugin-grid"></div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/plugins.js') }}"></script>
+{% endblock %}

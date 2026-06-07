@@ -218,29 +218,15 @@
                         { key: 'main_llm.provider', labelKey: 'field.routing.mainLLM', labelDefault: '主对话模型', type: 'text', placeholder: '提供商名称' },
                         { key: 'plan_llm.provider', labelKey: 'field.routing.planLLM', labelDefault: '计划模型', type: 'text', placeholder: '提供商名称' },
                         { key: 'tool_llm.provider', labelKey: 'field.routing.toolLLM', labelDefault: '工具调用模型', type: 'text', placeholder: '提供商名称' },
+                        { key: 'generic_llm.provider', labelKey: 'field.routing.genericLLM', labelDefault: '通用LLM', type: 'text', placeholder: '通用场景（XML修复/插件调用等），可复用主对话模型' },
                     ]
                 },
             ]
         },
 
+        // 插件管理已迁移至独立的 /plugins 页面
         plugins: {
-            // 动态：每个插件渲染为一张卡片
-            dynamic: true,
-            dynamicItemSchema: {
-                idKey: null,
-                label: '插件',
-                color: '#84cc16',
-                titleKey: null,
-                fields: [
-                    { key: 'enabled', labelKey: 'field.plugin.enabled', labelDefault: '启用', type: 'boolean' },
-                    // config 子字段动态生成（如果是对象）
-                ],
-                statusField: 'enabled',
-            },
-            addButtonKey: 'card.plugin.add',
-            addButtonDefault: '添加插件',
-            // 插件可以有嵌套 config 对象
-            nestedConfigKey: 'config',
+            dynamic: false,
         },
     };
 

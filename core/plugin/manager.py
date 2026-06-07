@@ -368,6 +368,7 @@ class PluginManager:
                 "author": manifest.author,
                 "description": manifest.description,
                 "hooks": manifest.hooks,
+                "builtin": manifest.builtin,
             },
             "schema": cls._schemas.get(plugin_id, []),
         }

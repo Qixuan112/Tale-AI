@@ -51,6 +51,7 @@ class ModelsConfig:
     main_llm: ModelMapping = field(default_factory=lambda: ModelMapping())
     plan_llm: ModelMapping = field(default_factory=lambda: ModelMapping())
     tool_llm: ModelMapping = field(default_factory=lambda: ModelMapping())
+    generic_llm: ModelMapping = field(default_factory=lambda: ModelMapping())
     vlm: ModelMapping = field(default_factory=lambda: ModelMapping())
     util_model: ModelMapping = field(default_factory=lambda: ModelMapping())
     image: ModelMapping = field(default_factory=lambda: ModelMapping())

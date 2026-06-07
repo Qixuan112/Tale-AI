@@ -25,6 +25,7 @@ class PluginManifest:
     hooks: List[str] = field(default_factory=list)
     dependencies: Dict[str, str] = field(default_factory=dict)
     min_tale_version: str = "1.0.0"
+    builtin: bool = False
 
     @classmethod
     def from_dict(cls, data: dict) -> "PluginManifest":
@@ -39,6 +40,7 @@ class PluginManifest:
             hooks=data.get("hooks", []),
             dependencies=data.get("dependencies", {}),
             min_tale_version=data.get("min_tale_version", "1.0.0"),
+            builtin=data.get("builtin", False),
         )
 
 

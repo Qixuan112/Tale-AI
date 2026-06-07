@@ -100,12 +100,12 @@ _SCHEMAS = {
         },
     },
     "routing.yaml": {
-        "fields": {k: dict for k in ["main_llm", "plan_llm", "tool_llm", "vlm",
-                                      "util_model", "image", "tts", "stt"]},
+        "fields": {k: dict for k in ["main_llm", "plan_llm", "tool_llm", "generic_llm",
+                                      "vlm", "util_model", "image", "tts", "stt"]},
         "required": [],
         "nested": {k: {"provider": str}
-                   for k in ["main_llm", "plan_llm", "tool_llm", "vlm",
-                             "util_model", "image", "tts", "stt"]},
+                   for k in ["main_llm", "plan_llm", "tool_llm", "generic_llm",
+                             "vlm", "util_model", "image", "tts", "stt"]},
     },
     "platforms.yaml": {
         "fields": {},
@@ -345,6 +345,7 @@ class ConfigLoader:
             main_llm=ModelMapping(provider=data.get("main_llm", {}).get("provider", "")),
             plan_llm=ModelMapping(provider=data.get("plan_llm", {}).get("provider", "")),
             tool_llm=ModelMapping(provider=data.get("tool_llm", {}).get("provider", "")),
+            generic_llm=ModelMapping(provider=data.get("generic_llm", {}).get("provider", "")),
             vlm=ModelMapping(provider=data.get("vlm", {}).get("provider", "")),
             util_model=ModelMapping(provider=data.get("util_model", {}).get("provider", "")),
             image=ModelMapping(provider=data.get("image", {}).get("provider", "")),
@@ -528,6 +529,10 @@ class ConfigLoader:
     @property
     def tool_api(self) -> Dict[str, str]:
         return self.get_api_config("tool_llm")
+
+    @property
+    def generic_api(self) -> Dict[str, str]:
+        return self.get_api_config("generic_llm")
 
     @property
     def max_context(self) -> int:
