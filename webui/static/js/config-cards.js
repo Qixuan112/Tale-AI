@@ -201,7 +201,6 @@
                     { key: 'base_url', labelKey: 'field.service.baseUrl', labelDefault: 'Base URL', type: 'text', placeholder: 'https://api.example.com/v1' },
                     { key: 'model', labelKey: 'field.service.model', labelDefault: '模型名称', type: 'text', placeholder: 'model-name' },
                 ],
-                ],
                 statusField: 'api_key',  // 根据 api_key 是否填写显示状态
             },
             addButtonKey: 'card.service.add',
