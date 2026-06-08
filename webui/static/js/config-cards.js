@@ -314,7 +314,7 @@
                 }
             }
             return providers;
-        },
+        }
 
         _renderField(fieldDef) {
             var val = this._getValue(fieldDef.key);
