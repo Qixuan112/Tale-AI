@@ -281,6 +281,13 @@ class QQAdapter(BaseAdapter):
             # 构建消息
             message_segments = []
 
+            # 引用回复（必须先于其他段，OneBot 协议要求）
+            if content.reply_to:
+                message_segments.append({
+                    "type": "reply",
+                    "data": {"id": content.reply_to}
+                })
+
             # 群聊回复时，需要 @ 发送者才能触发实际提醒
             if kwargs.get('is_group') and content.at_targets:
                 for at_qq in content.at_targets:
