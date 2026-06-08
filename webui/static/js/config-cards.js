@@ -172,7 +172,7 @@
                 titleKey: null,  // 使用 key 名作为标题
                 fields: [
                     { key: 'enabled', labelKey: 'field.platform.enabled', labelDefault: '启用', type: 'boolean' },
-                    { key: 'adapter_type', labelKey: 'field.platform.adapterType', labelDefault: '适配器类型', type: 'text', placeholder: 'qq / wechat_pc / websocket' },
+                    { key: 'adapter_type', labelKey: 'field.platform.adapterType', labelDefault: '适配器类型', type: 'select', options: ['qq', 'wechat_pc', 'websocket'] },
                     { key: 'ws_url', labelKey: 'field.platform.wsUrl', labelDefault: 'WebSocket URL', type: 'text', placeholder: 'ws://127.0.0.1:3002' },
                     { key: 'http_url', labelKey: 'field.platform.httpUrl', labelDefault: 'HTTP URL', type: 'text', placeholder: 'http://127.0.0.1:3001' },
                     { key: 'access_token', labelKey: 'field.platform.accessToken', labelDefault: 'Access Token', type: 'password', placeholder: '认证令牌' },
@@ -195,8 +195,8 @@
                 color: '#3b82f6',
                 titleKey: null,
                 fields: [
-                    { key: 'type', labelKey: 'field.service.type', labelDefault: '服务类型', type: 'text', placeholder: 'llm / tts / image' },
-                    { key: 'format', labelKey: 'field.service.format', labelDefault: 'API 格式', type: 'text', placeholder: 'openai / anthropic' },
+                    { key: 'type', labelKey: 'field.service.type', labelDefault: '服务类型', type: 'select', options: ['llm', 'tts', 'image'] },
+                    { key: 'format', labelKey: 'field.service.format', labelDefault: 'API 格式', type: 'select', options: ['openai', 'anthropic'] },
                     { key: 'api_key', labelKey: 'field.service.apiKey', labelDefault: 'API Key', type: 'password', placeholder: 'your-api-key' },
                     { key: 'base_url', labelKey: 'field.service.baseUrl', labelDefault: 'Base URL', type: 'text', placeholder: 'https://api.example.com/v1' },
                     { key: 'model', labelKey: 'field.service.model', labelDefault: '模型名称', type: 'text', placeholder: 'model-name' },
@@ -601,6 +601,8 @@
 
         _bindEvents() {
             var self = this;
+            if (this._eventsBound) return;
+            this._eventsBound = true;
 
             this.container.addEventListener('click', function (e) {
                 var target = e.target;
@@ -622,9 +624,12 @@
                 if (removeBtn) {
                     var removeCardId = removeBtn.dataset.card;
                     var confirmMsg = self._t('card.confirmRemove', '确定要删除「') + removeCardId + self._t('card.confirmRemoveEnd', '」吗？');
-                    if (confirm(confirmMsg)) {
-                        self._removeCard(removeCardId);
-                    }
+                    self._showConfirm(confirmMsg).then(function (confirmed) {
+                        if (confirmed) {
+                            self._removeCard(removeCardId);
+                            self.render();
+                        }
+                    });
                     return;
                 }
 
@@ -762,6 +767,32 @@
                 });
 
                 setTimeout(function() { input.focus(); }, 150);
+            });
+        }
+
+        // ---- 自定义确认对话框（替代浏览器原生 confirm） ----
+        _showConfirm(message) {
+            var self = this;
+            return new Promise(function(resolve) {
+                var overlay = document.createElement('div');
+                overlay.className = 'modal-overlay';
+                overlay.innerHTML = '<div class="modal-dialog" style="max-width:400px;">'
+                    + '<div class="modal-dialog-header">' + (window.t('common.confirm', '确认') || '确认') + '</div>'
+                    + '<div class="modal-dialog-body" style="padding:18px 20px;font-size:14px;line-height:1.5;">' + self._escapeHtml(message) + '</div>'
+                    + '<div class="modal-dialog-footer">'
+                    + '<button class="modal-btn modal-cancel" id="confirmCancel">' + (window.t('common.cancel', '取消') || '取消') + '</button>'
+                    + '<button class="modal-btn primary" id="confirmOk" style="background:#ef4444;">' + (window.t('common.delete', '确认删除') || '确认删除') + '</button>'
+                    + '</div>'
+                    + '</div>';
+                document.body.appendChild(overlay);
+
+                function close(result) {
+                    if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                    resolve(result);
+                }
+                overlay.querySelector('#confirmOk').addEventListener('click', function() { close(true); });
+                overlay.querySelector('#confirmCancel').addEventListener('click', function() { close(false); });
+                overlay.addEventListener('click', function(e) { if (e.target === overlay) close(false); });
             });
         }
 
