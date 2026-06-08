@@ -71,6 +71,9 @@
         _autoMode: false,
         _autoTimer: null,
         _onCompleteCallback: null,  // 当前对话完成后的回调
+        _savedAnswers: {},   // 引导步骤已保存的答案
+        _stepOrder: [],      // 步骤完成顺序
+        _allowEmpty: false,  // 当前输入框是否允许空提交
 
         // ---- 初始化 ----
         init: function () {
@@ -85,6 +88,7 @@
             this.nameTag = document.getElementById('vnNameTag');
             this.actionsContainer = document.getElementById('guideActions');
             this.trigger = document.getElementById('guideTrigger');
+            this.btnBack = document.getElementById('vnBtnBack');
             this.btnSkip = document.getElementById('vnBtnSkip');
             this.btnAuto = document.getElementById('vnBtnAuto');
             this.btnClose = document.getElementById('vnBtnClose');
@@ -140,6 +144,13 @@
                     } else {
                         self.hideDialog();
                     }
+                });
+            }
+
+            // 后退按钮
+            if (this.btnBack) {
+                this.btnBack.addEventListener('click', function () {
+                    self._onBack();
                 });
             }
 
@@ -312,12 +323,8 @@
                 } else if (options.onComplete) {
                     options.onComplete();
                 } else {
-                    // 没有按钮也没有回调 → 自动隐藏
-                    if (!self._autoMode) {
-                        self._autoHideTimer = setTimeout(function () {
-                            self.hideDialog();
-                        }, 8000);
-                    }
+                    // 没有按钮也没有回调 → 立即关闭对话框
+                    self.hideDialog();
                 }
             };
         },
@@ -388,7 +395,8 @@
         },
 
         // ---- 辅助：提问（选项按钮） ----
-        askChoice: function (question, choices) {
+        askChoice: function (question, choices, opts) {
+            opts = opts || {};
             var self = this;
             return new Promise(function (resolve) {
                 var buttons = choices.map(function (c) {
@@ -396,10 +404,18 @@
                         text: c.text,
                         primary: c.primary !== undefined ? c.primary : true,
                         action: function () {
+                            var val = c.value !== undefined ? c.value : c.text;
+                            // 保存步骤答案
+                            if (opts.stepId) {
+                                self._savedAnswers[opts.stepId] = val;
+                                self._stepOrder.push(opts.stepId);
+                            }
+                            self.actionsContainer.innerHTML = '';
+                            self._onCompleteCallback = null;
                             if (typeof c.action === 'function') {
                                 c.action.call(self);
                             }
-                            resolve(c.value !== undefined ? c.value : c.text);
+                            resolve(val);
                         }
                     };
                 });
@@ -410,23 +426,33 @@
         },
 
         // ---- 辅助：提问（文本输入） ----
-        askText: function (question, placeholder) {
+        askText: function (question, placeholder, opts) {
+            opts = opts || {};
             var self = this;
             return new Promise(function (resolve) {
-                self._pendingResolve = resolve;
+                // 包装 resolve 以保存步骤答案
+                var savedResolve = function (val) {
+                    if (opts.stepId) {
+                        self._savedAnswers[opts.stepId] = val;
+                        self._stepOrder.push(opts.stepId);
+                    }
+                    resolve(val);
+                };
+                self._pendingResolve = savedResolve;
+                self._allowEmpty = !!opts.allowEmpty;
                 self.showVNDialog(question);
                 // 在打字完成后显示输入框
                 var checkTyping = setInterval(function () {
-                    if (!self._typingTimer && self._pendingResolve === resolve) {
+                    if (!self._typingTimer && self._pendingResolve === savedResolve) {
                         clearInterval(checkTyping);
-                        self._showTextInput(placeholder || '');
+                        self._showTextInput(placeholder || '', opts.inputType || 'text');
                     }
                 }, 100);
             });
         },
 
         // ---- 显示文本输入框 ----
-        _showTextInput: function (placeholder) {
+        _showTextInput: function (placeholder, inputType) {
             // 清除自动隐藏定时器和回调，防止用户输入时对话框消失
             this._onCompleteCallback = null;
             if (this._autoHideTimer) {
@@ -438,6 +464,7 @@
             if (this.inputArea) {
                 this.inputArea.style.display = 'flex';
                 if (this.textInput) {
+                    this.textInput.type = inputType || 'text';
                     this.textInput.placeholder = placeholder;
                     this.textInput.value = '';
                     setTimeout(function (self) {
@@ -456,13 +483,30 @@
         // ---- 提交文本输入 ----
         _submitTextInput: function () {
             var value = this.textInput ? this.textInput.value.trim() : '';
-            if (!value) return; // 空输入不处理
+            if (!value && !this._allowEmpty) return;
             this._hideTextInput();
             if (this._pendingResolve) {
                 var resolve = this._pendingResolve;
                 this._pendingResolve = null;
                 resolve(value);
             }
+        },
+
+        // ---- 返回上一步 ----
+        _onBack: function () {
+            if (this._stepOrder.length === 0) return;
+            var self = this;
+            var lastStep = this._stepOrder.pop();
+            delete this._savedAnswers[lastStep];
+            this._hideTextInput();
+            if (this._pendingResolve) {
+                this._pendingResolve('__back__');
+                this._pendingResolve = null;
+            }
+            // 显示后退按钮（可能在第一步被隐藏了）
+            if (this.btnBack) this.btnBack.style.display = 'inline-block';
+            // 启动新协程（旧协程被中断）
+            setTimeout(function () { self.startConversationalConfig(); }, 50);
         },
 
         // ---- 深合并辅助 ----
@@ -518,47 +562,74 @@
             var self = this;
             this._onboardingActive = true;
 
+            // 显示后退按钮（第一步会被隐藏）
+            if (this.btnBack) this.btnBack.style.display = 'inline-block';
+
             try {
                 // ── 第 1 步：选择服务商 ──
-                var provider = await this.askChoice(
-                    this._t('guide.step1_question'),
-                    [
-                        { text: this._t('guide.step1_deepseek'), value: 'deepseek' },
-                        { text: this._t('guide.step1_openai'), value: 'openai' },
-                        { text: this._t('guide.step1_custom'), value: 'custom' }
-                    ]
-                );
-
-                var providerName, baseUrl;
-                if (provider === 'deepseek') {
-                    providerName = 'DeepSeek';
-                    baseUrl = 'https://api.deepseek.com/v1';
-                    await this.say(this._t('guide.deepseek_reply'));
-                } else if (provider === 'openai') {
-                    providerName = 'OpenAI';
-                    baseUrl = 'https://api.openai.com/v1';
-                    await this.say(this._t('guide.openai_reply'));
-                } else {
-                    providerName = 'Custom';
-                    baseUrl = '';
-                    await this.say(this._t('guide.custom_reply'));
+                var provider = this._savedAnswers['step1'];
+                if (!provider) {
+                    if (this.btnBack && this._stepOrder.length === 0) this.btnBack.style.display = 'none';
+                    provider = await this.askChoice(
+                        this._t('guide.step1_question'),
+                        [
+                            { text: this._t('guide.step1_deepseek'), value: 'deepseek' },
+                            { text: this._t('guide.step1_openai'), value: 'openai' },
+                            { text: this._t('guide.step1_custom'), value: 'custom' }
+                        ],
+                        {stepId: 'step1'}
+                    );
+                    if (provider === '__back__') return;
                 }
+                if (this.btnBack) this.btnBack.style.display = 'inline-block';
+
+                if (!this._savedAnswers['step1_providerName']) {
+                    var providerName, baseUrl;
+                    if (provider === 'deepseek') {
+                        providerName = 'DeepSeek';
+                        baseUrl = 'https://api.deepseek.com/v1';
+                        await this.say(this._t('guide.deepseek_reply'));
+                    } else if (provider === 'openai') {
+                        providerName = 'OpenAI';
+                        baseUrl = 'https://api.openai.com/v1';
+                        await this.say(this._t('guide.openai_reply'));
+                    } else {
+                        providerName = 'Custom';
+                        baseUrl = '';
+                        await this.say(this._t('guide.custom_reply'));
+                    }
+                    this._savedAnswers['step1_providerName'] = providerName;
+                    this._savedAnswers['step1_baseUrl'] = baseUrl;
+                }
+                providerName = this._savedAnswers['step1_providerName'];
+                baseUrl = this._savedAnswers['step1_baseUrl'];
 
                 // ── 第 2 步：API Key ──
-                var apiKey = await this.askText(
-                    this._t('guide.step2_question'),
-                    this._t('guide.step2_placeholder')
-                );
+                var apiKey = this._savedAnswers['step2'];
+                if (!apiKey) {
+                    apiKey = await this.askText(
+                        this._t('guide.step2_question'),
+                        this._t('guide.step2_placeholder'),
+                        {stepId: 'step2', inputType: 'password'}
+                    );
+                    if (apiKey === '__back__') return;
+                }
 
                 // ── 第 3 步：模型名称 ──
-                var defaultModel = provider === 'deepseek' ? 'deepseek-chat' : (provider === 'openai' ? 'gpt-4o' : '');
-                var modelPlaceholder = defaultModel || this._t('guide.step3_placeholder');
-                var model = await this.askText(
-                    this._t('guide.step3_question'),
-                    modelPlaceholder
-                );
-                if (!model && defaultModel) model = defaultModel;
-                if (!model) model = '';
+                var model = this._savedAnswers['step3'];
+                if (!model && model !== '') {
+                    var defaultModel = provider === 'deepseek' ? 'deepseek-chat' : (provider === 'openai' ? 'gpt-4o' : '');
+                    var modelPlaceholder = defaultModel || this._t('guide.step3_placeholder');
+                    model = await this.askText(
+                        this._t('guide.step3_question'),
+                        modelPlaceholder,
+                        {stepId: 'step3', allowEmpty: true}
+                    );
+                    if (model === '__back__') return;
+                    if (!model && defaultModel) model = defaultModel;
+                    if (!model) model = '';
+                    this._savedAnswers['step3'] = model;
+                }
 
                 // 保存服务商信息到 services.yaml
                 var servicesData = {};
@@ -584,89 +655,142 @@
                 await this.say(this._t('guide.apikey_saved') + modelMsg);
 
                 // ── 第 4 步：角色名 ──
-                var charName = await this.askText(
-                    this._t('guide.step4_question'),
-                    this._t('guide.step4_placeholder')
-                );
-                if (!charName) charName = this._t('guide.char_unnamed');
-                await this.say(this._t('guide.char_named', {name: charName}));
-                await this.saveConfig('character', { character: { ChineseName: charName } });
+                var charName = this._savedAnswers['step4'];
+                if (!charName) {
+                    charName = await this.askText(
+                        this._t('guide.step4_question'),
+                        this._t('guide.step4_placeholder'),
+                        {stepId: 'step4'}
+                    );
+                    if (charName === '__back__') return;
+                    if (!charName) charName = this._t('guide.char_unnamed');
+                    this._savedAnswers['step4'] = charName;
+                }
+                if (!this._savedAnswers['step4_said']) {
+                    await this.say(this._t('guide.char_named', {name: charName}));
+                    this._savedAnswers['step4_said'] = true;
+                }
+                if (!this._savedAnswers['step4_saved']) {
+                    await this.saveConfig('character', { character: { ChineseName: charName } });
+                    this._savedAnswers['step4_saved'] = true;
+                }
 
                 // ── 第 5 步：性别 ──
-                var gender = await this.askChoice(
-                    this._t('guide.step5_question', {name: charName}),
-                    [
-                        { text: this._t('guide.gender_secret'), value: '保密' },
-                        { text: this._t('guide.gender_female'), value: '女' },
-                        { text: this._t('guide.gender_male'), value: '男' }
-                    ]
-                );
-                await this.say(this._t('guide.step5_ack'));
-                await this.saveConfig('character', { character: { ChineseName: charName, gender: gender } });
+                var gender = this._savedAnswers['step5'];
+                if (!gender) {
+                    gender = await this.askChoice(
+                        this._t('guide.step5_question', {name: charName}),
+                        [
+                            { text: this._t('guide.gender_secret'), value: '保密' },
+                            { text: this._t('guide.gender_female'), value: '女' },
+                            { text: this._t('guide.gender_male'), value: '男' }
+                        ],
+                        {stepId: 'step5'}
+                    );
+                    if (gender === '__back__') return;
+                }
+                if (!this._savedAnswers['step5_said']) {
+                    await this.say(this._t('guide.step5_ack'));
+                    this._savedAnswers['step5_said'] = true;
+                }
+                if (!this._savedAnswers['step5_saved']) {
+                    await this.saveConfig('character', { character: { ChineseName: charName, gender: gender } });
+                    this._savedAnswers['step5_saved'] = true;
+                }
 
                 // 重载配置让系统尝试启动
                 await fetch('/api/system/reload', { method: 'POST' }).catch(function () {});
 
                 // ── 第 6 步：唤醒设置 ──
-                var wantWake = await this.askChoice(
-                    this._t('guide.step6_question'),
-                    [
-                        { text: this._t('guide.step6_yes'), value: 'yes' },
-                        { text: this._t('guide.step6_skip'), value: 'skip' }
-                    ]
-                );
+                var wantWake = this._savedAnswers['step6_wantWake'];
+                if (!wantWake && wantWake !== 'skip') {
+                    wantWake = await this.askChoice(
+                        this._t('guide.step6_question'),
+                        [
+                            { text: this._t('guide.step6_yes'), value: 'yes' },
+                            { text: this._t('guide.step6_skip'), value: 'skip' }
+                        ],
+                        {stepId: 'step6_wantWake'}
+                    );
+                    if (wantWake === '__back__') return;
+                }
 
                 if (wantWake === 'yes') {
-                    var enableKeyword = await this.askChoice(
-                        this._t('guide.step6_keyword_question'),
-                        [
-                            { text: this._t('guide.step6_enable'), value: 'yes' },
-                            { text: this._t('guide.step6_disable'), value: 'no' }
-                        ]
-                    );
-                    var keywords = [];
-                    if (enableKeyword === 'yes') {
-                        var kwInput = await this.askText(
-                            this._t('guide.step6_keyword_input'),
-                            this._t('guide.step6_keyword_placeholder')
+                    var enableKeyword = this._savedAnswers['step6_enableKeyword'];
+                    if (!enableKeyword && enableKeyword !== false) {
+                        enableKeyword = await this.askChoice(
+                            this._t('guide.step6_keyword_question'),
+                            [
+                                { text: this._t('guide.step6_enable'), value: 'yes' },
+                                { text: this._t('guide.step6_disable'), value: 'no' }
+                            ],
+                            {stepId: 'step6_enableKeyword'}
                         );
-                        if (kwInput) {
-                            keywords = kwInput.split(/[,，\s]+/).filter(function(k) { return k; });
+                        if (enableKeyword === '__back__') return;
+                    }
+                    var keywords = this._savedAnswers['step6_keywords'];
+                    if (!keywords) {
+                        if (enableKeyword === 'yes') {
+                            var kwInput = await this.askText(
+                                this._t('guide.step6_keyword_input'),
+                                this._t('guide.step6_keyword_placeholder'),
+                                {stepId: 'step6_keywords'}
+                            );
+                            if (kwInput === '__back__') return;
+                            keywords = kwInput ? kwInput.split(/[,，\s]+/).filter(function(k) { return k; }) : [];
+                        } else {
+                            keywords = [];
                         }
+                        this._savedAnswers['step6_keywords'] = keywords;
                     }
 
-                    var enableQuote = await this.askChoice(
-                        this._t('guide.step6_quote_question'),
-                        [
-                            { text: this._t('guide.step6_enable'), value: 'yes' },
-                            { text: this._t('guide.step6_disable'), value: 'no' }
-                        ]
-                    );
+                    var enableQuote = this._savedAnswers['step6_enableQuote'];
+                    if (!enableQuote && enableQuote !== false) {
+                        enableQuote = await this.askChoice(
+                            this._t('guide.step6_quote_question'),
+                            [
+                                { text: this._t('guide.step6_enable'), value: 'yes' },
+                                { text: this._t('guide.step6_disable'), value: 'no' }
+                            ],
+                            {stepId: 'step6_enableQuote'}
+                        );
+                        if (enableQuote === '__back__') return;
+                    }
 
-                    await this.saveConfig('behavior', {
-                        wake: {
-                            enable_keyword_wake: enableKeyword === 'yes',
-                            waking_keywords: keywords,
-                            enable_quote_wake: enableQuote === 'yes'
-                        }
-                    });
+                    if (!this._savedAnswers['step6_saved']) {
+                        await this.saveConfig('behavior', {
+                            wake: {
+                                enable_keyword_wake: enableKeyword === 'yes',
+                                waking_keywords: keywords,
+                                enable_quote_wake: enableQuote === 'yes'
+                            }
+                        });
+                        this._savedAnswers['step6_saved'] = true;
+                    }
 
-                    await this.say(this._t('guide.step6_saved'));
+                    if (!this._savedAnswers['step6_said']) {
+                        await this.say(this._t('guide.step6_saved'));
+                        this._savedAnswers['step6_said'] = true;
+                    }
                 }
 
                 // ── 第 7 步：完成 ──
-                await this.askChoice(
-                    this._t('guide.done_title', {name: charName}),
-                    [
-                        { text: this._t('guide.done_use'), value: 'done' },
-                        { text: this._t('guide.done_config'), value: 'config', action: function () {
-                            window.location.href = '/config';
-                        }}
-                    ]
-                );
+                if (!this._savedAnswers['step7']) {
+                    await this.askChoice(
+                        this._t('guide.done_title', {name: charName}),
+                        [
+                            { text: this._t('guide.done_use'), value: 'done' },
+                            { text: this._t('guide.done_config'), value: 'config', action: function () {
+                                window.location.href = '/config';
+                            }}
+                        ],
+                        {stepId: 'step7'}
+                    );
+                }
 
                 localStorage.setItem('tale-onboarded', '1');
                 this._onboardingActive = false;
+                this.hideDialog();
             } catch (e) {
                 // 用户 SKIP 或其他中断
                 console.warn('[Tali] 对话式引导中断:', e);
@@ -852,6 +976,9 @@
         skipOnboarding: function () {
             localStorage.setItem('tale-onboarded', '1');
             this._onboardingActive = false;
+            this._savedAnswers = {};
+            this._stepOrder = [];
+            if (this.btnBack) this.btnBack.style.display = 'none';
             this._hideTextInput();
             if (this._pendingResolve) {
                 this._pendingResolve(null);
