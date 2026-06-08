@@ -66,6 +66,11 @@ class QQAdapter(BaseAdapter):
         self._receive_task = None
 
         self._running = True
+
+        # 消息去重
+        self._seen_msg_ids: set[str] = set()
+        self._seen_fingerprints: set[str] = set()
+
         await self._connect()
         self._receive_task = asyncio.create_task(self._receive_loop())
         logger.info(f"[QQ] Adapter started, connecting to {self.ws_url}")
@@ -147,6 +152,28 @@ class QQAdapter(BaseAdapter):
                     elif "post_type" in data:
                         event = self.parse_event(data)
                         if event:
+                            msg_id = event.message_id
+                            if msg_id and msg_id in self._seen_msg_ids:
+                                logger.debug(f"[QQ] Duplicate message (id={msg_id}), skipped")
+                                continue
+
+                            fp = (
+                                f"{event.message_id}:{event.sender.id}:"
+                                f"{event.content.text or ''}"
+                            )
+                            if msg_id:
+                                self._seen_msg_ids.add(msg_id)
+                                if len(self._seen_msg_ids) > 1000:
+                                    self._seen_msg_ids = set(list(self._seen_msg_ids)[-500:])
+
+                            if fp in self._seen_fingerprints:
+                                logger.debug(f"[QQ] Duplicate message (fingerprint matched), skipped")
+                                continue
+
+                            self._seen_fingerprints.add(fp)
+                            if len(self._seen_fingerprints) > 1000:
+                                self._seen_fingerprints = set(list(self._seen_fingerprints)[-500:])
+
                             await self.emit_event(event)
 
                 except websockets.exceptions.ConnectionClosed:
