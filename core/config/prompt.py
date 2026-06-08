@@ -76,6 +76,7 @@ CHAT_BASE_TEMPLATE = """
   <at_targets>用户ID1,用户ID2</at_targets>
   <text>消息内容</text>
   <emoji>😊</emoji>
+  <reply>要回复的消息ID</reply>
 </msg>
 
 <!-- 2. 动作指令（可选，需要工具执行时填写） -->
@@ -88,6 +89,9 @@ CHAT_BASE_TEMPLATE = """
 ## 使用规则
 - <msg>: 用于和用户对话，可以包含多条消息
   - **分条回复**：当需要发送多条短消息时（如分条回复），每条消息用一个独立的 <msg> 块，系统会自动逐条发送
+  - **@用户**：在 <msg> 内使用 <at_targets>发送者昵称</at_targets> 可以 @ 指定用户（仅群聊有效）。昵称从「消息元数据」中获取，不要编造
+  - **引用回复**：在 <msg> 内使用 <reply>消息ID</reply> 可以引用指定消息回复
+  - 当前消息的 "消息ID" 和 "发送者ID" 会在用户输入中给出，直接使用即可
 - <act>: 当需要外部工具（搜索、计算、查询、打开网页）时填写，ToolLLM 会生成 Function Calling 并执行
 - <plan>: 用于日程管理和计划制定，PlanLLM 会处理并返回结果
   - 制定计划：`<plan>制定今天的学习计划</plan>`
@@ -442,7 +446,7 @@ XML_REPAIR_SYSTEM_PROMPT = """\
 请修复这段 XML，使其可被标准 XML 解析器解析。
 
 ## 有效的 XML 标签
-- <msg> 对话消息，包含子标签 <text>、<emoji>、<at_targets>
+- <msg> 对话消息，包含子标签 <text>、<emoji>、<at_targets>、<reply>
 - <act> 动作指令（可多个）
 - <plan> 计划请求（最多一个）
 - <tool> 工具查询（最多一个）

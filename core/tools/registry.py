@@ -96,6 +96,15 @@ class ToolRegistry:
                 ],
             )
         )
+        self.register(
+            ToolDefinition(
+                name="query_group_members",
+                description="获取群成员列表，查询群里用户的昵称和 QQ 号",
+                parameters=[
+                    ToolParameter("group_id", "群 ID，如 12345678"),
+                ],
+            )
+        )
 
     def register(self, tool: ToolDefinition) -> None:
         """注册一个工具"""
