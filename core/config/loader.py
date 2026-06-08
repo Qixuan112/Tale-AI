@@ -342,15 +342,24 @@ class ConfigLoader:
     def _parse_models(self, data: dict) -> ModelsConfig:
         """解析模型选择配置"""
         return ModelsConfig(
-            main_llm=ModelMapping(provider=data.get("main_llm", {}).get("provider", "")),
-            plan_llm=ModelMapping(provider=data.get("plan_llm", {}).get("provider", "")),
-            tool_llm=ModelMapping(provider=data.get("tool_llm", {}).get("provider", "")),
-            generic_llm=ModelMapping(provider=data.get("generic_llm", {}).get("provider", "")),
-            vlm=ModelMapping(provider=data.get("vlm", {}).get("provider", "")),
-            util_model=ModelMapping(provider=data.get("util_model", {}).get("provider", "")),
-            image=ModelMapping(provider=data.get("image", {}).get("provider", "")),
-            tts=ModelMapping(provider=data.get("tts", {}).get("provider", "")),
-            stt=ModelMapping(provider=data.get("stt", {}).get("provider", "")),
+            main_llm=ModelMapping(provider=data.get("main_llm", {}).get("provider", ""),
+                                  model=data.get("main_llm", {}).get("model", "")),
+            plan_llm=ModelMapping(provider=data.get("plan_llm", {}).get("provider", ""),
+                                  model=data.get("plan_llm", {}).get("model", "")),
+            tool_llm=ModelMapping(provider=data.get("tool_llm", {}).get("provider", ""),
+                                  model=data.get("tool_llm", {}).get("model", "")),
+            generic_llm=ModelMapping(provider=data.get("generic_llm", {}).get("provider", ""),
+                                     model=data.get("generic_llm", {}).get("model", "")),
+            vlm=ModelMapping(provider=data.get("vlm", {}).get("provider", ""),
+                             model=data.get("vlm", {}).get("model", "")),
+            util_model=ModelMapping(provider=data.get("util_model", {}).get("provider", ""),
+                                    model=data.get("util_model", {}).get("model", "")),
+            image=ModelMapping(provider=data.get("image", {}).get("provider", ""),
+                               model=data.get("image", {}).get("model", "")),
+            tts=ModelMapping(provider=data.get("tts", {}).get("provider", ""),
+                             model=data.get("tts", {}).get("model", "")),
+            stt=ModelMapping(provider=data.get("stt", {}).get("provider", ""),
+                             model=data.get("stt", {}).get("model", "")),
         )
 
     def _parse_bot(self, data: dict) -> BotConfig:
@@ -464,7 +473,7 @@ class ConfigLoader:
         """重新加载配置，成功后通知各组件"""
         self._load_all_configs()
         try:
-            from ..bus import bus
+            from core.bus import bus
             bus.emit("config_reloaded")
         except ImportError:
             pass
@@ -513,9 +522,13 @@ class ConfigLoader:
     def get_api_config(self, model_type: str = "main_llm") -> Dict[str, str]:
         provider = self.get_active_provider(model_type)
         if provider:
+            # 优先使用路由指定的 model，其次回退到服务商的 model
+            model_mapping = getattr(self._config.models, model_type, None)
+            model = (model_mapping.model if model_mapping and model_mapping.model
+                     else provider.model)
             return {
                 "api_key": provider.api_key,
-                "model": provider.model,
+                "model": model,
                 "url": provider.base_url,
             }
         return {"api_key": "", "model": "", "url": ""}

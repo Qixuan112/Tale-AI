@@ -215,14 +215,19 @@
                     titleKey: 'card.routing.title',
                     titleDefault: '模型路由',
                     subtitleKey: 'card.routing.desc',
-                    subtitleDefault: '为不同 LLM 选择提供商',
+                    subtitleDefault: '为不同 LLM 选择提供商与模型',
                     color: '#f59e0b',
                     fields: [
                         { key: 'main_llm.provider', labelKey: 'field.routing.mainLLM', labelDefault: '主对话模型', type: 'select', placeholder: '提供商名称' },
+                        { key: 'main_llm.model', labelKey: 'field.routing.mainLLMModel', labelDefault: '模型', type: 'routing-model', providerField: 'main_llm.provider' },
                         { key: 'plan_llm.provider', labelKey: 'field.routing.planLLM', labelDefault: '计划模型', type: 'select', placeholder: '提供商名称' },
+                        { key: 'plan_llm.model', labelKey: 'field.routing.planLLMModel', labelDefault: '模型', type: 'routing-model', providerField: 'plan_llm.provider' },
                         { key: 'tool_llm.provider', labelKey: 'field.routing.toolLLM', labelDefault: '工具调用模型', type: 'select', placeholder: '提供商名称' },
+                        { key: 'tool_llm.model', labelKey: 'field.routing.toolLLMModel', labelDefault: '模型', type: 'routing-model', providerField: 'tool_llm.provider' },
                         { key: 'generic_llm.provider', labelKey: 'field.routing.genericLLM', labelDefault: '通用LLM', type: 'select', placeholder: '通用场景（XML修复/插件调用等），可复用主对话模型' },
+                        { key: 'generic_llm.model', labelKey: 'field.routing.genericLLMModel', labelDefault: '模型', type: 'routing-model', providerField: 'generic_llm.provider' },
                         { key: 'vlm.provider', labelKey: 'field.routing.vlm', labelDefault: '多模态模型', type: 'select', placeholder: '支持图片识别的 VLM 模型' },
+                        { key: 'vlm.model', labelKey: 'field.routing.vlmModel', labelDefault: '模型', type: 'routing-model', providerField: 'vlm.provider' },
                     ]
                 },
             ]
@@ -242,10 +247,11 @@
          * @param {string} configName - 配置名称 (character/behavior/platforms/services/routing/plugins)
          * @param {object} data - 当前配置数据
          */
-        constructor(container, configName, data) {
+        constructor(container, configName, data, contextData) {
             this.container = container;
             this.configName = configName;
             this.data = data || {};
+            this.contextData = contextData || {};
             this.schema = SCHEMA[configName] || { cards: [] };
             this.collapsedCards = {};  // 跟踪折叠状态
         }
@@ -305,6 +311,13 @@
         // ---------- 渲染单个字段 ----------
 
         _getProviderOptions() {
+            // 路由卡片：使用 services 的 key 作为选项
+            if (this.configName === 'routing') {
+                var servicesData = this.contextData && this.contextData.services;
+                if (servicesData && typeof servicesData === 'object') {
+                    return Object.keys(servicesData).filter(function(k) { return k !== '_cardId'; });
+                }
+            }
             var providers = [];
             if (this.data && typeof this.data === 'object') {
                 for (var key in this.data) {
@@ -390,6 +403,19 @@
                 return '<div class="card-field"' + parentAttr + '>'
                     + '<span class="field-label">' + label + '</span>'
                     + '<select data-key="' + inputKey + '">' + optHtml + '</select>'
+                    + desc
+                    + '</div>';
+            }
+
+            if (fieldDef.type === 'routing-model') {
+                var providerField = fieldDef.providerField || '';
+                var inputId = 'routing-model-' + inputKey.replace(/\./g, '-');
+                return '<div class="card-field"' + parentAttr + '>'
+                    + '<span class="field-label">' + label + '</span>'
+                    + '<div class="routing-model-row" style="display:flex;gap:6px;">'
+                    + '<input type="text" id="' + inputId + '" data-key="' + inputKey + '" value="' + this._escapeHtml(val || '') + '" placeholder="' + (fieldDef.placeholder || '选择模型或手动输入') + '" style="flex:1;">'
+                    + '<button type="button" class="btn-fetch-routing-model" data-provider-field="' + providerField + '" data-target-input="' + inputId + '" style="font-size:0.78rem;padding:4px 12px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;white-space:nowrap;">' + (window.t('field.service.fetchModels') || '获取模型列表') + '</button>'
+                    + '</div>'
                     + desc
                     + '</div>';
             }
@@ -656,6 +682,28 @@
                 if (target.classList.contains('card-ae-remove')) {
                     var rowEl = target.closest('.card-ae-row');
                     if (rowEl) rowEl.remove();
+                    return;
+                }
+
+                // 路由卡片：获取模型列表
+                if (target.classList.contains('btn-fetch-routing-model')) {
+                    var providerField = target.dataset.providerField;
+                    var targetInputId = target.dataset.targetInput;
+                    var providerSelect = self.container.querySelector('select[data-key="' + providerField + '"]');
+                    var providerName = providerSelect ? providerSelect.value : '';
+                    var modelInput = document.getElementById(targetInputId);
+
+                    if (!providerName) {
+                        self._showToast(self._t('card.routing.selectProviderFirst', '请先选择服务商'));
+                        return;
+                    }
+
+                    window.fetchRoutingModels(providerName, function(selectedModel) {
+                        if (modelInput && selectedModel) {
+                            modelInput.value = selectedModel;
+                            modelInput.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                    });
                     return;
                 }
             });
@@ -969,6 +1017,85 @@
     window.CONFIG_CARD_SCHEMA = SCHEMA;
 
 })();
+
+// ===== 路由卡片模型获取函数（支持回调） =====
+
+window.fetchRoutingModels = function (providerName, onSelect) {
+    if (!providerName) return;
+
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+
+    overlay.innerHTML = '<div class="modal-dialog" style="max-width:520px;">'
+        + '<div class="modal-dialog-header">' + (window.t('field.service.fetchModels') || '选择模型') + ' - ' + providerName + '</div>'
+        + '<div class="modal-dialog-body" style="min-height:100px;">'
+        + '<input type="text" id="routingModelSearch-' + providerName + '" placeholder="' + (window.t('common.search', '搜索模型...')) + '" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:14px;background:var(--bg);color:var(--text);margin-bottom:8px;">'
+        + '<div id="routingModelList-' + providerName + '" style="max-height:320px;overflow-y:auto;"></div>'
+        + '</div>'
+        + '<div class="modal-dialog-footer">'
+        + '<button class="modal-btn" id="routingModalCloseBtn">' + (window.t('common.cancel', '关闭')) + '</button>'
+        + '</div>'
+        + '</div>';
+
+    document.body.appendChild(overlay);
+
+    var listEl = overlay.querySelector('#routingModelList-' + providerName);
+    listEl.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-secondary);">' + (window.t('common.loading', '加载中...')) + '</div>';
+
+    function closeModal() {
+        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    }
+    overlay.querySelector('#routingModalCloseBtn').addEventListener('click', closeModal);
+    overlay.addEventListener('click', function (e) {
+        if (e.target === overlay) closeModal();
+    });
+
+    fetch('/api/services/' + encodeURIComponent(providerName) + '/models')
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (!data.ok) {
+                listEl.innerHTML = '<div style="padding:12px;text-align:center;color:#ef4444;">' + (data.error || (window.t('common.failed', '获取失败'))) + '</div>';
+                return;
+            }
+            var models = data.models || [];
+            if (!models.length) {
+                listEl.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-secondary);">' + (window.t('common.empty', '无可用模型')) + '</div>';
+                return;
+            }
+            var html = '';
+            models.forEach(function (m) {
+                var mid = (m.id || '').replace(/'/g, "\\'");
+                html += '<div class="model-item" data-model-id="' + (m.id || '') + '" style="padding:8px 12px;cursor:pointer;font-size:14px;border-bottom:1px solid var(--border);border-radius:4px;">'
+                    + '<span>' + (m.id || '') + '</span>'
+                    + (m.owned_by ? ' <span style="color:var(--text-secondary);font-size:12px;">' + m.owned_by + '</span>' : '')
+                    + '</div>';
+            });
+            listEl.innerHTML = html;
+
+            // 绑定点击事件
+            listEl.querySelectorAll('.model-item').forEach(function(item) {
+                item.addEventListener('click', function() {
+                    var modelId = this.dataset.modelId;
+                    closeModal();
+                    if (typeof onSelect === 'function') {
+                        onSelect(modelId);
+                    }
+                });
+            });
+        })
+        .catch(function () {
+            listEl.innerHTML = '<div style="padding:12px;text-align:center;color:#ef4444;">' + (window.t('common.networkError', '网络错误')) + '</div>';
+        });
+
+    // 搜索过滤
+    overlay.querySelector('#routingModelSearch-' + providerName).addEventListener('input', function () {
+        var q = this.value.toLowerCase();
+        var items = listEl.querySelectorAll('.model-item');
+        for (var i = 0; i < items.length; i++) {
+            items[i].style.display = items[i].textContent.toLowerCase().indexOf(q) >= 0 ? '' : 'none';
+        }
+    });
+};
 
 // ===== 全局模型获取函数 =====
 

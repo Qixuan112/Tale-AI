@@ -279,7 +279,7 @@
         var container = document.getElementById('cardContainer-' + name);
         if (!container) return;
 
-        var editor = new ConfigCards(container, name, data);
+        var editor = new ConfigCards(container, name, data, allConfigData);
         editor.render();
         cardEditors[name] = editor;
 

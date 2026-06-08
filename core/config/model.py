@@ -43,6 +43,7 @@ class ProviderConfig:
 class ModelMapping:
     """模型映射配置类"""
     provider: str = ""
+    model: str = ""
 
 
 @dataclass
