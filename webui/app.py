@@ -8,6 +8,8 @@ import os
 import sys
 import secrets
 import string
+import shutil
+import tempfile
 
 # Windows 控制台 UTF-8 编码修复
 if sys.platform == 'win32':
@@ -1338,6 +1340,7 @@ def api_plugins():
                 "description": manifest.description,
                 "hooks": manifest.hooks,
                 "builtin": manifest.builtin,
+                "requirements": manifest.requirements,
             })
         core = get_core()
         loaded = core.plugin_manager.list_loaded() if core and core.plugin_manager else []
@@ -1348,9 +1351,9 @@ def api_plugins():
 
 @app.route("/api/plugins/<plugin_id>/toggle", methods=["POST"])
 def api_plugin_toggle(plugin_id):
-    """启用/禁用插件"""
+    """启用/禁用插件（含持久化）"""
     try:
-        from core.plugin import PluginManager
+        from core.plugin import PluginManager, save_plugin_config
         core = get_core()
         if core and core.plugin_manager:
             pm = core.plugin_manager
@@ -1361,11 +1364,106 @@ def api_plugin_toggle(plugin_id):
 
         if enabled:
             success = pm.load_plugin(plugin_id)
-            return jsonify({"ok": success, "message": f"插件 {plugin_id} 已加载" if success else f"加载失败"})
         else:
             success = pm.unload_plugin(plugin_id)
-            return jsonify({"ok": success, "message": f"插件 {plugin_id} 已卸载" if success else f"卸载失败"})
+
+        if success:
+            save_plugin_config(config_loader._data_dir, plugin_id, enabled)
+            if core and core.toolllm:
+                core.toolllm.rebuild_tool_definitions()
+            return jsonify({"ok": True, "message": f"插件 {plugin_id} 已{'加载' if enabled else '卸载'}"})
+        else:
+            return jsonify({"ok": False, "message": "操作失败"})
     except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/plugins/install", methods=["POST"])
+def api_plugin_install():
+    """安装自定义插件（.zip 上传）"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({"ok": False, "error": "请选择文件"}), 400
+        file = request.files['file']
+        if not file.filename or not file.filename.endswith('.zip'):
+            return jsonify({"ok": False, "error": "仅支持 .zip 格式"}), 400
+
+        from core.plugin import PluginManager, save_plugin_config
+
+        project_root = Path(__file__).parent.parent
+        custom_dir = project_root / "data" / "custom_plugins"
+        custom_dir.mkdir(parents=True, exist_ok=True)
+
+        # Unique temp file to avoid concurrent upload collisions
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".zip", dir=str(custom_dir))
+        os.close(tmp_fd)
+        file.save(tmp_path)
+
+        try:
+            core = get_core()
+            if core and core.plugin_manager:
+                pm = core.plugin_manager
+            else:
+                pm = PluginManager()
+            toolllm = core.toolllm if core else None
+            result = pm.install_from_zip(Path(tmp_path), custom_dir, toolllm=toolllm)
+        finally:
+            os.unlink(tmp_path)
+
+        if result.get("ok"):
+            save_plugin_config(config_loader._data_dir, result["plugin_id"], True)
+            return jsonify(result)
+        else:
+            return jsonify(result), 400
+    except Exception as e:
+        logger.error("Plugin install failed: %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/plugins/<plugin_id>", methods=["DELETE"])
+def api_plugin_delete(plugin_id):
+    """删除自定义插件（仅限非内置插件）"""
+    try:
+        from core.plugin import PluginManager, remove_plugin_config
+
+        manifest = PluginManager._manifests.get(plugin_id)
+        if not manifest:
+            return jsonify({"ok": False, "error": "插件不存在"}), 404
+        if manifest.builtin:
+            return jsonify({"ok": False, "error": "内置插件不可删除"}), 403
+
+        core = get_core()
+        if core and core.plugin_manager:
+            pm = core.plugin_manager
+        else:
+            pm = PluginManager()
+
+        # Find which directory the plugin lives in
+        project_root = Path(__file__).parent.parent
+        for search_dir in [
+            project_root / "data" / "custom_plugins",
+            project_root / "plugins",
+        ]:
+            plugin_dir = search_dir / plugin_id
+            if plugin_dir.exists():
+                break
+        else:
+            return jsonify({"ok": False, "error": "插件目录未找到"}), 404
+
+        pm.unload_plugin(plugin_id)
+        pm._unregister_plugin(plugin_id)
+
+        if plugin_dir.exists():
+            shutil.rmtree(plugin_dir)
+
+        remove_plugin_config(config_loader._data_dir, plugin_id)
+
+        if core and core.toolllm:
+            core.toolllm.rebuild_tool_definitions()
+
+        return jsonify({"ok": True, "message": f"插件 {plugin_id} 已删除"})
+    except Exception as e:
+        logger.error("Plugin delete failed: %s", e, exc_info=True)
         return jsonify({"ok": False, "error": str(e)}), 500
 
 

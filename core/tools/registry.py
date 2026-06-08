@@ -101,6 +101,10 @@ class ToolRegistry:
         """注册一个工具"""
         self._tools[tool.name] = tool
 
+    def unregister(self, name: str) -> None:
+        """移除一个工具的定义（插件卸载时调用）"""
+        self._tools.pop(name, None)
+
     def get(self, name: str) -> Optional[ToolDefinition]:
         """获取工具定义"""
         return self._tools.get(name)

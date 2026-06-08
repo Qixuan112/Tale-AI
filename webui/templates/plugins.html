@@ -13,7 +13,7 @@
     }
     .plugin-card:hover { border-color:var(--accent); box-shadow:0 2px 12px rgba(99,102,241,0.08); }
     .plugin-card-header { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
-    .plugin-card-title { display:flex; align-items:center; gap:8px; }
+    .plugin-card-title { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
     .plugin-card-title h3 { font-size:1.05rem; font-weight:600; margin:0; }
     .badge {
         display:inline-block; padding:2px 8px; border-radius:6px;
@@ -39,6 +39,17 @@
     .section-title:first-child { margin-top:0; }
     .state-loading { text-align:center; padding:48px; color:var(--text-secondary); }
     .state-empty { text-align:center; padding:48px; color:var(--text-secondary); }
+
+    .plugin-install-bar { display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+    .btn-delete { background:transparent; border:1px solid #ef4444; color:#ef4444; padding:4px 12px; border-radius:6px; font-size:0.78rem; cursor:pointer; }
+    .btn-delete:hover { background:#fee2e2; }
+
+    /* modal */
+    .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; display:flex; align-items:center; justify-content:center; }
+    .modal-card { background:var(--card-bg); border:1px solid var(--border); border-radius:12px; padding:24px; max-width:420px; width:90%; }
+    .modal-card h3 { margin:0 0 12px; font-size:1.1rem; }
+    .modal-card p { color:var(--text-secondary); font-size:0.9rem; line-height:1.5; margin:0 0 20px; }
+    .modal-actions { display:flex; gap:8px; justify-content:flex-end; }
 </style>
 {% endblock %}
 {% block content %}
@@ -46,6 +57,22 @@
     <div>
         <h1 data-i18n="plugins.title">插件管理</h1>
         <p class="subtitle" data-i18n="plugins.subtitle">管理已安装的内置与第三方插件</p>
+    </div>
+</div>
+
+<div class="plugin-install-bar">
+    <button id="install-btn" class="btn btn-primary" data-i18n="plugins.install">安装插件</button>
+    <input type="file" id="install-file" accept=".zip" style="display:none">
+</div>
+
+<div id="install-warning" class="modal-overlay" style="display:none;">
+    <div class="modal-card">
+        <h3 data-i18n="plugins.securityWarning">安全警告</h3>
+        <p data-i18n="plugins.securityWarningDesc">第三方插件可以执行任意代码，与 Tale-AI 拥有相同的系统权限。请仅安装来自可信来源的插件。是否继续？</p>
+        <div class="modal-actions">
+            <button id="install-cancel" class="btn btn-secondary" data-i18n="plugins.cancel">取消</button>
+            <button id="install-confirm" class="btn btn-danger" data-i18n="plugins.installConfirm">我已知晓风险，继续安装</button>
+        </div>
     </div>
 </div>
 

@@ -1,6 +1,6 @@
 /**
  * Tale WebUI - 插件管理页面交互
- * 加载插件列表，展示内置/第三方插件，支持启用/禁用切换
+ * 加载插件列表，展示内置/第三方插件，支持启用/禁用切换、安装、删除
  */
 
 (function () {
@@ -13,6 +13,7 @@
 
     let plugins = [];
     let loadedSet = new Set();
+    let pendingFile = null;
 
     function showStatus(key) {
         $status.style.display = '';
@@ -58,6 +59,8 @@
 
         if (isBuiltin) {
             titleDiv.appendChild(badge(t('plugins.builtinBadge'), 'badge-builtin'));
+        } else {
+            titleDiv.appendChild(badge(t('plugins.thirdParty'), 'badge-thirdparty'));
         }
         titleDiv.appendChild(badge(
             isLoaded ? t('card.status.enabled') : t('card.status.disabled'),
@@ -116,6 +119,17 @@
         statusText.id = 'status-' + p.id;
         actions.appendChild(statusText);
 
+        // Delete button for non-builtin plugins
+        if (!isBuiltin) {
+            const delBtn = document.createElement('button');
+            delBtn.className = 'btn-delete';
+            delBtn.textContent = t('plugins.delete');
+            delBtn.addEventListener('click', function () {
+                deletePlugin(p.id);
+            });
+            actions.appendChild(delBtn);
+        }
+
         card.appendChild(header);
         card.appendChild(meta);
         card.appendChild(desc);
@@ -143,11 +157,9 @@
                     loadedSet.delete(id);
                 }
                 if (statusEl) statusEl.textContent = t('plugins.toggleSuccess');
-                // refresh card badges
                 loadList();
             } else {
-                if (statusEl) statusEl.textContent = t('plugins.toggleFailed');
-                // revert toggle
+                if (statusEl) statusEl.textContent = (data.error || data.message || t('plugins.toggleFailed'));
                 if (inputEl) inputEl.checked = !enable;
             }
         })
@@ -155,6 +167,51 @@
             if (statusEl) statusEl.textContent = t('plugins.toggleFailed');
             if (inputEl) inputEl.checked = !enable;
         });
+    }
+
+    function installPlugin(file) {
+        var statusEl = document.getElementById('pluginstatus');
+        if (statusEl) {
+            statusEl.style.display = '';
+            statusEl.textContent = t('plugins.uploading');
+        }
+
+        var formData = new FormData();
+        formData.append('file', file);
+
+        fetch('/api/plugins/install', { method: 'POST', body: formData })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.ok) {
+                    alert(t('plugins.installSuccess'));
+                    loadList();
+                } else {
+                    alert(t('plugins.installFailed') + ': ' + (data.error || ''));
+                }
+            })
+            .catch(function () {
+                alert(t('plugins.installFailed'));
+            });
+    }
+
+    function deletePlugin(id) {
+        if (!confirm(t('plugins.deleteConfirm') || '确认删除插件？此操作不可撤销')) {
+            return;
+        }
+
+        fetch('/api/plugins/' + id, { method: 'DELETE' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.ok) {
+                    alert(t('plugins.deleteSuccess'));
+                    loadList();
+                } else {
+                    alert(t('plugins.deleteFailed') + ': ' + (data.error || ''));
+                }
+            })
+            .catch(function () {
+                alert(t('plugins.deleteFailed'));
+            });
     }
 
     function loadList() {
@@ -187,7 +244,6 @@
                     }
                 });
 
-                // hide empty section titles
                 document.querySelector('.section-title[data-i18n="plugins.builtin"]').style.display = anyBuiltin ? '' : 'none';
                 document.querySelector('.section-title[data-i18n="plugins.thirdParty"]').style.display = anyThird ? '' : 'none';
 
@@ -199,9 +255,47 @@
             });
     }
 
+    // --- Install flow: button → file picker → security warning → upload ---
+
+    function initInstallFlow() {
+        var installBtn = document.getElementById('install-btn');
+        var fileInput = document.getElementById('install-file');
+        var warningOverlay = document.getElementById('install-warning');
+        var installConfirm = document.getElementById('install-confirm');
+        var installCancel = document.getElementById('install-cancel');
+
+        if (!installBtn || !fileInput) return;
+
+        installBtn.addEventListener('click', function () {
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', function () {
+            if (fileInput.files && fileInput.files.length > 0) {
+                pendingFile = fileInput.files[0];
+                warningOverlay.style.display = 'flex';
+            }
+        });
+
+        installConfirm.addEventListener('click', function () {
+            warningOverlay.style.display = 'none';
+            if (pendingFile) {
+                installPlugin(pendingFile);
+                pendingFile = null;
+                fileInput.value = '';
+            }
+        });
+
+        installCancel.addEventListener('click', function () {
+            warningOverlay.style.display = 'none';
+            pendingFile = null;
+            fileInput.value = '';
+        });
+    }
+
     function init() {
         loadList();
-        // re-apply i18n after dynamic rendering
+        initInstallFlow();
         window.addEventListener('i18n:change', function () {
             setTimeout(loadList, 50);
         });

@@ -135,6 +135,10 @@ DEFAULT_PLUGINS_YAML = """\
 plugins:
   workspace:
     enabled: true
+  tavily_search:
+    enabled: true
+    config:
+      api_key: ""
 """
 
 DEFAULT_CONVERSATIONS_INDEX = {
@@ -153,13 +157,15 @@ DEFAULT_CONVERSATIONS_INDEX = {
 
 
 def ensure_data_dirs():
-    """确保所有 data/ 子目录存在"""
+    """确保所有 data/ 子目录及插件目录存在"""
     dirs = [
         "data/config/presets",
         "data/conversations",
         "data/diary",
         "data/files",
         "data/temp",
+        "data/custom_plugins",
+        "core/plugins",
         "plugins",
     ]
     for d in dirs:
@@ -183,6 +189,32 @@ def _write_json_if_missing(rel_path: str, data: dict):
         file_path.parent.mkdir(parents=True, exist_ok=True)
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _migrate_plugins():
+    """将旧 plugins/ 中的内置插件迁移到 core/plugins/"""
+    import shutil
+    old_dir = PROJECT_ROOT / "plugins"
+    new_dir = PROJECT_ROOT / "core" / "plugins"
+
+    if not old_dir.exists():
+        return
+    if new_dir.exists() and any(new_dir.iterdir()):
+        return
+
+    new_dir.mkdir(parents=True, exist_ok=True)
+
+    BUILTIN_IDS = {"workspace", "echo_tool", "tavily_search"}
+    for plugin_dir in old_dir.iterdir():
+        if not plugin_dir.is_dir():
+            continue
+        pid = plugin_dir.name
+        if pid in BUILTIN_IDS and not (new_dir / pid).exists():
+            shutil.copytree(str(plugin_dir), str(new_dir / pid))
+            print(f"  [migrate] Plugin moved: plugins/{pid} -> core/plugins/{pid}")
+        elif pid not in BUILTIN_IDS:
+            print(f"  [migrate] Unknown plugin skipped: plugins/{pid} "
+                  f"(move to data/custom_plugins/ if needed)")
 
 
 def initialize_data():
@@ -214,3 +246,6 @@ def initialize_data():
 
     # 4. 写入默认会话索引
     _write_json_if_missing("data/conversations/index.json", DEFAULT_CONVERSATIONS_INDEX)
+
+    # 5. 迁移旧插件目录
+    _migrate_plugins()

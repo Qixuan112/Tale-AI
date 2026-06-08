@@ -26,6 +26,7 @@ class PluginManifest:
     dependencies: Dict[str, str] = field(default_factory=dict)
     min_tale_version: str = "1.0.0"
     builtin: bool = False
+    requirements: List[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict) -> "PluginManifest":
@@ -41,6 +42,7 @@ class PluginManifest:
             dependencies=data.get("dependencies", {}),
             min_tale_version=data.get("min_tale_version", "1.0.0"),
             builtin=data.get("builtin", False),
+            requirements=data.get("requirements", []),
         )
 
 

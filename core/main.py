@@ -170,17 +170,29 @@ class TaleCore:
         bus.on("qq_message", self._handle_qq_message)
 
     def _init_plugin_manager(self):
-        """初始化插件管理器"""
+        """初始化插件管理器 — 扫描 core/plugins/ + plugins/ (旧) + data/custom_plugins/"""
         try:
             from .plugin import PluginManager
 
             project_root = Path(__file__).parent.parent
             plugins_config = getattr(config_loader, "_plugins_config", {})
 
+            # 主目录：core/plugins/（内置插件新位置）
             self.plugin_manager = PluginManager(
-                plugins_dir=project_root / "plugins",
+                plugins_dir=project_root / "core" / "plugins",
                 config=plugins_config,
             )
+
+            # 兼容旧目录：plugins/
+            legacy_dir = project_root / "plugins"
+            if legacy_dir.exists():
+                self.plugin_manager._scan_plugins(legacy_dir)
+
+            # 自定义插件目录：data/custom_plugins/
+            custom_dir = project_root / "data" / "custom_plugins"
+            if custom_dir.exists():
+                self.plugin_manager._scan_plugins(custom_dir)
+
             self.plugin_manager.load_all_enabled()
 
             # 插件可能注册了新工具，刷新工具定义

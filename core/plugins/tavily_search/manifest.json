@@ -1,0 +1,10 @@
+{
+    "id": "tavily_search",
+    "name": "Tavily Search",
+    "version": "1.0.0",
+    "author": "Tale-AI",
+    "description": "Tavily AI-optimized search and content extraction",
+    "hooks": ["tool", "prompt_section"],
+    "builtin": true,
+    "requirements": ["tavily-python>=0.5.0"]
+}
