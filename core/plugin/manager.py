@@ -128,6 +128,7 @@ class PluginManager:
                     ns_module = type(sys)(package_name)
                     ns_module.__path__ = [str(plugin_dir)]
                     ns_module.__package__ = package_name
+                    ns_module.__name__ = package_name
                     sys.modules[package_name] = ns_module
 
             spec = importlib.util.spec_from_file_location(module_name, module_file)

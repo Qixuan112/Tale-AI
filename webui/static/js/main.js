@@ -50,7 +50,11 @@
                 if (data.alerts && data.alerts.length > 0) {
                     var firstAlert = data.alerts[0];
                     var msg = firstAlert.message;
-                    if (window.t && firstAlert.key) msg = window.t('alert.' + firstAlert.key) || firstAlert.message;
+                    if (window.t && firstAlert.key) {
+                        var tKey = 'alert.' + firstAlert.key;
+                        var tVal = window.t(tKey);
+                        if (tVal !== tKey) msg = tVal;
+                    }
                     alertContainer.textContent = msg;
                     alertContainer.style.display = '';
                 } else {

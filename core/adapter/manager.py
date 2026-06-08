@@ -135,6 +135,7 @@ class AdapterManager:
                             ns_module = type(sys)(package_name)
                             ns_module.__path__ = [str(adapter_dir)]
                             ns_module.__package__ = package_name
+                            ns_module.__name__ = package_name
                             sys.modules[package_name] = ns_module
 
                     spec = importlib.util.spec_from_file_location(
