@@ -382,20 +382,96 @@ class TaleCore:
             "sender": processed.sender_name,
             "text": processed.text,
             "time": time.strftime("%H:%M"),
+            "images": list(getattr(processed, "images", []) or []),
         })
         # 限制缓冲区大小，防止内存泄漏
         if len(self._chat_context_buffer[key]) > 100:
             self._chat_context_buffer[key] = self._chat_context_buffer[key][-100:]
 
+    def _download_ctx_image(self, url_or_path: str) -> Optional[str]:
+        """下载上下文窗口中的图片到本地临时目录。
+
+        如果是本地路径直接返回；远程 URL 下载到 data/temp/ctx_images/。
+        """
+        local_path = Path(url_or_path)
+        if local_path.is_file():
+            return str(local_path.resolve())
+
+        if not url_or_path.startswith(('http://', 'https://')):
+            return None
+
+        import hashlib
+        import os
+        try:
+            import requests
+        except ImportError:
+            return None
+
+        # 生成缓存文件名
+        ext = os.path.splitext(url_or_path.split('?')[0])[1] or '.jpg'
+        name = hashlib.md5(url_or_path.encode()).hexdigest() + ext
+        cache_dir = Path(__file__).parent.parent / "data" / "temp" / "ctx_images"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        dest = cache_dir / name
+
+        if dest.is_file():
+            return str(dest)
+
+        try:
+            resp = requests.get(url_or_path, timeout=10, stream=True)
+            resp.raise_for_status()
+            content_length = resp.headers.get('content-length')
+            if content_length and int(content_length) > 5 * 1024 * 1024:
+                logger.warning("图片过大，跳过下载: %s (%s)", url_or_path, content_length)
+                return None
+            with open(dest, 'wb') as f:
+                for chunk in resp.iter_content(8192):
+                    f.write(chunk)
+            return str(dest)
+        except Exception as e:
+            logger.warning("下载上下文图片失败 %s: %s", url_or_path, e)
+            return None
+
     def _build_context_window(self, processed: ProcessedMessage, window: int) -> str:
-        """从缓冲区获取最近 N 条消息作为上下文。"""
+        """从缓冲区获取最近 N 条消息作为上下文，图片自动 VLM 识别。"""
         key = processed.group_id or processed.sender_id
         if not key or not self._chat_context_buffer.get(key):
             return ""
         recent = self._chat_context_buffer[key][-window:]
+
+        # 检查 VLM 是否可用
+        vlm = None
+        vlm_available = False
+        try:
+            vlm = get_vlm_llm()
+            vlm_available = vlm._ensure_client()
+        except Exception:
+            pass
+
         lines = []
+        img_count = 0
+        max_ctx_images = 2
+
         for msg in recent:
-            lines.append(f"[{msg['sender']}] {msg['text']}")
+            line = f"[{msg['sender']}] {msg['text']}"
+
+            # 历史消息有图片且 VLM 可用时自动识别
+            if vlm_available and msg.get('images') and img_count < max_ctx_images:
+                for img_url in msg['images']:
+                    if img_count >= max_ctx_images:
+                        break
+                    local_path = self._download_ctx_image(img_url)
+                    if local_path:
+                        try:
+                            desc = vlm.chat_with_image("描述这张图片的内容", [local_path])
+                            if desc:
+                                line += f"\n  [图片: {desc[:200]}]"
+                                img_count += 1
+                        except Exception:
+                            pass
+
+            lines.append(line)
+
         return "\n".join(lines)
 
     async def _handle_respond_message(self, processed: ProcessedMessage, adapter_instance: str = None):
