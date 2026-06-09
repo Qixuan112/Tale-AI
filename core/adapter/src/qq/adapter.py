@@ -65,6 +65,8 @@ class QQAdapter(BaseAdapter):
         self._reconnect_task = None
         self._receive_task = None
 
+        self._pending_api_echos: Dict[str, asyncio.Future] = {}
+
         self._running = True
 
         # 消息去重
@@ -236,7 +238,19 @@ class QQAdapter(BaseAdapter):
         )
 
     def _handle_api_response(self, data: Dict[str, Any]) -> None:
-        """处理 OneBot API 响应，缓存已发送消息的 ID"""
+        """处理 OneBot API 响应，路由到等待的 api_call 或缓存已发送消息 ID"""
+        echo = data.get("echo")
+        if echo and echo in self._pending_api_echos:
+            future = self._pending_api_echos[echo]
+            if not future.done():
+                if data.get("status") == "ok":
+                    future.set_result(data.get("data"))
+                else:
+                    future.set_exception(
+                        Exception(data.get("retcode", "unknown")))
+            return
+
+        # 无 echo 匹配的响应：缓存已发送消息 ID
         if data.get("status") == "ok":
             message_id = data.get("data", {}).get("message_id")
             if message_id:
@@ -365,28 +379,10 @@ class QQAdapter(BaseAdapter):
             "echo": echo,
         }
 
-        future: Optional[asyncio.Future] = None
+        loop = asyncio.get_running_loop()
+        future = loop.create_future()
+        self._pending_api_echos[echo] = future
 
-        def _make_future():
-            nonlocal future
-            loop = asyncio.get_running_loop()
-            future = loop.create_future()
-
-            original_handler = self._handle_api_response
-            def _waiting_handler(data):
-                if data.get("echo") == echo:
-                    if not future.done():
-                        if data.get("status") == "ok":
-                            future.set_result(data.get("data"))
-                        else:
-                            future.set_exception(
-                                Exception(data.get("retcode", "unknown")))
-                else:
-                    original_handler(data)
-
-            self._handle_api_response = _waiting_handler
-
-        _make_future()
         try:
             await self._ws.send(json.dumps(request))
             result = await asyncio.wait_for(future, timeout=15)
@@ -397,6 +393,8 @@ class QQAdapter(BaseAdapter):
         except Exception as e:
             logger.warning("[QQ] API call %s failed: %s", action, e)
             return None
+        finally:
+            self._pending_api_echos.pop(echo, None)
 
 
 class QQApiClient:

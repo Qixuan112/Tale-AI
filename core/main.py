@@ -67,7 +67,7 @@ class TaleCore:
         self._shutdown_event: Optional[asyncio.Event] = None
         self._llm_executor = None
         self._chat_context_buffer: Dict[str, list] = {}
-        self._name_to_id: Dict[str, str] = {}
+        self._name_to_id: Dict[str, Dict[str, str]] = {}
 
     def initialize(self):
         """初始化核心组件（幂等，可多次调用）"""
@@ -495,9 +495,12 @@ class TaleCore:
             msg_meta += f"，群ID={processed.group_id}"
         user_input += msg_meta
 
-        # 维护昵称→ID 映射表（供发送时解析 @ 用）
+        # 维护昵称→ID 映射表（按群分组，供发送时解析 @ 用）
         if processed.sender_name and processed.sender_id:
-            self._name_to_id[processed.sender_name] = processed.sender_id
+            group_key = processed.group_id or "_private"
+            if group_key not in self._name_to_id:
+                self._name_to_id[group_key] = {}
+            self._name_to_id[group_key][processed.sender_name] = processed.sender_id
 
         logger.info("处理 %s (%s): %s", processed.sender_name, processed.reason, processed.text)
 
@@ -598,8 +601,10 @@ class TaleCore:
                 at_targets = None
                 if raw_at:
                     at_list = []
+                    group_key = processed.group_id or "_private"
+                    name_map = self._name_to_id.get(group_key, {})
                     for name in raw_at:
-                        qq_id = self._name_to_id.get(name)
+                        qq_id = name_map.get(name)
                         if qq_id:
                             at_list.append(qq_id)
                     if at_list:
@@ -896,12 +901,15 @@ class TaleCore:
                     members = future.result(timeout=30)
                 except Exception as e:
                     return {"status": "failed", "error": f"查询群成员失败: {e}"}
-                # 填充 _name_to_id
+                # 填充 _name_to_id（群成员映射，按群分组）
+                group_key = group_id
+                if group_key not in self._name_to_id:
+                    self._name_to_id[group_key] = {}
                 for m in members:
                     uid = m.get("user_id", "")
                     nick = m.get("nickname", "")
                     if uid and nick:
-                        self._name_to_id[nick] = uid
+                        self._name_to_id[group_key][nick] = uid
                 if not members:
                     return {"status": "ok", "members": [], "message": "该群没有成员或查询失败"}
                 return {
