@@ -4,7 +4,7 @@ import threading
 import asyncio
 import signal
 from pathlib import Path
-from typing import Optional, Callable, Any, List
+from typing import Optional, Callable, Any, List, Dict
 
 from .spin_think import spinning_think
 from .bus import NextBus, bus
