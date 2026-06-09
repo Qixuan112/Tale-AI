@@ -111,7 +111,7 @@ class WeChatPCAdapter(BaseAdapter):
         await self._client.close()
         logger.info("WeChat PC adapter stopped")
 
-    async def send_message(self, target_id: str, content: MessageContent) -> bool:
+    async def send_message(self, target_id: str, content: MessageContent, **kwargs) -> bool:
         """发送消息到指定会话
 
         Args:
