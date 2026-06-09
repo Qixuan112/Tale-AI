@@ -193,7 +193,7 @@ class AdapterEventBridge:
             return False
 
         return await self.manager.send_message(
-            adapter_id, target_id, text, images, at_targets=kwargs.get("at_targets"), **kwargs
+            adapter_id, target_id, text, images, **kwargs
         )
 
     async def broadcast(

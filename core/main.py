@@ -882,11 +882,20 @@ class TaleCore:
             QQApiClient.bind(adapter)
 
             # 用插件注册机制把 query_group_members 动态注册进 function_caller
-            async def _run_query(parameters):
+            # _plugin_dispatch 是同步契约，内部用 run_coroutine_threadsafe 桥接 async 调用
+            _loop = asyncio.get_running_loop()
+
+            def _run_query(parameters):
                 group_id = parameters.get("group_id", "")
                 if not group_id:
                     return {"status": "failed", "error": "缺少 group_id 参数"}
-                members = await QQApiClient.get_group_member_list(group_id)
+                future = asyncio.run_coroutine_threadsafe(
+                    QQApiClient.get_group_member_list(group_id), _loop
+                )
+                try:
+                    members = future.result(timeout=30)
+                except Exception as e:
+                    return {"status": "failed", "error": f"查询群成员失败: {e}"}
                 # 填充 _name_to_id
                 for m in members:
                     uid = m.get("user_id", "")

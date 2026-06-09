@@ -102,9 +102,6 @@ def execute_function(func_name: str, parameters: dict) -> dict:
                 return result
             return {"status": "failed", "error": "缺少 url 参数"}
 
-        elif func_name == "query_group_members":
-            return {"status": "failed", "error": "query_group_members 需要插件动态注册后使用"}
-        
         elif func_name == "browser_search":
             query = parameters.get("query", "")
             engine = parameters.get("engine", "duckduckgo")
