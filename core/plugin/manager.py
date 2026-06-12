@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import sys
+import threading
 import importlib.util
 import zipfile
 from pathlib import Path
@@ -37,6 +38,10 @@ class PluginManager:
     _scanned_dirs: set = set()
 
     _nav_items: List[Dict[str, str]] = []
+    _plugins: Dict[str, PluginBase] = {}
+    _hook_registrations: Dict[str, Dict[str, list]] = {}
+    _pending_prompt_sections: Dict[str, List[tuple]] = {}
+    _class_lock = threading.RLock()
 
     def __init__(
         self,
@@ -47,9 +52,6 @@ class PluginManager:
             plugins_dir = Path(__file__).parent.parent / "plugins"
         self._plugins_dir = plugins_dir
         self._runtime_configs = self._normalize_configs(config or {})
-        self._plugins: Dict[str, PluginBase] = {}
-        self._hook_registrations: Dict[str, Dict[str, list]] = {}
-        self._pending_prompt_sections: Dict[str, List[tuple]] = {}
 
         self._scan_plugins(plugins_dir)
 
@@ -214,52 +216,54 @@ class PluginManager:
     # ------------------------------------------------------------------
 
     def load_plugin(self, plugin_id: str) -> bool:
-        if plugin_id in self._plugins:
-            logger.info("Plugin %s is already loaded", plugin_id)
-            return True
+        with PluginManager._class_lock:
+            if plugin_id in PluginManager._plugins:
+                logger.info("Plugin %s is already loaded", plugin_id)
+                return True
 
-        if plugin_id not in self._registry:
-            logger.warning("Plugin %s not found in registry", plugin_id)
-            return False
+            if plugin_id not in self._registry:
+                logger.warning("Plugin %s not found in registry", plugin_id)
+                return False
 
-        runtime = self._runtime_configs.get(plugin_id)
-        if runtime and not runtime.enabled:
-            logger.info("Plugin %s is disabled in config, skipping", plugin_id)
-            return False
+            runtime = self._runtime_configs.get(plugin_id)
+            if runtime and not runtime.enabled:
+                logger.info("Plugin %s is disabled in config, skipping", plugin_id)
+                return False
 
-        manifest = self._manifests[plugin_id]
+            manifest = self._manifests[plugin_id]
 
-        try:
-            merged_config = _merge_config(manifest, self._schemas.get(plugin_id, []), runtime)
-            plugin_cls = self._registry[plugin_id]
-            plugin = plugin_cls(manifest, merged_config)
+            try:
+                merged_config = _merge_config(manifest, self._schemas.get(plugin_id, []), runtime)
+                plugin_cls = self._registry[plugin_id]
+                plugin = plugin_cls(manifest, merged_config)
 
-            self._wire_plugin(plugin, plugin_id)
-            plugin.activate()
+                self._wire_plugin(plugin, plugin_id)
+                plugin.activate()
 
-            self._plugins[plugin_id] = plugin
-            logger.info("Plugin loaded: %s v%s", plugin_id, manifest.version)
-            return True
+                PluginManager._plugins[plugin_id] = plugin
+                logger.info("Plugin loaded: %s v%s", plugin_id, manifest.version)
+                return True
 
-        except Exception as e:
-            logger.error("Failed to load plugin %s: %s", plugin_id, e, exc_info=True)
-            self._unwire_plugin(plugin_id)
-            return False
+            except Exception as e:
+                logger.error("Failed to load plugin %s: %s", plugin_id, e, exc_info=True)
+                self._unwire_plugin(plugin_id)
+                return False
 
     def unload_plugin(self, plugin_id: str) -> bool:
-        plugin = self._plugins.pop(plugin_id, None)
-        if plugin is None:
+        with PluginManager._class_lock:
+            plugin = PluginManager._plugins.pop(plugin_id, None)
+            if plugin is None:
+                return True
+
+            try:
+                plugin.deactivate()
+            except Exception as e:
+                logger.warning("Plugin %s deactivate error: %s", plugin_id, e)
+            finally:
+                self._unwire_plugin(plugin_id)
+
+            logger.info("Plugin unloaded: %s", plugin_id)
             return True
-
-        try:
-            plugin.deactivate()
-        except Exception as e:
-            logger.warning("Plugin %s deactivate error: %s", plugin_id, e)
-        finally:
-            self._unwire_plugin(plugin_id)
-
-        logger.info("Plugin unloaded: %s", plugin_id)
-        return True
 
     def install_from_zip(self, zip_path: Path, target_dir: Path,
                          toolllm=None) -> dict:
@@ -295,8 +299,9 @@ class PluginManager:
                     return {"ok": False,
                             "error": f"与内置插件冲突: {plugin_id}"}
                 logger.info("覆盖安装插件: %s (先卸载旧版本)", plugin_id)
-                self.unload_plugin(plugin_id)
-                self._unregister_plugin(plugin_id)
+                with PluginManager._class_lock:
+                    self.unload_plugin(plugin_id)
+                    self._unregister_plugin(plugin_id)
 
             extract_dir = target_dir / plugin_id
             if extract_dir.exists():
@@ -309,7 +314,8 @@ class PluginManager:
                 return {"ok": False,
                         "error": "plugin.py 中没有合法的 PluginBase 子类"}
 
-            ok = self.load_plugin(plugin_id)
+            with PluginManager._class_lock:
+                ok = self.load_plugin(plugin_id)
             if not ok:
                 return {"ok": False, "error": "插件注册成功但加载失败"}
 
@@ -322,17 +328,19 @@ class PluginManager:
             return {"ok": False, "error": str(e)}
 
     def load_all_enabled(self) -> Dict[str, bool]:
-        results = {}
-        for plugin_id in self._registry:
-            runtime = self._runtime_configs.get(plugin_id)
-            if runtime is None or runtime.enabled:
-                results[plugin_id] = self.load_plugin(plugin_id)
-        return results
+        with PluginManager._class_lock:
+            results = {}
+            for plugin_id in self._registry:
+                runtime = self._runtime_configs.get(plugin_id)
+                if runtime is None or runtime.enabled:
+                    results[plugin_id] = self.load_plugin(plugin_id)
+            return results
 
     def unload_all(self) -> None:
-        for plugin_id in reversed(list(self._plugins.keys())):
-            self.unload_plugin(plugin_id)
-        PluginManager._nav_items.clear()
+        with PluginManager._class_lock:
+            for plugin_id in reversed(list(PluginManager._plugins.keys())):
+                self.unload_plugin(plugin_id)
+            PluginManager._nav_items.clear()
 
     # ------------------------------------------------------------------
     # Extension point wiring
@@ -354,12 +362,12 @@ class PluginManager:
             registrations["xml_tag"] = self._wire_xml(plugin)
 
         if isinstance(plugin, PromptSectionProvider):
-            self._pending_prompt_sections[plugin_id] = plugin.get_prompt_sections()
+            PluginManager._pending_prompt_sections[plugin_id] = plugin.get_prompt_sections()
 
-        self._hook_registrations[plugin_id] = registrations
+        PluginManager._hook_registrations[plugin_id] = registrations
 
     def _unwire_plugin(self, plugin_id: str) -> None:
-        regs = self._hook_registrations.pop(plugin_id, {})
+        regs = PluginManager._hook_registrations.pop(plugin_id, {})
 
         for entry in regs.get("event", []):
             event_name, callback = entry
@@ -381,10 +389,10 @@ class PluginManager:
                 n for n in PluginManager._nav_items if n.get("id") != plugin_id
             ]
 
-        self._pending_prompt_sections.pop(plugin_id, None)
+        PluginManager._pending_prompt_sections.pop(plugin_id, None)
 
     def _wire_prompt_sections(self, chatllm=None, toollLM=None, planllm=None) -> None:
-        for plugin_id, sections in self._pending_prompt_sections.items():
+        for plugin_id, sections in PluginManager._pending_prompt_sections.items():
             for agent_name, section in sections:
                 try:
                     if agent_name == "chat" and chatllm and chatllm.context:
@@ -486,10 +494,10 @@ class PluginManager:
         }
 
     def list_loaded(self) -> List[str]:
-        return list(self._plugins.keys())
+        return list(PluginManager._plugins.keys())
 
     def is_loaded(self, plugin_id: str) -> bool:
-        return plugin_id in self._plugins
+        return plugin_id in PluginManager._plugins
 
 
 def _merge_config(

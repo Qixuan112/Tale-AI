@@ -711,8 +711,10 @@ def api_config_save(name):
     if data is None:
         return jsonify({"error": "Invalid data"}), 400
     path = CONFIG_DIR / CONFIG_FILES[name]
-    with open(path, "w", encoding="utf-8") as f:
+    tmp_path = str(path) + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
         yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+    os.replace(tmp_path, str(path))
     config_loader.reload()
     return jsonify({"ok": True})
 
@@ -798,7 +800,10 @@ def api_config_save_raw(name):
     if content is None:
         return jsonify({"error": "Invalid data"}), 400
     path = CONFIG_DIR / CONFIG_FILES[name]
-    path.write_text(content, encoding="utf-8")
+    tmp_path = str(path) + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        f.write(content)
+    os.replace(tmp_path, str(path))
     config_loader.reload()
     return jsonify({"ok": True})
 

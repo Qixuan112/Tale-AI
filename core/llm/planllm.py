@@ -365,17 +365,18 @@ class PlanLLM:
         # 调用 LLM（系统提示词已含 PLAN_TEMPLATE）
         response = self._call_llm(full_prompt)
 
-        # 保存原始文本作为计划摘要
+        # 清空旧条目，用新计划替换
+        if self._today_plan:
+            self._today_plan.entries.clear()
+        else:
+            self._today_plan = DailyPlan(date=self._current_date)
+
+        # 保存原始文本作为计划摘要（clear 之后，确保摘要不引用被清除的旧条目）
         self._save_plan_text(response)
 
         # 解析为结构化 DiaryEntry 条目
         entries = self._parse_plan_to_entries(response)
         if entries:
-            # 清空旧条目，用新计划替换
-            if self._today_plan:
-                self._today_plan.entries.clear()
-            else:
-                self._today_plan = DailyPlan(date=self._current_date)
 
             for entry in entries:
                 success = self._today_plan.add_entry(entry)
@@ -676,15 +677,9 @@ class PlanLLM:
             messages=messages
         )
         
-        assistant_reply = response.choices[0].message.content
+        assistant_reply = response.choices[0].message.content or ""
         return assistant_reply
-    
-    def _trim_context(self):
-        """修剪上下文"""
-        while len(self.messages) > self.max_context:
-            if len(self.messages) >= 3:
-                del self.messages[1:3]
-    
+
     def _build_plan_context(self) -> str:
         """构建计划制定的上下文信息"""
         context_parts = []
@@ -787,6 +782,14 @@ class PlanLLM:
                         logger.warning("未知事件类型 '%s'，使用 'other' 代替", event_type_str)
                         event_type = EventType.OTHER
 
+                    # Map priority string to Priority enum, with fallback
+                    priority_str = event_data.get("priority", "medium").lower()
+                    try:
+                        priority = Priority(priority_str)
+                    except ValueError:
+                        logger.warning("未知优先级 '%s'，使用 'medium' 代替", priority_str)
+                        priority = Priority.MEDIUM
+
                     start_time_str = event_data.get("start_time", "08:00")
                     end_time_str = event_data.get("end_time")
 
@@ -795,7 +798,7 @@ class PlanLLM:
                         title=event_data.get("title", "未命名事件"),
                         description=event_data.get("description", ""),
                         event_type=event_type,
-                        priority=Priority(event_data.get("priority", "medium")),
+                        priority=priority,
                         start_time=datetime.strptime(start_time_str, "%H:%M").time(),
                         end_time=datetime.strptime(end_time_str, "%H:%M").time() if end_time_str else None,
                         location=event_data.get("location"),
