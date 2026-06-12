@@ -7,8 +7,7 @@ from .utils import get_logger
 logger = get_logger(__name__)
 
 # XXE / 实体炸弹检测
-import re as _re
-_XXE_PATTERN = _re.compile(r'<!DOCTYPE|<!ENTITY', re.IGNORECASE)
+_XXE_PATTERN = re.compile(r'<!DOCTYPE|<!ENTITY', re.IGNORECASE)
 
 
 def _reject_xxe(xml_data: str) -> bool:

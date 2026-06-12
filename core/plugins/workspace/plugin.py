@@ -36,17 +36,15 @@ class WorkspacePlugin(PluginBase):
     MAX_COMMAND_OUTPUT = 50_000
     COMMAND_TIMEOUT = 30
 
-    _ALLOWED_COMMANDS: set = {
-        "python", "python3", "node", "deno", "ruby", "lua", "perl",
-        "php",
+    _ALLOWED_COMMANDS: frozenset = frozenset({
         "cat", "head", "tail", "wc", "sort", "uniq", "grep", "awk", "sed",
         "cut", "tr", "diff", "cmp",
         "tar", "gzip", "gunzip", "zip", "unzip", "bzip2",
         "echo", "printf", "env", "which", "file", "du", "df", "date",
         "cal", "whoami", "id", "uname", "pwd", "ls",
-        "curl", "wget", "ping", "nslookup", "dig",
-        "git", "make", "jq", "yq", "tree", "find", "xargs",
-    }
+        "ping", "nslookup", "dig",
+        "git", "make", "jq", "yq", "tree",
+    })
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -295,9 +293,7 @@ class WorkspacePlugin(PluginBase):
 
 4. **workspace_execute** — 执行沙盒命令
    - `command` (必填): 要执行的 shell 命令
-   - 限制：30 秒超时，最大输出 50,000 字符
-   - 限制：30 秒超时，最大输出 50,000 字符，禁止 shell 管道/重定向/通配符
-   - 仅允许白名单内的安全命令（python、echo、cat、ls、curl 等）
+   - 限制：30 秒超时，最大输出 50,000 字符，禁止 shell 管道/重定向/通配符，仅允许白名单内的安全命令（echo、cat、ls、git 等）
 
 5. **workspace_delete** — 删除文件或空目录
    - `path` (必填): 要删除的路径
@@ -325,8 +321,8 @@ class WorkspacePlugin(PluginBase):
 ### 注意事项
 
 - 所有路径均为相对路径，自动限定在工作区范围内，无法访问工作区外的文件
-- 命令执行有 30 秒超时限制
-- 危险系统命令（如 rm、shutdown、sudo 等）会被自动拦截
+- 命令执行有 30 秒超时限制，且不再支持 shell 管道/重定向/通配符
+- 命令需在白名单内（echo、cat、ls、git 等），否则会被自动拦截
 - 单个文件读取上限 500KB
 - 命令输出上限 50,000 字符，超出部分会被截断
 - 只允许删除空目录，防止误删

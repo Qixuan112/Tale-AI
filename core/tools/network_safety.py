@@ -35,6 +35,10 @@ def validate_url(target_url: str) -> Optional[str]:
     返回错误信息字符串（不安全）或 None（安全）
     """
     parsed = urlparse(target_url)
+    # 限制协议为 http/https
+    if parsed.scheme not in ("http", "https"):
+        return f"不支持的协议: {parsed.scheme or '(空)'}"
+
     hostname = parsed.hostname
     if not hostname:
         return "无法解析的主机名"

@@ -4,6 +4,7 @@
 """
 import re
 from typing import Optional, Dict
+from urllib.parse import urljoin
 
 from ddgs import DDGS
 
@@ -77,10 +78,10 @@ def fetch_url(
         else:
             response = requests.get(url, **request_kwargs)
         while response.is_redirect and redirect_count < max_redirects:
-            redirect_count += 1
             raw_redirect = response.headers.get("Location")
             if not raw_redirect:
                 break
+            redirect_count += 1
             redirect_url = urljoin(response.url, raw_redirect)
             redirect_ssrf = validate_url(redirect_url)
             if redirect_ssrf:

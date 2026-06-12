@@ -101,6 +101,7 @@ WEBUI_TOKEN = _load_webui_token()
 
 # 登录限速：ip -> {"count": int, "window_start": float, "blocked_until": float}
 _login_attempts: dict = {}
+_login_attempts_lock = threading.Lock()
 
 
 def _check_login_rate_limit() -> Optional[str]:
@@ -108,16 +109,17 @@ def _check_login_rate_limit() -> Optional[str]:
     import time
     client_ip = request.remote_addr or "unknown"
     now = time.time()
-    record = _login_attempts.get(client_ip)
-    if record:
-        if record.get("blocked_until", 0) > now:
-            remaining = int(record["blocked_until"] - now)
-            return f"登录尝试过于频繁，请 {remaining} 秒后再试"
-        if now - record["window_start"] > 60:
-            record["count"] = 0
-            record["window_start"] = now
-    else:
-        _login_attempts[client_ip] = {"count": 0, "window_start": now, "blocked_until": 0}
+    with _login_attempts_lock:
+        record = _login_attempts.get(client_ip)
+        if record:
+            if record.get("blocked_until", 0) > now:
+                remaining = int(record["blocked_until"] - now)
+                return f"登录尝试过于频繁，请 {remaining} 秒后再试"
+            if now - record["window_start"] > 60:
+                record["count"] = 0
+                record["window_start"] = now
+        else:
+            _login_attempts[client_ip] = {"count": 0, "window_start": now, "blocked_until": 0}
     return None
 
 
@@ -125,16 +127,17 @@ def _record_login_attempt(success: bool) -> None:
     import time
     client_ip = request.remote_addr or "unknown"
     now = time.time()
-    record = _login_attempts.get(client_ip)
-    if not record:
-        return
-    if success:
-        _login_attempts.pop(client_ip, None)
-        return
-    record["count"] += 1
-    if record["count"] >= 3:
-        block_time = min(30 * (2 ** (record["count"] - 3)), 3600)
-        record["blocked_until"] = now + block_time
+    with _login_attempts_lock:
+        record = _login_attempts.get(client_ip)
+        if not record:
+            return
+        if success:
+            _login_attempts.pop(client_ip, None)
+            return
+        record["count"] += 1
+        if record["count"] >= 3:
+            block_time = min(30 * (2 ** (record["count"] - 3)), 3600)
+            record["blocked_until"] = now + block_time
 
 
 @app.before_request
