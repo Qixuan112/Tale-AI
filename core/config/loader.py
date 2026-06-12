@@ -25,6 +25,8 @@ from .model import (
     AdaptersConfig,
     PersonaConfig,
     ProvideConfig,
+    KnowledgeBaseConfig,
+    RAGConfig,
 )
 
 
@@ -135,6 +137,25 @@ _SCHEMAS = {
         "fields": {"plugins": dict},
         "required": [],
     },
+    "knowledge.yaml": {
+        "fields": {
+            "enabled": bool,
+            "default_embedder": str,
+            "openai_embedding_api_key": str,
+            "openai_embedding_base_url": str,
+            "openai_embedding_model": str,
+            "bge_model_name": str,
+            "bge_device": str,
+            "chunk_size": int,
+            "chunk_overlap": int,
+            "top_k": int,
+            "inject_into_chat": bool,
+            "inject_order": int,
+            "max_context_length": int,
+            "knowledge_bases": list,
+        },
+        "required": [],
+    },
 }
 
 
@@ -219,7 +240,14 @@ class ConfigLoader:
             self._lock = threading.Lock()
             self._data_dir = self._get_data_dir()
             self._plugins_config: dict = {}
+            self._knowledge_config: RAGConfig = RAGConfig()
             self._load_all_configs()
+            # 初始化知识库系统
+            try:
+                from core.rag.knowledge_manager import knowledge_manager
+                knowledge_manager.initialize(self._knowledge_config, self._data_dir)
+            except Exception:
+                pass
 
     def _get_data_dir(self) -> str:
         """获取数据目录路径"""
@@ -257,6 +285,9 @@ class ConfigLoader:
 
         plugins_data = self._load_yaml("config/plugins.yaml")
         self._plugins_config = plugins_data.get("plugins", {})
+
+        knowledge_data = self._load_yaml("config/knowledge.yaml")
+        self._knowledge_config = self._parse_knowledge(knowledge_data)
 
         new_config = ProvideConfig(
             persona=persona,
@@ -469,6 +500,37 @@ class ConfigLoader:
 
         return AdaptersConfig(qq=qq_config, telegram=tg_config, bilibili=bili_config)
 
+    def _parse_knowledge(self, data: dict) -> RAGConfig:
+        """解析知识库配置"""
+        kbs_data = data.get("knowledge_bases", [])
+        knowledge_bases = []
+        for kb in kbs_data if isinstance(kbs_data, list) else []:
+            knowledge_bases.append(KnowledgeBaseConfig(
+                name=kb.get("name", "default"),
+                enabled=kb.get("enabled", True),
+                embedder=kb.get("embedder", "openai"),
+                embed_model=kb.get("embed_model", data.get("openai_embedding_model", "text-embedding-3-small")),
+                top_k=kb.get("top_k", data.get("top_k", 5)),
+                similarity_threshold=kb.get("similarity_threshold", 0.0),
+                description=kb.get("description", ""),
+            ))
+        return RAGConfig(
+            enabled=data.get("enabled", False),
+            default_embedder=data.get("default_embedder", "openai"),
+            openai_embedding_api_key=data.get("openai_embedding_api_key", ""),
+            openai_embedding_base_url=data.get("openai_embedding_base_url", ""),
+            openai_embedding_model=data.get("openai_embedding_model", "text-embedding-3-small"),
+            bge_model_name=data.get("bge_model_name", "BAAI/bge-small-zh-v1.5"),
+            bge_device=data.get("bge_device", "cpu"),
+            knowledge_bases=knowledge_bases,
+            chunk_size=data.get("chunk_size", 500),
+            chunk_overlap=data.get("chunk_overlap", 50),
+            top_k=data.get("top_k", 5),
+            inject_into_chat=data.get("inject_into_chat", True),
+            inject_order=data.get("inject_order", 5),
+            max_context_length=data.get("max_context_length", 2000),
+        )
+
     # ============ 属性 ============
 
     @property
@@ -478,6 +540,12 @@ class ConfigLoader:
     def reload(self):
         """重新加载配置，成功后通知各组件"""
         self._load_all_configs()
+        # 初始化知识库系统
+        try:
+            from core.rag.knowledge_manager import knowledge_manager
+            knowledge_manager.initialize(self._knowledge_config, self._data_dir)
+        except Exception as e:
+            logger.warning("知识库系统初始化失败 (非致命): %s", e)
         try:
             from core.bus import bus
             bus.emit("config_reloaded")
@@ -509,6 +577,10 @@ class ConfigLoader:
     @property
     def adapters(self) -> AdaptersConfig:
         return self._config.adapters
+
+    @property
+    def knowledge(self) -> RAGConfig:
+        return self._knowledge_config
 
     def get_provider(self, name: str) -> Optional[ProviderConfig]:
         return self._config.providers.get(name)

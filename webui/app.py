@@ -23,6 +23,7 @@ if sys.platform == 'win32':
         pass
 
 import json
+import uuid
 import yaml
 import asyncio
 import logging
@@ -544,6 +545,11 @@ def page_tools():
 @app.route("/plugins")
 def page_plugins():
     return render_template("plugins.html")
+
+
+@app.route("/knowledge")
+def page_knowledge():
+    return render_template("knowledge.html")
 
 
 @app.route("/logs")
@@ -1534,6 +1540,112 @@ def api_plugin_delete(plugin_id):
         return jsonify({"ok": True, "message": f"插件 {plugin_id} 已删除"})
     except Exception as e:
         logger.error("Plugin delete failed: %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ============ API：知识库管理 ============
+
+@app.route("/api/knowledge/status")
+def api_knowledge_status():
+    """获取知识库系统状态"""
+    try:
+        from core.rag.knowledge_manager import knowledge_manager
+        return jsonify(knowledge_manager.get_status())
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/knowledge/<kb_name>/documents")
+def api_knowledge_documents(kb_name):
+    """获取知识库文档列表"""
+    try:
+        from core.rag.knowledge_manager import knowledge_manager
+        docs = knowledge_manager.get_documents(kb_name)
+        return jsonify([
+            {
+                "id": d.id, "kb_name": d.kb_name, "filename": d.filename,
+                "file_type": d.file_type, "file_size": d.file_size,
+                "chunk_count": d.chunk_count, "uploaded_at": d.uploaded_at,
+                "status": d.status,
+            }
+            for d in docs
+        ])
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/knowledge/<kb_name>/upload", methods=["POST"])
+def api_knowledge_upload(kb_name):
+    """上传文档并自动索引"""
+    try:
+        if "file" not in request.files:
+            return jsonify({"ok": False, "error": "未找到文件"}), 400
+        file = request.files["file"]
+        if file.filename == "":
+            return jsonify({"ok": False, "error": "文件名为空"}), 400
+
+        ext = Path(file.filename).suffix.lower()
+        if ext not in {".txt", ".md", ".pdf", ".csv"}:
+            return jsonify({"ok": False, "error": f"不支持的文件类型: {ext}"}), 400
+
+        from core.rag.knowledge_manager import knowledge_manager
+
+        rag_docs_dir = Path(config_loader._data_dir) / "rag" / "documents" / kb_name
+        upload_id = str(uuid.uuid4())
+        dest_dir = rag_docs_dir / upload_id
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest_path = dest_dir / file.filename
+        file.save(str(dest_path))
+
+        record = knowledge_manager.upload_document(kb_name, str(dest_path), file.filename)
+        return jsonify({
+            "ok": True,
+            "document": {
+                "id": record.id, "filename": record.filename,
+                "chunk_count": record.chunk_count, "status": record.status,
+            },
+        })
+    except Exception as e:
+        logger.error("知识库上传失败: %s", e, exc_info=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/knowledge/<kb_name>/rebuild", methods=["POST"])
+def api_knowledge_rebuild(kb_name):
+    """重建知识库索引"""
+    try:
+        from core.rag.knowledge_manager import knowledge_manager
+        knowledge_manager.rebuild_index(kb_name)
+        return jsonify({"ok": True, "message": "索引重建完成"})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/knowledge/<kb_name>/test", methods=["POST"])
+def api_knowledge_test(kb_name):
+    """测试检索"""
+    data = request.get_json(silent=True) or {}
+    query = data.get("query", "").strip()
+    if not query:
+        return jsonify({"ok": False, "error": "查询不能为空"}), 400
+    try:
+        from core.rag.knowledge_manager import knowledge_manager
+        results = knowledge_manager.retrieve(query)
+        return jsonify({"ok": True, "results": results})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/knowledge/<kb_name>/documents/<doc_id>", methods=["DELETE"])
+def api_knowledge_delete_document(kb_name, doc_id):
+    """删除文档"""
+    try:
+        from core.rag.knowledge_manager import knowledge_manager
+        ok = knowledge_manager.delete_document(doc_id)
+        if not ok:
+            return jsonify({"ok": False, "error": "文档未找到"}), 404
+        return jsonify({"ok": True, "message": "文档已删除"})
+    except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
 

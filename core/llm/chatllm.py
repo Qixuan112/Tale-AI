@@ -61,6 +61,16 @@ class ChatLLM:
         # Add dynamic plan section that injects today's schedule
         self._add_plan_section()
 
+        # Initialize RAG knowledge base flag
+        self._rag_enabled = False
+        self._rag_injected = False
+        try:
+            from ..config.loader import config_loader
+            if config_loader.knowledge.enabled and config_loader.knowledge.inject_into_chat:
+                self._rag_enabled = True
+        except Exception:
+            pass
+
         # Build initial messages from context
         self.messages = list(self.context.build_messages_head(self.cache_strategy))
 
@@ -144,8 +154,32 @@ class ChatLLM:
         """
         发送消息并获取回复，自动维护上下文
         """
+        # RAG 检索：在 system 消息之后、conversation 之前注入知识库上下文
+        rag_system_msg = None
+        if self._rag_enabled:
+            try:
+                from ..rag.knowledge_manager import knowledge_manager
+                rag_text = knowledge_manager.retrieve(user_input)
+                if rag_text:
+                    rag_system_msg = {"role": "system", "content": rag_text}
+            except Exception:
+                pass
+
         # 挂起用户消息并获取当前上下文快照（短持有锁）
         with self._lock:
+            if rag_system_msg:
+                # 插入在所有 system 消息之后、对话历史之前
+                cut = 0
+                for m in self.messages:
+                    if m.get("role") == "system":
+                        cut += 1
+                    else:
+                        break
+                self.messages.insert(cut, rag_system_msg)
+                self._rag_injected = True
+            else:
+                self._rag_injected = False
+
             self.messages.append({"role": "user", "content": user_input})
             self._trim_context()
             messages_snapshot = list(self.messages)
@@ -175,6 +209,12 @@ class ChatLLM:
 
         # 重新获取锁，追加助手回复
         with self._lock:
+            # 清理注入的 RAG 系统消息
+            if self._rag_injected:
+                self.messages = [
+                    m for m in self.messages
+                    if not (isinstance(m.get("content"), str) and "## 知识库参考信息" in m["content"])
+                ]
             self.messages.append({"role": "assistant", "content": assistant_reply})
 
         return assistant_reply
