@@ -141,6 +141,33 @@ plugins:
       api_key: ""
 """
 
+DEFAULT_KNOWLEDGE_YAML = """\
+# RAG 知识库配置
+# 启用后 ChatLLM 将检索知识库内容来辅助回答
+# 首次需配置 openai_embedding_api_key 或将 default_embedder 改为 local
+
+enabled: false
+default_embedder: openai
+openai_embedding_api_key: ""
+openai_embedding_base_url: ""
+openai_embedding_model: "text-embedding-3-small"
+bge_model_name: "BAAI/bge-small-zh-v1.5"
+bge_device: "cpu"
+chunk_size: 500
+chunk_overlap: 50
+top_k: 5
+inject_into_chat: true
+inject_order: 5
+max_context_length: 2000
+knowledge_bases:
+  - name: default
+    enabled: true
+    embedder: openai
+    top_k: 3
+    similarity_threshold: 0.0
+    description: "默认知识库"
+"""
+
 DEFAULT_CONVERSATIONS_INDEX = {
     "current_id": 1,
     "conversations": [
@@ -234,6 +261,7 @@ def initialize_data():
     _write_if_missing("data/config/routing.yaml", DEFAULT_ROUTING_YAML)
     _write_if_missing("data/config/services.yaml", DEFAULT_SERVICES_YAML)
     _write_if_missing("data/config/plugins.yaml", DEFAULT_PLUGINS_YAML)
+    _write_if_missing("data/config/knowledge.yaml", DEFAULT_KNOWLEDGE_YAML)
 
     # 3. 生成 WebUI 认证 token（仅在文件不存在时）
     _token_path = PROJECT_ROOT / "data" / "config" / "webui_token"
