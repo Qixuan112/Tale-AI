@@ -72,7 +72,7 @@
                         { key: 'character.views', labelKey: 'field.char.views', labelDefault: '世界观', type: 'textarea', placeholder: '角色对世界的看法...' },
                         { key: 'character.values', labelKey: 'field.char.values', labelDefault: '价值观', type: 'array', placeholder: '添加价值观条目' },
                         { key: 'character.hobbies', labelKey: 'field.char.hobbies', labelDefault: '爱好', type: 'array', placeholder: '添加爱好' },
-                        { key: 'character.expressions', labelKey: 'field.char.expressions', labelDefault: '表情/语气', type: 'text', placeholder: '常用表达方式' },
+                        { key: 'character.expressions', labelKey: 'field.char.expressions', labelDefault: '表情/语气', type: 'json', placeholder: '{"happy": "哈哈", "sad": "呜呜"}' },
                     ]
                 },
                 {
@@ -420,11 +420,14 @@
                     + '</div>';
             }
 
-            // text / password / url
-            var inputType = isSecret ? 'password' : (fieldDef.type || 'text');
+            // text / password / url / json
+            var inputType = (fieldDef.type === 'password') ? 'password' : 'text';
+            if (fieldDef.type === 'json') {
+                val = val && typeof val === 'object' ? JSON.stringify(val, null, 2) : (val || '{}');
+            }
             var html = '<div class="card-field"' + parentAttr + '>'
                 + '<span class="field-label">' + label + (isSecret ? this._getStatusBadge(fieldDef, val) : '') + '</span>'
-                + '<input type="' + inputType + '" data-key="' + inputKey + '" value="' + this._escapeHtml(val || '') + '" placeholder="' + (fieldDef.placeholder || '') + '">'
+                + '<input type="' + inputType + '" data-key="' + inputKey + '" data-type="' + (fieldDef.type || 'text') + '" value="' + this._escapeHtml(val || '') + '" placeholder="' + (fieldDef.placeholder || '') + '">'
                 + desc
                 + '</div>';
             // 模型字段追加"获取模型"按钮
@@ -926,6 +929,8 @@
                     if (isNaN(value)) value = 0;
                 } else if (keyType === 'range') {
                     value = parseFloat(el.value) || 0;
+                } else if (keyType === 'json') {
+                    try { value = JSON.parse(el.value || '{}'); } catch(e) { value = {}; }
                 } else {
                     value = el.value;
                 }
@@ -1040,7 +1045,8 @@ window.fetchRoutingModels = function (providerName, onSelect) {
 
     document.body.appendChild(overlay);
 
-    var listEl = overlay.querySelector('#routingModelList-' + escProvider);
+    var listEl = document.getElementById('routingModelList-' + escProvider);
+    if (!listEl) return;
     listEl.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-secondary);">' + (window.t('common.loading', '加载中...')) + '</div>';
 
     function closeModal() {
@@ -1088,7 +1094,9 @@ window.fetchRoutingModels = function (providerName, onSelect) {
         });
 
     // 搜索过滤
-    overlay.querySelector('#routingModelSearch-' + escProvider).addEventListener('input', function () {
+    var searchInput = overlay.querySelector('input');
+    if (searchInput) {
+        searchInput.addEventListener('input', function () {
         var q = this.value.toLowerCase();
         var items = listEl.querySelectorAll('.model-item');
         for (var i = 0; i < items.length; i++) {
@@ -1119,7 +1127,8 @@ window.fetchModels = function (providerName) {
 
     document.body.appendChild(overlay);
 
-    var listEl = overlay.querySelector('#modelListModal-' + escProvider);
+    var listEl = document.getElementById('modelListModal-' + escProvider);
+    if (!listEl) return;
     listEl.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-secondary);">' + (window.t('common.loading', '加载中...')) + '</div>';
 
     function closeModal() {
@@ -1168,7 +1177,9 @@ window.fetchModels = function (providerName) {
         });
 
     // 搜索过滤
-    overlay.querySelector('#modelSearchModal-' + escProvider).addEventListener('input', function () {
+    var searchInput = overlay.querySelector('input');
+    if (searchInput) {
+        searchInput.addEventListener('input', function () {
         var q = this.value.toLowerCase();
         var items = listEl.querySelectorAll('.model-item');
         for (var i = 0; i < items.length; i++) {

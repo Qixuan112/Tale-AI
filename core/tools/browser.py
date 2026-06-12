@@ -4,8 +4,11 @@
 """
 import re
 from typing import Optional, Dict
+from urllib.parse import urljoin
 
 from ddgs import DDGS
+
+from .network_safety import validate_url, MAX_RESPONSE_BYTES
 
 # 尝试导入 requests 和 BeautifulSoup
 try:
@@ -48,7 +51,10 @@ def fetch_url(
     try:
         if not url.startswith(('http://', 'https://')):
             url = 'https://' + url
-        
+        # SSRF 防护
+        ssrf_error = validate_url(url)
+        if ssrf_error:
+            return {"status": "failed", "tool": "browser.fetch_url", "error": f"SSRF 安全检查未通过: {ssrf_error}"}
         default_headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -61,23 +67,42 @@ def fetch_url(
         request_kwargs = {
             "headers": default_headers,
             "timeout": timeout,
-            "verify": verify_ssl
+            "verify": verify_ssl,
+            "allow_redirects": False,
         }
-        
+
+        redirect_count = 0
+        max_redirects = 5
         if method.lower() == "post":
             response = requests.post(url, **request_kwargs)
         else:
             response = requests.get(url, **request_kwargs)
-        
+        while response.is_redirect and redirect_count < max_redirects:
+            raw_redirect = response.headers.get("Location")
+            if not raw_redirect:
+                break
+            redirect_count += 1
+            redirect_url = urljoin(response.url, raw_redirect)
+            redirect_ssrf = validate_url(redirect_url)
+            if redirect_ssrf:
+                return {"status": "failed", "tool": "browser.fetch_url", "error": f"重定向目标 SSRF 安全检查未通过: {redirect_ssrf}"}
+            response = requests.get(redirect_url, **request_kwargs)
+
         response.raise_for_status()
-        
+
+        content_len_header = response.headers.get("content-length")
+        if content_len_header and int(content_len_header) > MAX_RESPONSE_BYTES:
+            return {"status": "failed", "tool": "browser.fetch_url", "error": f"响应过大 (>{MAX_RESPONSE_BYTES // 1024 // 1024}MB)"}
+
         if encoding:
             response.encoding = encoding
         else:
             response.encoding = response.apparent_encoding
-        
+
         content = response.text
-        
+        if len(content) > MAX_RESPONSE_BYTES:
+            content = content[:MAX_RESPONSE_BYTES]
+
         return {
             "status": "success",
             "tool": "browser.fetch_url",

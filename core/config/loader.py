@@ -283,6 +283,8 @@ class ConfigLoader:
         elif isinstance(expressions_data, dict):
             expressions_dict = expressions_data
         else:
+            if isinstance(expressions_data, str) and expressions_data.strip():
+                logger.warning("[Config] character.expressions 应为 dict/list，当前为字符串 '%s'，已忽略", expressions_data)
             expressions_dict = {}
 
         dialogue_data = char_data.get("dialogue_style_imitation", [])
