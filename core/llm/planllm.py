@@ -441,12 +441,26 @@ class PlanLLM:
             event_data = json.loads(json_str)
             
             # 创建日程条目
+            event_type_str = event_data.get("event_type", "other").lower()
+            try:
+                event_type = EventType(event_type_str)
+            except ValueError:
+                logger.warning("未知事件类型 '%s'，使用 'other' 代替", event_type_str)
+                event_type = EventType.OTHER
+
+            priority_str = event_data.get("priority", "medium").lower()
+            try:
+                priority = Priority(priority_str)
+            except ValueError:
+                logger.warning("未知优先级 '%s'，使用 'medium' 代替", priority_str)
+                priority = Priority.MEDIUM
+
             entry = DiaryEntry(
                 id=str(uuid.uuid4())[:8],
                 title=event_data.get("title", "未命名事件"),
                 description=event_data.get("description", ""),
-                event_type=EventType(event_data.get("event_type", "other")),
-                priority=Priority(event_data.get("priority", "medium")),
+                event_type=event_type,
+                priority=priority,
                 start_time=datetime.strptime(event_data["start_time"], "%H:%M").time(),
                 end_time=datetime.strptime(event_data["end_time"], "%H:%M").time() if event_data.get("end_time") else None,
                 related_people=event_data.get("related_people", []),

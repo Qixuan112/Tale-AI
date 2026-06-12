@@ -494,10 +494,12 @@ class PluginManager:
         }
 
     def list_loaded(self) -> List[str]:
-        return list(PluginManager._plugins.keys())
+        with PluginManager._class_lock:
+            return list(PluginManager._plugins.keys())
 
     def is_loaded(self, plugin_id: str) -> bool:
-        return plugin_id in PluginManager._plugins
+        with PluginManager._class_lock:
+            return plugin_id in PluginManager._plugins
 
 
 def _merge_config(
