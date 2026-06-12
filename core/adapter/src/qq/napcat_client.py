@@ -277,6 +277,9 @@ class NapCatWebSocketClient:
                 if not self.shutdown_event.is_set():
                     ok = await self._reconnect()
                     if ok:
+                        # 再次检查 shutdown，防止 close() 在重连期间被调用
+                        if self.shutdown_event.is_set():
+                            break
                         # 重连成功后重新进入接收循环
                         self._listening_task = asyncio.create_task(
                             self._listen_messages()
@@ -356,6 +359,12 @@ class NapCatWebSocketClient:
         """关闭客户端，清理所有资源。"""
         self.shutdown_event.set()
         self.login_success_event.clear()
+
+        # 清除所有 pending 的 API 请求 Future
+        for echo, future in self.response_futures.copy().items():
+            if not future.done():
+                future.cancel()
+            del self.response_futures[echo]
 
         if self._listening_task and not self._listening_task.done():
             self._listening_task.cancel()
