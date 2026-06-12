@@ -5,6 +5,7 @@
 支持函数：abs, round, max, min, sum, pow, int, float
 """
 import ast
+import builtins
 import operator
 from typing import Union, Any
 
@@ -97,7 +98,7 @@ def _eval_node(node: ast.AST) -> Any:
         kwargs = {kw.arg: _eval_node(kw.value) for kw in node.keywords}
 
         # 获取内置函数
-        func = getattr(__builtins__, func_name)
+        func = getattr(builtins, func_name)
         return func(*args, **kwargs)
 
     # 表达式元组（如 (1, 2) 在函数调用中）

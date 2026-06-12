@@ -239,7 +239,7 @@ class WebSocketAdapter(BaseAdapter):
         else:
             return self._parse_server_message(raw_event)
 
-    async def send_message(self, target_id: str, content: MessageContent) -> bool:
+    async def send_message(self, target_id: str, content: MessageContent, **kwargs) -> bool:
         """发送消息"""
         message = {
             "type": "message",

@@ -11,6 +11,9 @@ import string
 import shutil
 import tempfile
 
+from core.utils import get_logger
+logger = get_logger(__name__)
+
 # Windows 控制台 UTF-8 编码修复
 if sys.platform == 'win32':
     try:
