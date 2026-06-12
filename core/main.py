@@ -143,6 +143,10 @@ class TaleCore:
         if self.toolllm is not None:
             self.toolllm.rebuild_tool_definitions()
 
+        # 重新初始化消息处理器（唤醒词、权限等配置可能已变更）
+        self._init_message_processor()
+        logger.info("MessageProcessor 已热重载")
+
     def _init_message_processor(self):
         """初始化消息处理器"""
         # 从配置构建处理器配置
