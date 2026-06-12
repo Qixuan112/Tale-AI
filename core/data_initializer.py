@@ -239,7 +239,7 @@ def initialize_data():
     _token_path = PROJECT_ROOT / "data" / "config" / "webui_token"
     if not _token_path.exists():
         _token_chars = string.ascii_letters + string.digits
-        _token = ''.join(secrets.choice(_token_chars) for _ in range(6))
+        _token = ''.join(secrets.choice(_token_chars) for _ in range(16))
         _token_path.parent.mkdir(parents=True, exist_ok=True)
         _token_path.write_text(_token, encoding="utf-8")
         print(f"\n  WebUI 认证令牌: {_token}\n")

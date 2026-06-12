@@ -1,0 +1,100 @@
+{
+  "provider_config": {
+    "base_url": {
+      "name": "Base URL",
+      "type": "string",
+      "default": "https://api-inference.modelscope.cn/v1",
+      "hint": "ModelScope Base URL",
+      "locales": {
+        "zh": { "name": "Base URL", "hint": "ModelScope Base URL" }
+      }
+    },
+    "api_key": {
+      "name": "API Key",
+      "type": "sensitive",
+      "default": null,
+      "hint": "ModelScope API Key",
+      "locales": {
+        "zh": { "name": "API 密钥", "hint": "ModelScope API 密钥" }
+      }
+    }
+  },
+  "model_config": {
+    "llm": {
+      "timeout": {
+        "name": "超时",
+        "type": "integer",
+        "default": 120,
+        "min": 1,
+        "hint": "超时秒数",
+        "locales": {
+          "en": { "name": "Timeout", "hint": "Timeout seconds" }
+        }
+      },
+      "section_advanced": {
+        "type": "section",
+        "name": "高级设置",
+        "hint": "高级模型配置选项",
+        "collapsed": true,
+        "locales": {
+          "en": { "name": "Advanced Settings", "hint": "Advanced model configuration options" }
+        },
+        "fields": {
+          "temperature": {
+            "name": "温度",
+            "type": "float",
+            "default": null,
+            "min": 0,
+            "max": 2,
+            "hint": "模型温度",
+            "locales": {
+              "en": { "name": "Temperature", "hint": "Model temperature" }
+            }
+          },
+          "extra_body": {
+            "name": "自定义请求体",
+            "type": "json",
+            "default": {},
+            "hint": "合并到请求体中的额外字段（JSON 对象）",
+            "locales": {
+              "en": { "name": "Extra Body", "hint": "Additional fields merged into the request body (JSON object)" }
+            }
+          }
+        }
+      }
+    },
+    "image": {
+      "timeout": {
+        "name": "超时时间",
+        "type": "integer",
+        "default": 30,
+        "min": 1,
+        "hint": "生图超时时间（秒）",
+        "locales": {
+          "en": { "name": "Timeout", "hint": "Image generation timeout (seconds)" }
+        }
+      }
+    },
+    "embedding": {
+      "timeout": {
+        "name": "超时",
+        "type": "integer",
+        "default": 60,
+        "min": 1,
+        "hint": "请求超时时间（秒）",
+        "locales": {
+          "en": { "name": "Timeout", "hint": "Request timeout in seconds" }
+        }
+      },
+      "slow_request_threshold": {
+        "name": "慢请求阈值",
+        "type": "float",
+        "default": null,
+        "hint": "超过此阈值（秒）的请求将被记录为慢请求，null 表示禁用慢请求记录",
+        "locales": {
+          "en": { "name": "Slow Request Threshold", "hint": "Requests slower than this threshold (seconds) will be logged as slow requests, null disables slow request logging" }
+        }
+      }
+    }
+  }
+}

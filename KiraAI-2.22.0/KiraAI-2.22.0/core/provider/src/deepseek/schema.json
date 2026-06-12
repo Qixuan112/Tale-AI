@@ -1,0 +1,106 @@
+{
+  "provider_config": {
+    "base_url": {
+      "name": "Base URL",
+      "type": "string",
+      "default": "https://api.deepseek.com",
+      "hint": "DeepSeek API base URL",
+      "locales": {
+        "zh": { "name": "Base URL", "hint": "DeepSeek API Base URL" }
+      }
+    },
+    "api_key": {
+      "name": "API Key",
+      "type": "sensitive",
+      "default": null,
+      "hint": "Your DeepSeek API Key, get it from https://platform.deepseek.com/",
+      "locales": {
+        "zh": { "name": "API 密钥", "hint": "你的 DeepSeek API 密钥，从 https://platform.deepseek.com/ 获取" }
+      }
+    },
+    "section_advanced": {
+      "type": "section",
+      "name": "Advanced Settings",
+      "hint": "Advanced configuration options",
+      "collapsed": true,
+      "locales": {
+        "zh": { "name": "高级设置", "hint": "高级配置选项" }
+      },
+      "fields": {
+        "headers": {
+          "name": "Custom Headers",
+          "type": "json",
+          "default": {},
+          "hint": "Custom headers passed to OpenAI Client",
+          "locales": {
+            "zh": { "name": "自定义请求头", "hint": "传递给 OpenAI 客户端的自定义请求头" }
+          }
+        }
+      }
+    }
+  },
+  "model_config": {
+    "llm": {
+      "timeout": {
+        "name": "超时",
+        "type": "integer",
+        "default": 120,
+        "min": 1,
+        "hint": "超时秒数",
+        "locales": {
+          "en": { "name": "Timeout", "hint": "Timeout seconds" }
+        }
+      },
+      "thinking_enabled": {
+        "name": "思考模式",
+        "type": "switch",
+        "default": true,
+        "hint": "开启 DeepSeek 思考模式，模型将先输出思维链再给出最终回答",
+        "locales": {
+          "en": { "name": "Thinking Mode", "hint": "Enable DeepSeek thinking mode, the model will output the thinking chain before giving the final answer" }
+        }
+      },
+      "reasoning_effort": {
+        "name": "思考深度",
+        "type": "enum",
+        "default": "high",
+        "options": ["high", "max"],
+        "hint": "思考强度：high（默认）或 max（复杂 Agent 任务推荐）",
+        "locales": {
+          "en": { "name": "Reasoning Effort", "hint": "Reasoning intensity: high (default) or max (recommended for complex Agent tasks)" }
+        }
+      },
+      "section_advanced": {
+        "type": "section",
+        "name": "高级设置",
+        "hint": "高级模型配置选项",
+        "collapsed": true,
+        "locales": {
+          "en": { "name": "Advanced Settings", "hint": "Advanced model configuration options" }
+        },
+        "fields": {
+          "temperature": {
+            "name": "温度",
+            "type": "float",
+            "default": null,
+            "min": 0,
+            "max": 2,
+            "hint": "模型温度（注意：思考模式下此参数不生效）",
+            "locales": {
+              "en": { "name": "Temperature", "hint": "Model temperature (Note: this parameter does not apply in thinking mode)" }
+            }
+          },
+          "extra_body": {
+            "name": "自定义请求体",
+            "type": "json",
+            "default": {},
+            "hint": "合并到请求体中的额外字段（JSON 对象）",
+            "locales": {
+              "en": { "name": "Extra Body", "hint": "Additional fields merged into the request body (JSON object)" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

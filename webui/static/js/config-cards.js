@@ -1045,7 +1045,7 @@ window.fetchRoutingModels = function (providerName, onSelect) {
 
     document.body.appendChild(overlay);
 
-    var listEl = document.getElementById('routingModelList-' + providerName);
+    var listEl = document.getElementById('routingModelList-' + escProvider);
     if (!listEl) return;
     listEl.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-secondary);">' + (window.t('common.loading', '加载中...')) + '</div>';
 
@@ -1127,7 +1127,7 @@ window.fetchModels = function (providerName) {
 
     document.body.appendChild(overlay);
 
-    var listEl = document.getElementById('modelListModal-' + providerName);
+    var listEl = document.getElementById('modelListModal-' + escProvider);
     if (!listEl) return;
     listEl.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-secondary);">' + (window.t('common.loading', '加载中...')) + '</div>';
 

@@ -38,7 +38,7 @@ class WorkspacePlugin(PluginBase):
 
     _ALLOWED_COMMANDS: set = {
         "python", "python3", "node", "deno", "ruby", "lua", "perl",
-        "php", "bash", "sh", "zsh",
+        "php",
         "cat", "head", "tail", "wc", "sort", "uniq", "grep", "awk", "sed",
         "cut", "tr", "diff", "cmp",
         "tar", "gzip", "gunzip", "zip", "unzip", "bzip2",
@@ -296,7 +296,8 @@ class WorkspacePlugin(PluginBase):
 4. **workspace_execute** — 执行沙盒命令
    - `command` (必填): 要执行的 shell 命令
    - 限制：30 秒超时，最大输出 50,000 字符
-   - 危险命令（rm/shutdown/sudo 等）会被拦截
+   - 限制：30 秒超时，最大输出 50,000 字符，禁止 shell 管道/重定向/通配符
+   - 仅允许白名单内的安全命令（python、echo、cat、ls、curl 等）
 
 5. **workspace_delete** — 删除文件或空目录
    - `path` (必填): 要删除的路径

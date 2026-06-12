@@ -78,9 +78,10 @@ def fetch_url(
             response = requests.get(url, **request_kwargs)
         while response.is_redirect and redirect_count < max_redirects:
             redirect_count += 1
-            redirect_url = response.headers.get("Location")
-            if not redirect_url:
+            raw_redirect = response.headers.get("Location")
+            if not raw_redirect:
                 break
+            redirect_url = urljoin(response.url, raw_redirect)
             redirect_ssrf = validate_url(redirect_url)
             if redirect_ssrf:
                 return {"status": "failed", "tool": "browser.fetch_url", "error": f"重定向目标 SSRF 安全检查未通过: {redirect_ssrf}"}

@@ -1333,7 +1333,8 @@ def api_login():
 
     data = request.get_json(silent=True) or {}
     import hmac
-    if hmac.compare_digest(data.get("token", ""), WEBUI_TOKEN):
+    token_val = data.get("token")
+    if isinstance(token_val, str) and hmac.compare_digest(token_val, WEBUI_TOKEN):
         _record_login_attempt(success=True)
         session["webui_authed"] = True
         return jsonify({"ok": True, "redirect": "/dashboard"})

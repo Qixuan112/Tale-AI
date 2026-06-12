@@ -105,6 +105,9 @@ def _try_repair_xml(raw_xml: str, error_msg: str):
             repaired = re.sub(r'^```(?:xml)?\s*', '', repaired)
             repaired = re.sub(r'\s*```$', '', repaired)
 
+        if _reject_xxe(repaired):
+            return None
+
         root = ET.fromstring(f"<root>{repaired}</root>")
         logger.info("通用 LLM 成功修复 XML")
         return _parse_root(root)
