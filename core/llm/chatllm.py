@@ -142,6 +142,10 @@ class ChatLLM:
             )
         except Exception as e:
             logger.error("ChatLLM API 调用失败: %s", e)
+            # API 失败时回滚已追加的 user 消息，避免孤立 user 轮次
+            with self._lock:
+                if self.messages and self.messages[-1].get("role") == "user":
+                    self.messages.pop()
             raise
 
         assistant_reply = response.choices[0].message.content or ""

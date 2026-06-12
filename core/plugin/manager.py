@@ -392,21 +392,23 @@ class PluginManager:
         PluginManager._pending_prompt_sections.pop(plugin_id, None)
 
     def _wire_prompt_sections(self, chatllm=None, toollLM=None, planllm=None) -> None:
-        for plugin_id, sections in PluginManager._pending_prompt_sections.items():
+        with PluginManager._class_lock:
+            snapshot = list(PluginManager._pending_prompt_sections.items())
+        for plugin_id, sections in snapshot:
             for agent_name, section in sections:
-                try:
-                    if agent_name == "chat" and chatllm and chatllm.context:
-                        chatllm.context.add_section(section)
-                        chatllm.refresh_context()
-                    elif agent_name == "tool" and toollLM and toollLM.context:
-                        toollLM.context.add_section(section)
-                    elif agent_name == "plan" and planllm and planllm.context:
-                        planllm.context.add_section(section)
-                except Exception as e:
-                    logger.warning(
-                        "Failed to add prompt section from %s to %s: %s",
-                        plugin_id, agent_name, e,
-                    )
+                    try:
+                        if agent_name == "chat" and chatllm and chatllm.context:
+                            chatllm.context.add_section(section)
+                            chatllm.refresh_context()
+                        elif agent_name == "tool" and toollLM and toollLM.context:
+                            toollLM.context.add_section(section)
+                        elif agent_name == "plan" and planllm and planllm.context:
+                            planllm.context.add_section(section)
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to add prompt section from %s to %s: %s",
+                            plugin_id, agent_name, e,
+                        )
 
     # ---- Per-type wiring helpers ----
 
