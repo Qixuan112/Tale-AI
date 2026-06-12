@@ -68,8 +68,8 @@ class ChatLLM:
             from ..config.loader import config_loader
             if config_loader.knowledge.enabled and config_loader.knowledge.inject_into_chat:
                 self._rag_enabled = True
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("RAG 初始化跳过: %s", e)
 
         # Build initial messages from context
         self.messages = list(self.context.build_messages_head(self.cache_strategy))
@@ -162,8 +162,8 @@ class ChatLLM:
                 rag_text = knowledge_manager.retrieve(user_input)
                 if rag_text:
                     rag_system_msg = {"role": "system", "content": rag_text}
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("RAG 检索失败: %s", e)
 
         # 挂起用户消息并获取当前上下文快照（短持有锁）
         with self._lock:
@@ -192,8 +192,15 @@ class ChatLLM:
             )
         except Exception as e:
             logger.error("ChatLLM API 调用失败: %s", e)
-            # API 失败时回滚已追加的 user 消息，避免孤立 user 轮次
+            # API 失败时回滚已追加的消息，避免孤立消息
             with self._lock:
+                if self._rag_injected:
+                    # 移除注入的 RAG system 消息（在结尾 user 之前）
+                    for i in range(len(self.messages) - 1, -1, -1):
+                        if self.messages[i].get("role") == "system" and "## 知识库参考信息" in self.messages[i].get("content", ""):
+                            del self.messages[i]
+                            break
+                    self._rag_injected = False
                 if self.messages and self.messages[-1].get("role") == "user":
                     self.messages.pop()
             raise
@@ -201,6 +208,12 @@ class ChatLLM:
         if response is None:
             logger.error("ChatLLM API 返回空响应")
             with self._lock:
+                if self._rag_injected:
+                    for i in range(len(self.messages) - 1, -1, -1):
+                        if self.messages[i].get("role") == "system" and "## 知识库参考信息" in self.messages[i].get("content", ""):
+                            del self.messages[i]
+                            break
+                    self._rag_injected = False
                 if self.messages and self.messages[-1].get("role") == "user":
                     self.messages.pop()
             raise RuntimeError("ChatLLM API 返回空响应")

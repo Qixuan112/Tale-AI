@@ -7,7 +7,7 @@ import json
 import os
 import threading
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -58,6 +58,12 @@ class KnowledgeManager:
         self._document_index_path = self._rag_data_dir / "document_index.json"
 
         with self._lock:
+            # 显式释放旧 FAISS 索引（native 内存，不受 GC 管理）
+            for store in self._stores.values():
+                try:
+                    store.close()
+                except Exception:
+                    pass
             self._stores.clear()
             self._retrievers.clear()
 
@@ -143,6 +149,8 @@ class KnowledgeManager:
             })
 
         # 向量化并添加索引
+        if not self._embedder:
+            return
         chunk_texts = [c["text"] for c in chunk_records]
         embeddings = self._embedder.embed(chunk_texts)
         store.add(embeddings, chunk_records)
@@ -155,7 +163,7 @@ class KnowledgeManager:
             file_type=Path(filename).suffix.lower().lstrip("."),
             file_size=Path(file_path).stat().st_size,
             chunk_count=len(chunks),
-            uploaded_at=datetime.now().isoformat(),
+            uploaded_at=datetime.now(timezone.utc).isoformat(),
             status="indexed",
         )
 
@@ -222,7 +230,7 @@ class KnowledgeManager:
         if all_chunk_records:
             texts = [c["text"] for c in all_chunk_records]
             embeddings = self._embedder.embed(texts)
-            store.rebuild_from_chunks(embeddings)
+            store.rebuild_from_chunks(embeddings, all_chunk_records)
 
         logger.info("知识库 '%s' 索引已重建 (%d 分块)", kb_name, len(all_chunk_records))
 

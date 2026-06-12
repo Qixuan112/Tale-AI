@@ -4,9 +4,12 @@ FAISS 向量存储
 """
 
 import json
+import logging
 import numpy as np
 from pathlib import Path
 from typing import List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 class FaissVectorStore:
@@ -28,7 +31,13 @@ class FaissVectorStore:
     def _load(self):
         import faiss
         if self._index_path.exists() and self._mapping_path.exists():
-            self._index = faiss.read_index(str(self._index_path))
+            loaded = faiss.read_index(str(self._index_path))
+            if loaded.d != self._dimension:
+                logger.warning("FAISS 索引维度 %d 与当前配置 %d 不匹配，重建索引", loaded.d, self._dimension)
+                self._index = faiss.IndexFlatIP(self._dimension)
+                self._chunks = []
+                return
+            self._index = loaded
             with open(self._mapping_path, "r", encoding="utf-8") as f:
                 self._chunks = json.load(f)
         else:
@@ -76,6 +85,11 @@ class FaissVectorStore:
         if self._mapping_path.exists():
             self._mapping_path.unlink()
 
+    def close(self):
+        """释放 FAISS 索引的 native 内存"""
+        self._index = None
+        self._chunks = []
+
     @property
     def size(self) -> int:
         return self._index.ntotal if self._index else 0
@@ -103,10 +117,11 @@ class FaissVectorStore:
             with open(self._mapping_path, "w", encoding="utf-8") as f:
                 json.dump(self._chunks, f, ensure_ascii=False, indent=2)
 
-    def rebuild_from_chunks(self, embeddings: np.ndarray):
-        """从已有的分块列表重建 FAISS 索引"""
+    def rebuild_from_chunks(self, embeddings: np.ndarray, chunk_records: List[dict]):
+        """从已有的分块列表重建 FAISS 索引和元数据"""
         import faiss
         self._index = faiss.IndexFlatIP(self._dimension)
+        self._chunks = list(chunk_records)
         if embeddings.shape[0] > 0:
             self._index.add(embeddings)
         self._save()
