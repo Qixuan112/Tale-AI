@@ -96,8 +96,9 @@ def _eval_node(node: ast.AST) -> Any:
         args = [_eval_node(arg) for arg in node.args]
         kwargs = {kw.arg: _eval_node(kw.value) for kw in node.keywords}
 
+        import builtins
         # 获取内置函数
-        func = getattr(__builtins__, func_name)
+        func = getattr(builtins, func_name)
         return func(*args, **kwargs)
 
     # 表达式元组（如 (1, 2) 在函数调用中）

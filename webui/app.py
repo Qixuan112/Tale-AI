@@ -29,6 +29,9 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from core.utils import get_logger
+logger = get_logger(__name__)
+
 from flask import Flask, render_template, jsonify, request, Response, session, redirect
 
 # 把项目根目录加入路径，确保能导入 core
