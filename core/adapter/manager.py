@@ -382,7 +382,9 @@ class AdapterManager:
 
         content = MessageContent(
             text=text,
-            images=images or []
+            images=images or [],
+            at_targets=kwargs.get("at_targets") or [],
+            reply_to=kwargs.get("reply_to"),
         )
 
         try:

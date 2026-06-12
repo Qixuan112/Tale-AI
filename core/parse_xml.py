@@ -179,6 +179,8 @@ def _parse_root(root: ET.Element) -> dict:
                 message.add_element(Emoji(value))
             elif tag == "at_targets":
                 message.at_targets = [t.strip() for t in value.split(",") if t.strip()]
+            elif tag == "reply":
+                message.reply_to = value
 
         if message.elements:
             result["messages"].append(message)
@@ -231,10 +233,4 @@ def format_message_for_display(message):
         elif isinstance(elem, Emoji):
             parts.append(elem.content)
 
-    text = "".join(parts)
-
-    if message.at_targets:
-        at_str = " @".join(message.at_targets)
-        text = f"@{at_str} {text}"
-
-    return text
+    return "".join(parts)

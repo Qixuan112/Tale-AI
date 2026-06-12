@@ -101,7 +101,7 @@ def execute_function(func_name: str, parameters: dict) -> dict:
                 result = browser.fetch_and_parse(url)
                 return result
             return {"status": "failed", "error": "缺少 url 参数"}
-        
+
         elif func_name == "browser_search":
             query = parameters.get("query", "")
             engine = parameters.get("engine", "duckduckgo")

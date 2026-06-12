@@ -1,6 +1,6 @@
 import asyncio
 import json
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 try:
@@ -64,6 +64,8 @@ class QQAdapter(BaseAdapter):
         self._session = None
         self._reconnect_task = None
         self._receive_task = None
+
+        self._pending_api_echos: Dict[str, asyncio.Future] = {}
 
         self._running = True
 
@@ -236,7 +238,19 @@ class QQAdapter(BaseAdapter):
         )
 
     def _handle_api_response(self, data: Dict[str, Any]) -> None:
-        """处理 OneBot API 响应，缓存已发送消息的 ID"""
+        """处理 OneBot API 响应，路由到等待的 api_call 或缓存已发送消息 ID"""
+        echo = data.get("echo")
+        if echo and echo in self._pending_api_echos:
+            future = self._pending_api_echos[echo]
+            if not future.done():
+                if data.get("status") == "ok":
+                    future.set_result(data.get("data"))
+                else:
+                    future.set_exception(
+                        Exception(data.get("retcode", "unknown")))
+            return
+
+        # 无 echo 匹配的响应：缓存已发送消息 ID
         if data.get("status") == "ok":
             message_id = data.get("data", {}).get("message_id")
             if message_id:
@@ -280,6 +294,21 @@ class QQAdapter(BaseAdapter):
         try:
             # 构建消息
             message_segments = []
+
+            # 引用回复（必须先于其他段，OneBot 协议要求）
+            if content.reply_to:
+                message_segments.append({
+                    "type": "reply",
+                    "data": {"id": content.reply_to}
+                })
+
+            # 群聊回复时，需要 @ 发送者才能触发实际提醒
+            if kwargs.get('is_group') and content.at_targets:
+                for at_qq in content.at_targets:
+                    message_segments.append({
+                        "type": "at",
+                        "data": {"qq": at_qq}
+                    })
 
             if content.text:
                 message_segments.append({
@@ -328,3 +357,72 @@ class QQAdapter(BaseAdapter):
         except Exception as e:
             logger.info(f"[QQ] Failed to send message: {e}")
             return False
+
+    async def api_call(self, action: str, params: dict = None) -> Optional[dict]:
+        """发送 OneBot API 请求并等待响应（带 echo 匹配）
+
+        Args:
+            action: OneBot API 动作名，如 get_group_member_list
+            params: 参数字典
+
+        Returns:
+            API 响应的 data 部分，失败返回 None
+        """
+        if not self._ws:
+            logger.warning("[QQ] WebSocket not connected for API call")
+            return None
+
+        echo = f"api_{id(self)}_{asyncio.get_running_loop().time()}"
+        request = {
+            "action": action,
+            "params": params or {},
+            "echo": echo,
+        }
+
+        loop = asyncio.get_running_loop()
+        future = loop.create_future()
+        self._pending_api_echos[echo] = future
+
+        try:
+            await self._ws.send(json.dumps(request))
+            result = await asyncio.wait_for(future, timeout=15)
+            return result
+        except asyncio.TimeoutError:
+            logger.warning("[QQ] API call %s timeout", action)
+            return None
+        except Exception as e:
+            logger.warning("[QQ] API call %s failed: %s", action, e)
+            return None
+        finally:
+            self._pending_api_echos.pop(echo, None)
+
+
+class QQApiClient:
+    """QQ OneBot API 客户端，供工具函数使用"""
+
+    _adapter: Optional[QQAdapter] = None
+
+    @classmethod
+    def bind(cls, adapter: QQAdapter):
+        cls._adapter = adapter
+
+    @classmethod
+    async def get_group_member_list(cls, group_id: str) -> List[dict]:
+        """获取群成员列表
+
+        Returns:
+            [{"user_id": "123", "nickname": "浪子"}, ...]
+        """
+        if not cls._adapter:
+            logger.warning("[QQApi] QQAdapter not bound")
+            return []
+        data = await cls._adapter.api_call("get_group_member_list",
+                                            {"group_id": int(group_id)})
+        if not data:
+            return []
+        members = data if isinstance(data, list) else data.get("list", data)
+        return [
+            {"user_id": str(m.get("user_id", "")),
+             "nickname": m.get("nickname", "") or m.get("card", "")}
+            for m in members
+        ]

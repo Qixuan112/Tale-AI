@@ -4,7 +4,7 @@ import threading
 import asyncio
 import signal
 from pathlib import Path
-from typing import Optional, Callable, Any, List
+from typing import Optional, Callable, Any, List, Dict
 
 from .spin_think import spinning_think
 from .bus import NextBus, bus
@@ -67,6 +67,7 @@ class TaleCore:
         self._shutdown_event: Optional[asyncio.Event] = None
         self._llm_executor = None
         self._chat_context_buffer: Dict[str, list] = {}
+        self._name_to_id: Dict[str, Dict[str, str]] = {}
 
     def initialize(self):
         """初始化核心组件（幂等，可多次调用）"""
@@ -487,6 +488,20 @@ class TaleCore:
         else:
             user_input = processed.text or ""
 
+        # 把当前消息的元数据注入，AI 在回复时可用 <at_targets> 和 <reply> 引用
+        # ⚠️ 只给昵称不给 ID，LLM 对数字不敏感，但写昵称更准确
+        msg_meta = f"\n[消息元数据] 当前消息ID={processed.message_id}，发送者昵称={processed.sender_name}"
+        if processed.is_group_message and processed.group_id:
+            msg_meta += f"，群ID={processed.group_id}"
+        user_input += msg_meta
+
+        # 维护昵称→ID 映射表（按群分组，供发送时解析 @ 用）
+        if processed.sender_name and processed.sender_id:
+            group_key = processed.group_id or "_private"
+            if group_key not in self._name_to_id:
+                self._name_to_id[group_key] = {}
+            self._name_to_id[group_key][processed.sender_name] = processed.sender_id
+
         logger.info("处理 %s (%s): %s", processed.sender_name, processed.reason, processed.text)
 
         is_group = processed.group_id is not None
@@ -581,12 +596,28 @@ class TaleCore:
             if reply_text:
                 # 打字延迟：每条消息发送前等待，模拟真人逐条打字
                 await asyncio.sleep(calculate_split_interval(len(reply_text)))
+                # AI 可主动通过 <at_targets> 指定 @ 谁（用昵称）；不写就不 @
+                raw_at = msg.at_targets or []
+                at_targets = None
+                if raw_at:
+                    at_list = []
+                    group_key = processed.group_id or "_private"
+                    name_map = self._name_to_id.get(group_key, {})
+                    for name in raw_at:
+                        qq_id = name_map.get(name)
+                        if qq_id:
+                            at_list.append(qq_id)
+                    if at_list:
+                        at_targets = at_list
+                # AI 可主动通过 <reply> 指定引用回复的消息 ID
+                reply_to = msg.reply_to or processed.message_id
                 await self._send_reply(
                     adapter_instance or processed.platform.value,
                     target_id,
                     reply_text,
-                    reply_to=processed.message_id,
-                    is_group=is_group
+                    reply_to=reply_to,
+                    is_group=is_group,
+                    at_targets=at_targets,
                 )
                 # 句与句之间的额外停顿（最后一条不等待）
                 if idx < len(messages) - 1:
@@ -789,7 +820,8 @@ class TaleCore:
         target_id: str,
         reply: str,
         reply_to: Optional[str] = None,
-        is_group: bool = False
+        is_group: bool = False,
+        at_targets: Optional[list] = None,
     ):
         """发送回复消息
 
@@ -799,6 +831,7 @@ class TaleCore:
             reply: 回复内容
             reply_to: 回复的消息 ID（可选）
             is_group: 是否为群消息
+            at_targets: @目标列表（群聊时传入发送者ID以触发真实提醒）
         """
         if not self.adapter_bridge or not reply:
             return
@@ -809,7 +842,8 @@ class TaleCore:
                 target_id=target_id,
                 text=reply,
                 reply_to=reply_to,
-                is_group=is_group
+                is_group=is_group,
+                at_targets=at_targets,
             )
             if success:
                 logger.info("发送成功 -> %s", target_id)
@@ -830,8 +864,81 @@ class TaleCore:
         running_adapters = self.adapter_bridge.get_manager().list_running_adapters()
         if running_adapters:
             logger.info("运行中的适配器: %s", ", ".join(running_adapters))
+
+            # 绑定 QQ API 客户端并注册群成员查询工具
+            self._init_qq_api_tool()
         else:
             logger.info("没有运行中的适配器（将进入控制台模式）")
+
+    def _init_qq_api_tool(self):
+        """绑定 QQ 适配器为 API 客户端，注册群成员查询工具"""
+        try:
+            mgr = self.adapter_bridge.get_manager()
+            qq_inst = mgr.resolve_adapter_id("qq")
+            if not qq_inst:
+                logger.info("[QQApi] 未找到 QQ 适配器实例，跳过")
+                return
+
+            adapter = mgr._adapters.get(qq_inst)
+            if not adapter:
+                return
+
+            from .adapter.src.qq.adapter import QQApiClient
+            QQApiClient.bind(adapter)
+
+            # 用插件注册机制把 query_group_members 动态注册进 function_caller
+            # _plugin_dispatch 是同步契约，内部用 run_coroutine_threadsafe 桥接 async 调用
+            _loop = asyncio.get_running_loop()
+
+            def _run_query(parameters):
+                group_id = parameters.get("group_id", "")
+                if not group_id:
+                    return {"status": "failed", "error": "缺少 group_id 参数"}
+                future = asyncio.run_coroutine_threadsafe(
+                    QQApiClient.get_group_member_list(group_id), _loop
+                )
+                try:
+                    members = future.result(timeout=30)
+                except Exception as e:
+                    return {"status": "failed", "error": f"查询群成员失败: {e}"}
+                # 填充 _name_to_id（群成员映射，按群分组）
+                group_key = group_id
+                if group_key not in self._name_to_id:
+                    self._name_to_id[group_key] = {}
+                for m in members:
+                    uid = m.get("user_id", "")
+                    nick = m.get("nickname", "")
+                    if uid and nick:
+                        self._name_to_id[group_key][nick] = uid
+                if not members:
+                    return {"status": "ok", "members": [], "message": "该群没有成员或查询失败"}
+                return {
+                    "status": "ok",
+                    "members": members,
+                    "message": f"查询到 {len(members)} 名群成员",
+                }
+
+            from .function_caller import register_plugin_handler
+            register_plugin_handler("query_group_members", _run_query)
+
+            # 刷新 ToolLLM 的工具定义列表
+            if self.toolllm is not None:
+                self.toolllm.rebuild_tool_definitions()
+
+            from .tools.registry import get_registry, ToolDefinition, ToolParameter
+            get_registry().register(
+                ToolDefinition(
+                    name="query_group_members",
+                    description="获取群成员列表，查询群里用户的昵称和 QQ 号",
+                    parameters=[
+                        ToolParameter("group_id", "群 ID，如 12345678"),
+                    ],
+                )
+            )
+
+            logger.info("[QQApi] 群成员查询工具已注册")
+        except Exception as e:
+            logger.warning("[QQApi] 初始化失败（不影响核心运行）: %s", e)
 
     async def stop_adapters(self):
         """停止所有适配器"""
