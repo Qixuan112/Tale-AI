@@ -6,6 +6,18 @@ from .utils import get_logger
 
 logger = get_logger(__name__)
 
+# XXE / 实体炸弹检测
+import re as _re
+_XXE_PATTERN = _re.compile(r'<!DOCTYPE|<!ENTITY', re.IGNORECASE)
+
+
+def _reject_xxe(xml_data: str) -> bool:
+    """检测 XML 中是否包含 DOCTYPE/ENTITY 声明（XXE 或 billion laughs 攻击）"""
+    if _XXE_PATTERN.search(xml_data):
+        logger.warning("检测到潜在的 XXE 攻击，已阻止解析")
+        return True
+    return False
+
 # Plugin tag handler registry — populated by PluginManager
 _plugin_tag_handlers: Dict[str, Callable] = {}
 
@@ -39,6 +51,16 @@ def parse_xml_msg(xml_data):
     cleaned_data = xml_data.strip()
     if not cleaned_data:
         return {"messages": [], "action": None, "actions": [], "plan": None}
+
+    # XXE / 实体炸弹检测
+    if _reject_xxe(cleaned_data):
+        return {
+            "messages": [],
+            "action": None,
+            "actions": [],
+            "plan": None,
+            "parse_error": "拒绝解析包含 DOCTYPE 或 ENTITY 声明的 XML",
+        }
 
     # 技巧：手动添加 <root> 标签使其成为标准 XML
     try:

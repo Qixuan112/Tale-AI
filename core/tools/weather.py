@@ -3,6 +3,7 @@
 """
 
 import requests
+from urllib.parse import quote
 
 
 def query(city: str) -> dict:
@@ -25,7 +26,8 @@ def query(city: str) -> dict:
         {"status": "error", "error": "HTTP 404", "tool": "weather_query"}
     """
     try:
-        url = f"https://wttr.in/{city}?format=%C+%t+%h+%w"
+        encoded_city = quote(city, safe='')
+        url = f"https://wttr.in/{encoded_city}?format=%C+%t+%h+%w"
         resp = requests.get(url, timeout=10)
         if resp.status_code == 200:
             text = resp.text.strip()

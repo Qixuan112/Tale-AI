@@ -36,9 +36,16 @@ class WorkspacePlugin(PluginBase):
     MAX_COMMAND_OUTPUT = 50_000
     COMMAND_TIMEOUT = 30
 
-    _BLOCKED_COMMANDS: set = {
-        "rm", "rmdir", "mkfs", "dd", "shutdown", "reboot", "sudo", "su",
-        "format", "diskpart", "taskkill", "reg", "del", "rd",
+    _ALLOWED_COMMANDS: set = {
+        "python", "python3", "node", "deno", "ruby", "lua", "perl",
+        "php", "bash", "sh", "zsh",
+        "cat", "head", "tail", "wc", "sort", "uniq", "grep", "awk", "sed",
+        "cut", "tr", "diff", "cmp",
+        "tar", "gzip", "gunzip", "zip", "unzip", "bzip2",
+        "echo", "printf", "env", "which", "file", "du", "df", "date",
+        "cal", "whoami", "id", "uname", "pwd", "ls",
+        "curl", "wget", "ping", "nslookup", "dig",
+        "git", "make", "jq", "yq", "tree", "find", "xargs",
     }
 
     # ------------------------------------------------------------------
@@ -195,7 +202,7 @@ class WorkspacePlugin(PluginBase):
         if not command.strip():
             return {"status": "failed", "error": "命令为空"}
 
-        # Extract base command name and block dangerous commands
+        # 解析命令并使用白名单校验
         try:
             tokens = shlex.split(command)
         except ValueError as e:
@@ -204,13 +211,13 @@ class WorkspacePlugin(PluginBase):
         if not tokens:
             return {"status": "failed", "error": "命令为空"}
         base_cmd = os.path.basename(tokens[0]).lower()
-        if base_cmd in self._BLOCKED_COMMANDS:
-            return {"status": "failed", "error": f"命令被阻止: {base_cmd}"}
+        if base_cmd not in self._ALLOWED_COMMANDS:
+            return {"status": "failed", "error": f"命令不被允许: {base_cmd}"}
 
         try:
             proc = subprocess.run(
-                command,
-                shell=True,
+                tokens,
+                shell=False,
                 cwd=str(self.WORKSPACE_DIR),
                 capture_output=True,
                 text=True,
@@ -289,7 +296,7 @@ class WorkspacePlugin(PluginBase):
 4. **workspace_execute** — 执行沙盒命令
    - `command` (必填): 要执行的 shell 命令
    - 限制：30 秒超时，最大输出 50,000 字符
-   - 危险命令（rm/rmshutdown/sudo 等）会被拦截
+   - 危险命令（rm/shutdown/sudo 等）会被拦截
 
 5. **workspace_delete** — 删除文件或空目录
    - `path` (必填): 要删除的路径

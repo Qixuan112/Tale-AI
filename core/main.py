@@ -184,11 +184,6 @@ class TaleCore:
                 config=plugins_config,
             )
 
-            # 兼容旧目录：plugins/
-            legacy_dir = project_root / "plugins"
-            if legacy_dir.exists():
-                self.plugin_manager._scan_plugins(legacy_dir)
-
             # 自定义插件目录：data/custom_plugins/
             custom_dir = project_root / "data" / "custom_plugins"
             if custom_dir.exists():
@@ -399,6 +394,13 @@ class TaleCore:
             return str(local_path.resolve())
 
         if not url_or_path.startswith(('http://', 'https://')):
+            return None
+
+        # SSRF 防护
+        from core.tools.network_safety import validate_url
+        ssrf_error = validate_url(url_or_path)
+        if ssrf_error:
+            logger.warning("SSRF 安全检查未通过，跳过图片下载: %s", ssrf_error)
             return None
 
         import hashlib

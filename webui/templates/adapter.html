@@ -370,6 +370,15 @@
     cancelBtn.addEventListener('click', closeModal);
     modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
 
+    // 一次性事件委托：适配器选择卡片（避免每次开弹窗重复绑定）
+    adapterSelectGrid.addEventListener('click', function(e) {
+        var card = e.target.closest('.adapter-select-card');
+        if (card) {
+            var id = card.dataset.adapterId;
+            if (id) window.selectAdapter(id);
+        }
+    });
+
     // 编辑配置模态框事件
     closeEditBtn.addEventListener('click', closeEditModal);
     cancelEditBtn.addEventListener('click', closeEditModal);
@@ -400,14 +409,6 @@
                     <div class="sa-desc" style="margin-top:4px;">${window.t ? window.t('adapter.version') : '版本'}: ${escapeHtml(a.version || '-')} | ${window.t ? window.t('adapter.author') : '作者'}: ${escapeHtml(a.author || '-')}</div>
                 </div>
             `).join('');
-            // 事件委托：选择适配器
-            adapterSelectGrid.addEventListener('click', function(e) {
-                var card = e.target.closest('.adapter-select-card');
-                if (card) {
-                    var id = card.dataset.adapterId;
-                    if (id) selectAdapter(id);
-                }
-            });
         } catch (e) {
             adapterSelectGrid.innerHTML = '<div class="empty-tip">' + (window.t ? window.t('adapter.loadFailed') : '加载失败') + '</div>';
         }

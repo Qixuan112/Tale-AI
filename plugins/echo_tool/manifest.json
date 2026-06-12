@@ -1,9 +1,0 @@
-{
-    "id": "echo_tool",
-    "name": "Echo Tool Plugin",
-    "version": "1.0.0",
-    "author": "Test",
-    "description": "A simple echo tool for testing the plugin system",
-    "module": "plugin",
-    "hooks": ["tool", "event"]
-}
