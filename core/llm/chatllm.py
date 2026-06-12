@@ -128,20 +128,26 @@ class ChatLLM:
         """
         发送消息并获取回复，自动维护上下文
         """
+        # 挂起用户消息并获取当前上下文快照（短持有锁）
         with self._lock:
             self.messages.append({"role": "user", "content": user_input})
             self._trim_context()
+            messages_snapshot = list(self.messages)
 
-            try:
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=self.messages
-                )
-            except Exception as e:
-                logger.error("ChatLLM API 调用失败: %s", e)
-                raise
+        # 在锁外执行 LLM API 调用（可能耗时 1-10s）
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages_snapshot
+            )
+        except Exception as e:
+            logger.error("ChatLLM API 调用失败: %s", e)
+            raise
 
-            assistant_reply = response.choices[0].message.content or ""
+        assistant_reply = response.choices[0].message.content or ""
+
+        # 重新获取锁，追加助手回复
+        with self._lock:
             self.messages.append({"role": "assistant", "content": assistant_reply})
 
         return assistant_reply
@@ -151,22 +157,22 @@ class ChatLLM:
         始终保留所有 system 消息，从非 system 消息中成对删除最早的用户-助手回合。
         """
         while len(self.messages) > self.max_context:
-                system_msgs = [m for m in self.messages if m.get("role") == "system"]
-                non_system = [m for m in self.messages if m.get("role") != "system"]
+            system_msgs = [m for m in self.messages if m.get("role") == "system"]
+            non_system = [m for m in self.messages if m.get("role") != "system"]
 
-                if len(non_system) >= 2:
-                    # 删除最早的一对非 system 消息
-                    non_system = non_system[2:]
-                elif len(non_system) == 1:
-                    # 只剩一条，也删除
-                    non_system = []
-                else:
-                    # 没有任何非 system 消息可删，强制截断到只剩 system 消息
-                    logger.warning("上下文超过限制但无可删除的非系统消息，强制保留 system 消息")
-                    self.messages = system_msgs
-                    return
+            if len(non_system) >= 2:
+                # 删除最早的一对非 system 消息
+                non_system = non_system[2:]
+            elif len(non_system) == 1:
+                # 只剩一条，也删除
+                non_system = []
+            else:
+                # 没有任何非 system 消息可删，强制截断到只剩 system 消息
+                logger.warning("上下文超过限制但无可删除的非系统消息，强制保留 system 消息")
+                self.messages = system_msgs
+                return
 
-                self.messages = system_msgs + non_system
+            self.messages = system_msgs + non_system
 
     def clear_history(self):
         """清空对话历史，只保留 system 消息"""
