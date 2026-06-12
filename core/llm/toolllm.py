@@ -1,13 +1,11 @@
 from typing import Optional
 
-import httpx
-from openai import OpenAI
-from ..config import provide
 from ..tools.registry import (
     get_tools_list, format_tools_for_chatllm, build_fc_prompt, get_registry,
 )
 from ..utils import get_logger
 from .context import AgentContext, create_tool_context
+from .provider import OpenAICompatibleProvider, provider_manager
 
 logger = get_logger(__name__)
 
@@ -31,12 +29,12 @@ class ToolLLM:
     def __init__(self, api_key=None, model=None, url=None,
                  context: Optional[AgentContext] = None,
                  cache_strategy: str = "single_message"):
-        self.client = OpenAI(
-            api_key=api_key or provide.TOOL_API_KEY,
-            base_url=url or provide.TOOL_URL,
-            timeout=httpx.Timeout(30.0, connect=10.0),
-        )
-        self.model = model or provide.TOOL_MODEL
+        cfg = provider_manager.get_api_config("tool_llm")
+        self.api_key = api_key or cfg.get("api_key", "")
+        self.model = model or cfg.get("model", "")
+        self.base_url = url or cfg.get("url", "")
+        self._provider: Optional[OpenAICompatibleProvider] = None
+        self._init_provider()
         self.cache_strategy = cache_strategy
 
         if context is not None:
@@ -58,6 +56,19 @@ class ToolLLM:
         except Exception:
             pass
 
+    def _init_provider(self):
+        """根据当前 api_key/base_url 初始化 OpenAICompatibleProvider。"""
+        if self.api_key and self.base_url:
+            self._provider = OpenAICompatibleProvider(
+                name="toolllm",
+                api_key=self.api_key,
+                base_url=self.base_url,
+                default_model=self.model,
+                timeout=30,
+            )
+        else:
+            self._provider = None
+
     def generate_fc(self, action):
         """
         根据动作指令生成 Function Calling JSON
@@ -72,11 +83,13 @@ class ToolLLM:
             messages = self.context.build_messages_head(self.cache_strategy) + [
                 {"role": "user", "content": f"动作指令：{action}"},
             ]
-            response = self.client.chat.completions.create(
-                model=self.model,
+            if self._provider is None:
+                raise RuntimeError("ToolLLM provider 未初始化")
+            response = self._provider.chat(
                 messages=messages,
+                model=self.model,
             )
-            return response.choices[0].message.content
+            return response or ""
         except Exception as e:
             logger.error("ToolLLM generate_fc 失败: %s", e)
             raise

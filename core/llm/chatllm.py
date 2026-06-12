@@ -1,14 +1,13 @@
 from typing import Optional
 
-import httpx
 import threading
-from openai import OpenAI
 from ..bus import bus
 from ..config import MAX_CONTEXT
 from ..config.provide import get_character_prompt, get_dialogue_examples, config_loader
 from ..utils import get_logger
 from .context import AgentContext, create_chat_context
 from .context.section import PromptSection
+from .provider import OpenAICompatibleProvider, provider_manager
 
 logger = get_logger(__name__)
 
@@ -27,9 +26,13 @@ class ChatLLM:
             context: 可选的 AgentContext；缺省时通过工厂函数自动创建
             cache_strategy: "single_message"（默认，向后兼容）或 "multi_message"
         """
-        self.client = OpenAI(api_key=api_key, base_url=url,
-                              timeout=httpx.Timeout(120.0, connect=10.0))
-        self.model = model
+        cfg = provider_manager.get_api_config("main_llm")
+        self.api_key = api_key or cfg.get("api_key", "")
+        self.model = model or cfg.get("model", "")
+        self.base_url = url or cfg.get("url", "")
+        self._provider: Optional[OpenAICompatibleProvider] = None
+        self._init_provider()
+
         self.max_context = max_context
         self.cache_strategy = cache_strategy
         self._lock = threading.RLock()
@@ -63,6 +66,18 @@ class ChatLLM:
 
         # 监听配置变更以热更新
         bus.on("config_reloaded", self._on_config_reloaded)
+
+    def _init_provider(self):
+        """根据当前 api_key/base_url 初始化 OpenAICompatibleProvider。"""
+        if self.api_key and self.base_url:
+            self._provider = OpenAICompatibleProvider(
+                name="chatllm",
+                api_key=self.api_key,
+                base_url=self.base_url,
+                default_model=self.model,
+            )
+        else:
+            self._provider = None
 
     def refresh_context(self):
         """Rebuild the system message(s) from context (call after config changes)."""
@@ -105,15 +120,16 @@ class ChatLLM:
     def _on_config_reloaded(self):
         """配置重载后热更新 API 客户端和角色上下文。"""
         with self._lock:
-            cfg = config_loader.chat_api
+            cfg = provider_manager.get_api_config("main_llm")
             api_key = cfg.get("api_key", "")
             base_url = cfg.get("url", "")
             model = cfg.get("model", "")
             if api_key and base_url:
-                self.client = OpenAI(api_key=api_key, base_url=base_url,
-                                      timeout=httpx.Timeout(120.0, connect=10.0))
+                self.api_key = api_key
+                self.base_url = base_url
             if model:
                 self.model = model
+            self._init_provider()
             # 重建角色上下文
             self.context = create_chat_context(
                 character_prompt=get_character_prompt(),
@@ -136,15 +152,26 @@ class ChatLLM:
 
         # 在锁外执行 LLM API 调用（可能耗时 1-10s）
         try:
-            response = self.client.chat.completions.create(
+            response = self._provider.chat(
+                messages=messages_snapshot,
                 model=self.model,
-                messages=messages_snapshot
             )
         except Exception as e:
             logger.error("ChatLLM API 调用失败: %s", e)
+            # API 失败时回滚已追加的 user 消息，避免孤立 user 轮次
+            with self._lock:
+                if self.messages and self.messages[-1].get("role") == "user":
+                    self.messages.pop()
             raise
 
-        assistant_reply = response.choices[0].message.content or ""
+        if response is None:
+            logger.error("ChatLLM API 返回空响应")
+            with self._lock:
+                if self.messages and self.messages[-1].get("role") == "user":
+                    self.messages.pop()
+            raise RuntimeError("ChatLLM API 返回空响应")
+
+        assistant_reply = response
 
         # 重新获取锁，追加助手回复
         with self._lock:

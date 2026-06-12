@@ -7,12 +7,9 @@ VLM (Vision Language Model) Agent
 
 from typing import List, Optional
 
-import httpx
-from openai import OpenAI
-
 from ..bus import bus
 from ..utils import get_logger
-from ..config.provide import config_loader
+from .provider import OpenAICompatibleProvider, provider_manager
 
 logger = get_logger(__name__)
 
@@ -23,23 +20,29 @@ class VlmLLM:
     MAX_IMAGES = 4
 
     def __init__(self, api_key=None, model=None, url=None):
-        cfg = config_loader.vlm_api
+        cfg = provider_manager.get_api_config("vlm")
         self.api_key = api_key or cfg.get("api_key", "")
         self.model = model or cfg.get("model", "")
         self.base_url = url or cfg.get("url", "")
 
-        self._client = None
-        if self.api_key and self.base_url:
-            self._client = OpenAI(
-                api_key=self.api_key,
-                base_url=self.base_url,
-                timeout=httpx.Timeout(120.0, connect=10.0),
-            )
+        self._provider: Optional[OpenAICompatibleProvider] = None
+        self._init_provider()
 
         bus.on("config_reloaded", self._on_config_reloaded)
 
+    def _init_provider(self):
+        if self.api_key and self.base_url:
+            self._provider = OpenAICompatibleProvider(
+                name="vlm",
+                api_key=self.api_key,
+                base_url=self.base_url,
+                default_model=self.model,
+            )
+        else:
+            self._provider = None
+
     def _on_config_reloaded(self):
-        cfg = config_loader.vlm_api
+        cfg = provider_manager.get_api_config("vlm")
         api_key = cfg.get("api_key", "")
         base_url = cfg.get("url", "")
         model = cfg.get("model", "")
@@ -49,30 +52,21 @@ class VlmLLM:
             self.base_url = base_url
         if model:
             self.model = model
-        if self.api_key and self.base_url:
-            self._client = OpenAI(
-                api_key=self.api_key,
-                base_url=self.base_url,
-                timeout=httpx.Timeout(120.0, connect=10.0),
-            )
+        self._init_provider()
         logger.info("VlmLLM: 配置已热更新")
 
-    def _ensure_client(self) -> bool:
-        if self._client is not None:
+    def _ensure_provider(self) -> bool:
+        if self._provider is not None:
             return True
         if not self.api_key or not self.base_url:
             logger.warning("VlmLLM 未配置 API key 或 base_url，跳过调用")
             return False
-        self._client = OpenAI(
-            api_key=self.api_key,
-            base_url=self.base_url,
-            timeout=httpx.Timeout(120.0, connect=10.0),
-        )
-        return True
+        self._init_provider()
+        return self._provider is not None
 
     def chat_with_image(self, text: str, image_paths: List[str]) -> Optional[str]:
         """发送文本+图片到多模态模型，返回文字描述。"""
-        if not self._ensure_client():
+        if not self._ensure_provider():
             return None
 
         import base64
@@ -112,12 +106,12 @@ class VlmLLM:
         messages = [{"role": "user", "content": content_parts}]
 
         try:
-            response = self._client.chat.completions.create(
-                model=self.model,
+            response = self._provider.chat(
                 messages=messages,
+                model=self.model,
                 max_tokens=1024,
             )
-            return response.choices[0].message.content
+            return response
         except Exception as e:
             logger.error("VlmLLM API 调用失败: %s", e)
             return None
