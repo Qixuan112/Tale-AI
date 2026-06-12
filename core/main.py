@@ -654,7 +654,7 @@ class TaleCore:
             timeout_msg = "[系统] 思考时间较长，已自动结束当前推理。"
             return f"<msg><text>{timeout_msg}</text></msg>"
 
-    async def _resolve_follow_up(self, chatllm_reply: str, parsed: dict = None) -> list:
+    async def _resolve_follow_up(self, chatllm_reply: str, parsed: Optional[dict] = None) -> list:
         """
         AgentExecutor 多步骤推理循环。
 
