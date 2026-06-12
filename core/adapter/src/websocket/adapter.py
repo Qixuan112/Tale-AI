@@ -232,7 +232,7 @@ class WebSocketAdapter(BaseAdapter):
             message_id=data.get("message_id")
         )
 
-    def parse_event(self, raw_event: Dict[str, Any]) -> Optional[PlatformEvent]:
+    async def parse_event(self, raw_event: Dict[str, Any]) -> Optional[PlatformEvent]:
         """解析原始事件"""
         if self.mode == "server":
             return self._parse_client_message(raw_event, "unknown")
