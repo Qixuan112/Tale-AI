@@ -524,8 +524,17 @@ class ConfigLoader:
         if provider:
             # 优先使用路由指定的 model，其次回退到服务商的 model
             model_mapping = getattr(self._config.models, model_type, None)
-            model = (model_mapping.model if model_mapping and model_mapping.model
-                     else provider.model)
+            # 当 routing 的 provider 在 providers 查不到时（触发了回退），
+            # 不应使用 routing.model，而是用回退 provider 自己的 model
+            routing_provider_valid = (
+                model_mapping
+                and model_mapping.provider
+                and model_mapping.provider in self._config.providers
+            )
+            if routing_provider_valid:
+                model = model_mapping.model if model_mapping.model else provider.model
+            else:
+                model = provider.model
             return {
                 "api_key": provider.api_key,
                 "model": model,

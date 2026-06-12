@@ -63,7 +63,7 @@ class PlanLLM:
         current_plan = planllm.get_today_plan()
     """
     
-    def __init__(self, api_key=None, model=None, url=None, max_context=10,
+    def __init__(self, api_key=None, model=None, url=None,
                  context: Optional[AgentContext] = None,
                  cache_strategy: str = "single_message"):
         """
@@ -73,7 +73,6 @@ class PlanLLM:
             api_key: OpenAI API 密钥
             model: 使用的模型
             url: API 基础 URL
-            max_context: 最大上下文消息数
             context: 可选的 AgentContext；缺省时通过工厂函数自动创建
             cache_strategy: "single_message"（默认）或 "multi_message"
         """
@@ -81,7 +80,6 @@ class PlanLLM:
         self._base_url = url or provide.PLAN_URL
         self.model = model or provide.PLAN_MODEL
         self.client = None  # 惰性初始化，见 _get_client()
-        self.max_context = max_context
         self.cache_strategy = cache_strategy
 
         if context is not None:
@@ -365,17 +363,18 @@ class PlanLLM:
         # 调用 LLM（系统提示词已含 PLAN_TEMPLATE）
         response = self._call_llm(full_prompt)
 
+        # 确保 _today_plan 已创建
+        if self._today_plan is None:
+            self._today_plan = DailyPlan(date=self._current_date)
+
         # 保存原始文本作为计划摘要
         self._save_plan_text(response)
 
         # 解析为结构化 DiaryEntry 条目
         entries = self._parse_plan_to_entries(response)
         if entries:
-            # 清空旧条目，用新计划替换
-            if self._today_plan:
-                self._today_plan.entries.clear()
-            else:
-                self._today_plan = DailyPlan(date=self._current_date)
+            # 确认解析成功后，清空旧条目并替换为新条目
+            self._today_plan.entries.clear()
 
             for entry in entries:
                 success = self._today_plan.add_entry(entry)
@@ -440,13 +439,27 @@ class PlanLLM:
             event_data = json.loads(json_str)
             
             # 创建日程条目
+            event_type_str = str(event_data.get("event_type") or "other").lower()
+            try:
+                event_type = EventType(event_type_str)
+            except ValueError:
+                logger.warning("未知事件类型 '%s'，使用 'other' 代替", event_type_str)
+                event_type = EventType.OTHER
+
+            priority_str = str(event_data.get("priority") or "medium").lower()
+            try:
+                priority = Priority(priority_str)
+            except ValueError:
+                logger.warning("未知优先级 '%s'，使用 'medium' 代替", priority_str)
+                priority = Priority.MEDIUM
+
             entry = DiaryEntry(
                 id=str(uuid.uuid4())[:8],
                 title=event_data.get("title", "未命名事件"),
                 description=event_data.get("description", ""),
-                event_type=EventType(event_data.get("event_type", "other")),
-                priority=Priority(event_data.get("priority", "medium")),
-                start_time=datetime.strptime(event_data["start_time"], "%H:%M").time(),
+                event_type=event_type,
+                priority=priority,
+                start_time=datetime.strptime(event_data.get("start_time", "08:00"), "%H:%M").time(),
                 end_time=datetime.strptime(event_data["end_time"], "%H:%M").time() if event_data.get("end_time") else None,
                 related_people=event_data.get("related_people", []),
                 location=event_data.get("location"),
@@ -676,15 +689,9 @@ class PlanLLM:
             messages=messages
         )
         
-        assistant_reply = response.choices[0].message.content
+        assistant_reply = response.choices[0].message.content if response.choices else ""
         return assistant_reply
-    
-    def _trim_context(self):
-        """修剪上下文"""
-        while len(self.messages) > self.max_context:
-            if len(self.messages) >= 3:
-                del self.messages[1:3]
-    
+
     def _build_plan_context(self) -> str:
         """构建计划制定的上下文信息"""
         context_parts = []
@@ -780,12 +787,20 @@ class PlanLLM:
             for event_data in events_data:
                 try:
                     # Map event_type string to EventType enum, with fallback
-                    event_type_str = event_data.get("event_type", "other").lower()
+                    event_type_str = str(event_data.get("event_type") or "other").lower()
                     try:
                         event_type = EventType(event_type_str)
                     except ValueError:
                         logger.warning("未知事件类型 '%s'，使用 'other' 代替", event_type_str)
                         event_type = EventType.OTHER
+
+                    # Map priority string to Priority enum, with fallback
+                    priority_str = str(event_data.get("priority") or "medium").lower()
+                    try:
+                        priority = Priority(priority_str)
+                    except ValueError:
+                        logger.warning("未知优先级 '%s'，使用 'medium' 代替", priority_str)
+                        priority = Priority.MEDIUM
 
                     start_time_str = event_data.get("start_time", "08:00")
                     end_time_str = event_data.get("end_time")
@@ -795,7 +810,7 @@ class PlanLLM:
                         title=event_data.get("title", "未命名事件"),
                         description=event_data.get("description", ""),
                         event_type=event_type,
-                        priority=Priority(event_data.get("priority", "medium")),
+                        priority=priority,
                         start_time=datetime.strptime(start_time_str, "%H:%M").time(),
                         end_time=datetime.strptime(end_time_str, "%H:%M").time() if end_time_str else None,
                         location=event_data.get("location"),

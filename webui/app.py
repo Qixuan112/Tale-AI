@@ -346,15 +346,16 @@ class ConversationStore:
     def history(self, conv_id=None):
         cid = conv_id or self.current_id
         if cid == self.current_id and self.chatllm:
-            return list(self.chatllm.messages)
+            return self.chatllm.get_history()
         return list(self._messages.get(cid, []))
 
     def clear(self, conv_id=None):
         cid = conv_id or self.current_id
         if self.chatllm and cid == self.current_id:
-            system_msg = self.chatllm.messages[0] if self.chatllm.messages else self.chatllm.context.get_system_message()
-            self.chatllm.messages = [system_msg]
-            self._messages[cid] = [system_msg]
+            # clear_history() 内部持锁，重置到仅剩 system 消息
+            self.chatllm.clear_history()
+            msgs = self.chatllm.get_history()
+            self._messages[cid] = msgs
             conv = self._get_conv(cid)
             if conv:
                 conv["count"] = 0
@@ -714,8 +715,14 @@ def api_config_save(name):
     if data is None:
         return jsonify({"error": "Invalid data"}), 400
     path = CONFIG_DIR / CONFIG_FILES[name]
-    with open(path, "w", encoding="utf-8") as f:
-        yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+    fd, tmp_path = tempfile.mkstemp(suffix=".yaml", prefix=".tmp_", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+        os.replace(tmp_path, str(path))
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
     config_loader.reload()
     return jsonify({"ok": True})
 
@@ -801,7 +808,14 @@ def api_config_save_raw(name):
     if content is None:
         return jsonify({"error": "Invalid data"}), 400
     path = CONFIG_DIR / CONFIG_FILES[name]
-    path.write_text(content, encoding="utf-8")
+    fd, tmp_path = tempfile.mkstemp(suffix=".yaml", prefix=".tmp_", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp_path, str(path))
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
     config_loader.reload()
     return jsonify({"ok": True})
 

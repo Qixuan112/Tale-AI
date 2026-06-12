@@ -99,7 +99,7 @@ class ToolLLM:
             "你是 \"ToolLLM\"，工具调用专家。你的任务是分析用户的动作指令，"
             "输出标准化的 Function Calling JSON。\n\n" + tools_text
         )
-        from ...config.prompt import FC_FORMAT_TEMPLATE
+        from ..config.prompt import FC_FORMAT_TEMPLATE
         self.context.set_section_content(
             "fc_format_template",
             fc_intro + FC_FORMAT_TEMPLATE.strip(),

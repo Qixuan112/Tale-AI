@@ -1,6 +1,7 @@
 from typing import Optional
 
 import httpx
+import threading
 from openai import OpenAI
 from ..bus import bus
 from ..config import MAX_CONTEXT
@@ -31,6 +32,7 @@ class ChatLLM:
         self.model = model
         self.max_context = max_context
         self.cache_strategy = cache_strategy
+        self._lock = threading.RLock()
 
         if context is not None:
             self.context = context
@@ -64,15 +66,16 @@ class ChatLLM:
 
     def refresh_context(self):
         """Rebuild the system message(s) from context (call after config changes)."""
-        new_head = self.context.build_messages_head(self.cache_strategy)
-        # Replace all leading system messages from the old context
-        cut = 0
-        for m in self.messages:
-            if m.get("role") == "system":
-                cut += 1
-            else:
-                break
-        self.messages = new_head + self.messages[cut:]
+        with self._lock:
+            new_head = self.context.build_messages_head(self.cache_strategy)
+            # Replace all leading system messages from the old context
+            cut = 0
+            for m in self.messages:
+                if m.get("role") == "system":
+                    cut += 1
+                else:
+                    break
+            self.messages = new_head + self.messages[cut:]
 
     def _add_plan_section(self):
         """Add a dynamic PromptSection that injects today's plan into the system prompt."""
@@ -101,43 +104,55 @@ class ChatLLM:
 
     def _on_config_reloaded(self):
         """配置重载后热更新 API 客户端和角色上下文。"""
-        cfg = config_loader.chat_api
-        api_key = cfg.get("api_key", "")
-        base_url = cfg.get("url", "")
-        model = cfg.get("model", "")
-        if api_key and base_url:
-            self.client = OpenAI(api_key=api_key, base_url=base_url,
-                                  timeout=httpx.Timeout(120.0, connect=10.0))
-        if model:
-            self.model = model
-        # 重建角色上下文
-        self.context = create_chat_context(
-            character_prompt=get_character_prompt(),
-            dialogue_examples=get_dialogue_examples(),
-            persona_additional_prompt=config_loader.persona.additional_prompt,
-        )
-        self._add_plan_section()
-        self.refresh_context()
-        logger.info("ChatLLM: 配置已热更新")
+        with self._lock:
+            cfg = config_loader.chat_api
+            api_key = cfg.get("api_key", "")
+            base_url = cfg.get("url", "")
+            model = cfg.get("model", "")
+            if api_key and base_url:
+                self.client = OpenAI(api_key=api_key, base_url=base_url,
+                                      timeout=httpx.Timeout(120.0, connect=10.0))
+            if model:
+                self.model = model
+            # 重建角色上下文
+            self.context = create_chat_context(
+                character_prompt=get_character_prompt(),
+                dialogue_examples=get_dialogue_examples(),
+                persona_additional_prompt=config_loader.persona.additional_prompt,
+            )
+            self._add_plan_section()
+            self.refresh_context()
+            logger.info("ChatLLM: 配置已热更新")
 
     def chat(self, user_input):
         """
         发送消息并获取回复，自动维护上下文
         """
-        self.messages.append({"role": "user", "content": user_input})
-        self._trim_context()
+        # 挂起用户消息并获取当前上下文快照（短持有锁）
+        with self._lock:
+            self.messages.append({"role": "user", "content": user_input})
+            self._trim_context()
+            messages_snapshot = list(self.messages)
 
+        # 在锁外执行 LLM API 调用（可能耗时 1-10s）
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
-                messages=self.messages
+                messages=messages_snapshot
             )
         except Exception as e:
             logger.error("ChatLLM API 调用失败: %s", e)
+            # API 失败时回滚已追加的 user 消息，避免孤立 user 轮次
+            with self._lock:
+                if self.messages and self.messages[-1].get("role") == "user":
+                    self.messages.pop()
             raise
 
-        assistant_reply = response.choices[0].message.content
-        self.messages.append({"role": "assistant", "content": assistant_reply})
+        assistant_reply = response.choices[0].message.content or ""
+
+        # 重新获取锁，追加助手回复
+        with self._lock:
+            self.messages.append({"role": "assistant", "content": assistant_reply})
 
         return assistant_reply
 
@@ -165,22 +180,25 @@ class ChatLLM:
 
     def clear_history(self):
         """清空对话历史，只保留 system 消息"""
-        self.messages = list(self.context.build_messages_head(self.cache_strategy))
+        with self._lock:
+            self.messages = list(self.context.build_messages_head(self.cache_strategy))
 
     def get_history(self):
         """获取当前对话历史"""
-        return self.messages.copy()
+        with self._lock:
+            return self.messages.copy()
 
     def set_history(self, messages: list):
         """设置对话历史（供外部如 WebUI 切换会话时使用）"""
-        if not messages:
-            self.clear_history()
-            return
-        # Rebuild system head, then append conversation messages
-        system_head = self.context.build_messages_head(self.cache_strategy)
-        conv_msgs = [m for m in messages if m.get("role") != "system"]
-        self.messages = system_head + conv_msgs
-        self._trim_context()
+        with self._lock:
+            if not messages:
+                self.clear_history()
+                return
+            # Rebuild system head, then append conversation messages
+            system_head = self.context.build_messages_head(self.cache_strategy)
+            conv_msgs = [m for m in messages if m.get("role") != "system"]
+            self.messages = system_head + conv_msgs
+            self._trim_context()
 
 
 
