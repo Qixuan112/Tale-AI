@@ -70,6 +70,8 @@ class BotBehaviorConfig:
     max_message_delay: float = 1.5
     typing_speed: float = 50.0    # ms per character, simulates typing
     typing_min_delay: float = 0.5  # minimum delay in seconds for short messages
+    max_agent_steps: int = 3      # AgentExecutor 最大推理循环轮数
+    per_step_timeout: float = 60.0  # AgentExecutor 每步超时（秒）
 
 
 @dataclass

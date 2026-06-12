@@ -72,6 +72,8 @@ _SCHEMAS = {
                 "max_message_delay": (int, float),
                 "typing_speed": (int, float),
                 "typing_min_delay": (int, float),
+                "max_agent_steps": int,
+                "per_step_timeout": (int, float),
             },
             "context": {
                 "max_context": int,
@@ -379,6 +381,8 @@ class ConfigLoader:
             max_message_delay=bot_data.get("max_message_delay", 1.5),
             typing_speed=bot_data.get("typing_speed", 50.0),
             typing_min_delay=bot_data.get("typing_min_delay", 0.5),
+            max_agent_steps=bot_data.get("max_agent_steps", 3),
+            per_step_timeout=bot_data.get("per_step_timeout", 60.0),
         )
 
         context = ContextConfig(
