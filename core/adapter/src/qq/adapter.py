@@ -1,5 +1,6 @@
 import asyncio
 import json
+import threading
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
@@ -31,7 +32,7 @@ class QQAdapter(BaseAdapter):
             "ws_url": "ws://localhost:3001",
             "http_url": "http://localhost:3000",
             "access_token": "",
-            "bot_uin": "123456789",
+            "bot_pid": "123456789",
             "auto_reconnect": true
         }
     """
@@ -51,6 +52,7 @@ class QQAdapter(BaseAdapter):
         # 消息去重
         self._seen_msg_ids: set[str] = set()
         self._seen_fingerprints: set[str] = set()
+        self._dedup_lock = threading.Lock()  # 用于保障 set 操作的原子性
 
         # 创建 NapCatWebSocketClient
         self.client = NapCatWebSocketClient()
@@ -120,29 +122,35 @@ class QQAdapter(BaseAdapter):
 
         # 去重（message_id 维度）
         msg_id = event.message_id
-        if msg_id and msg_id in self._seen_msg_ids:
-            logger.debug(f"[QQ] Duplicate message (id={msg_id}), skipped")
-            return
+        with self._dedup_lock:
+            if msg_id and msg_id in self._seen_msg_ids:
+                logger.debug(f"[QQ] Duplicate message (id={msg_id}), skipped")
+                return
 
-        fp = (
-            f"{event.message_id}:{event.sender.id}:"
-            f"{event.content.text or ''}"
-        )
-        if msg_id:
-            self._seen_msg_ids.add(msg_id)
-            if len(self._seen_msg_ids) > 1000:
-                self._seen_msg_ids = set(list(self._seen_msg_ids)[-500:])
+            fp = (
+                f"{event.message_id}:{event.sender.id}:"
+                f"{event.content.text or ''}"
+            )
+            if msg_id:
+                self._seen_msg_ids.add(msg_id)
+                if len(self._seen_msg_ids) > 1000:
+                    self._seen_msg_ids = set(list(self._seen_msg_ids)[-500:])
 
-        if fp in self._seen_fingerprints:
-            logger.debug("[QQ] Duplicate message (fingerprint matched), skipped")
-            return
+            if fp in self._seen_fingerprints:
+                logger.debug("[QQ] Duplicate message (fingerprint matched), skipped")
+                return
 
-        self._seen_fingerprints.add(fp)
-        if len(self._seen_fingerprints) > 1000:
-            self._seen_fingerprints = set(list(self._seen_fingerprints)[-500:])
+            self._seen_fingerprints.add(fp)
+            if len(self._seen_fingerprints) > 1000:
+                self._seen_fingerprints = set(list(self._seen_fingerprints)[-500:])
 
         # 异步触发事件（不阻塞消息接收）
-        asyncio.create_task(self.emit_event(event))
+        task = asyncio.create_task(self.emit_event(event))
+        task.add_done_callback(
+            lambda t: logger.error(
+                "[QQ] emit_event 异常: %s", t.exception()
+            ) if t.exception() else None
+        )
 
     # ── 事件解析 ──────────────────────────────────────────────────────
 

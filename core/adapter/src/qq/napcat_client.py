@@ -75,6 +75,8 @@ class NapCatWebSocketClient:
         # 事件
         self.login_success_event: asyncio.Event = asyncio.Event()
         self.shutdown_event: asyncio.Event = asyncio.Event()
+        # 用于 send_action 快速路径：首次完成后不再阻塞
+        self._login_completed: bool = False
 
         # 任务引用
         self._listening_task: Optional[asyncio.Task] = None
@@ -206,8 +208,13 @@ class NapCatWebSocketClient:
             resp = await self.connect()
             if resp.get("status") == "ok":
                 logger.info("WebSocket 重连成功")
-                # 重连后重新设置为已登录（不触发额外的 lifecycle 事件）
-                self.login_success_event.set()
+                # 重连后等待 lifecycle 事件（最多 3 秒），不强行 set
+                try:
+                    await asyncio.wait_for(
+                        self.login_success_event.wait(), timeout=3
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning("重连后未收到 lifecycle 事件，继续监听")
                 return True
             delay = min(2**attempt, 60)
             logger.warning(
@@ -225,7 +232,14 @@ class NapCatWebSocketClient:
         logger.info(f"开始监听账号 {self.self_id} 的消息...")
         while not self.shutdown_event.is_set():
             try:
-                async for message in self.websocket:
+                ws = self.websocket
+                if ws is None:
+                    if self.shutdown_event.is_set():
+                        break
+                    await asyncio.sleep(0.5)
+                    continue
+
+                async for message in ws:
                     try:
                         data = json.loads(message)
                     except json.JSONDecodeError:
@@ -249,7 +263,14 @@ class NapCatWebSocketClient:
 
                     # 抛给上层回调（用 create_task 避免阻塞消息接收）
                     if self._message_callback:
-                        asyncio.create_task(self._message_callback(data))
+                        task = asyncio.create_task(
+                            self._message_callback(data)
+                        )
+                        task.add_done_callback(
+                            lambda t: logger.error(
+                                "消息回调异常: %s", t.exception()
+                            ) if t.exception() else None
+                        )
 
             except websockets.exceptions.ConnectionClosed:
                 logger.warning("WebSocket 连接已关闭")
@@ -260,7 +281,6 @@ class NapCatWebSocketClient:
                         self._listening_task = asyncio.create_task(
                             self._listen_messages()
                         )
-                        # 当前任务在 return 后自然结束
                         return
                     else:
                         break
@@ -295,12 +315,14 @@ class NapCatWebSocketClient:
             logger.warning("WebSocket 未连接，无法发送 API 请求")
             return None
 
-        # 等待登录完成
-        try:
-            await asyncio.wait_for(self.login_success_event.wait(), timeout=10)
-        except asyncio.TimeoutError:
-            logger.error("send_action 失败：登录成功事件未触发")
-            return None
+        # 等待登录完成（仅在首次阻塞，后续走快速路径）
+        if not self._login_completed:
+            try:
+                await asyncio.wait_for(self.login_success_event.wait(), timeout=10)
+            except asyncio.TimeoutError:
+                logger.error("send_action 失败：登录成功事件未触发")
+                return None
+            self._login_completed = True
 
         echo = str(uuid.uuid4())
         future = asyncio.get_running_loop().create_future()
