@@ -82,11 +82,12 @@
 
         const div = document.createElement('div');
         div.className = 'log-line';
-        const levelClass = (item.level || 'INFO').toUpperCase();
+        const rawLevel = (item.level || 'INFO').toUpperCase();
+        const levelClass = ['DEBUG','INFO','WARNING','ERROR'].indexOf(rawLevel) >= 0 ? rawLevel : 'INFO';
         div.innerHTML = `
-            <span class="log-time">${item.time || '--:--:--'}</span>
+            <span class="log-time">${escapeHtml(item.time || '--:--:--')}</span>
             <span class="log-level ${levelClass}">${levelClass}</span>
-            <span class="log-module">${item.module || 'system'}</span>
+            <span class="log-module">${escapeHtml(item.module || 'system')}</span>
             <span class="log-msg">${escapeHtml(item.message || '')}</span>
         `;
         container.appendChild(div);
@@ -139,7 +140,7 @@
             const sel = document.getElementById('filterModule');
             const current = sel.value;
             sel.innerHTML = '<option value="">' + (window.t ? window.t('logs.allModules') : '全部模块') + '</option>' +
-                modules.map(m => `<option value="${m}">${m}</option>`).join('');
+                modules.map(m => '<option value="' + escapeHtml(m) + '">' + escapeHtml(m) + '</option>').join('');
             sel.value = current;
         } catch (e) {}
     }
@@ -186,6 +187,16 @@
     loadModules();
     loadHistory();
     startSSE();
+
+    // 页面隐藏时暂停 SSE，可见时恢复
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+            stopSSE();
+        } else if (sseToggle.checked) {
+            startSSE();
+        }
+    });
+    window.addEventListener('pagehide', stopSSE);
 })();
 </script>
 {% endblock %}

@@ -205,21 +205,21 @@
             if (isCur) cls += ' is-current';
             if (isPast) cls += ' is-past';
 
-            var timeRange = e.start_time;
-            if (e.end_time) timeRange += '-' + e.end_time;
+            var timeRange = escapeHtml(e.start_time);
+            if (e.end_time) timeRange += '-' + escapeHtml(e.end_time);
 
-            html += '<div class="' + cls + '" data-id="' + e.id + '">';
+            html += '<div class="' + cls + '" data-id="' + escapeHtml(e.id) + '">';
             html += '<div class="timeline-dot"></div>';
             html += '<div class="timeline-content">';
-            html += '<div class="title">' + e.title + '</div>';
-            html += '<div class="desc">' + (e.description || '') + '</div>';
+            html += '<div class="title">' + escapeHtml(e.title) + '</div>';
+            html += '<div class="desc">' + escapeHtml(e.description || '') + '</div>';
             html += '<div class="meta">';
             html += '<span>' + timeRange + '</span>';
-            html += '<span>' + e.event_type + '</span>';
+            html += '<span>' + escapeHtml(e.event_type) + '</span>';
             html += '<span class="status-' + info.cls + '">\u25cf ' + info.label + '</span>';
             html += '</div>';
             html += '<div class="actions">';
-            html += '<button class="btn btn-sm" onclick="deleteEvent(\'' + e.id + '\')">' + (window.t ? window.t('plan.delete') : '删除') + '</button>';
+            html += '<button class="btn btn-sm" data-event-id="' + escapeHtml(e.id) + '">' + (window.t ? window.t('plan.delete') : '删除') + '</button>';
             html += '</div></div></div>';
         }
 
@@ -290,13 +290,21 @@
         } catch (e) { alert(window.t ? window.t('plan.deleteFailed') : '删除失败'); }
     };
 
+    // 事件委托：删除计划事件
+    elTimeline.addEventListener('click', function(e) {
+        var btn = e.target.closest('[data-event-id]');
+        if (btn) {
+            deleteEvent(btn.dataset.eventId);
+        }
+    });
+
     // ===== 加载事件类型 =====
     async function loadEventTypes() {
         try {
             var res = await fetch('/api/plan/event-types');
             var types = await res.json();
             var sel = document.getElementById('eventType');
-            sel.innerHTML = types.map(function(t) { return '<option value="' + t.value + '">' + t.label + '</option>'; }).join('');
+            sel.innerHTML = types.map(function(t) { return '<option value="' + escapeHtml(t.value) + '">' + escapeHtml(t.label) + '</option>'; }).join('');
         } catch (e) {
             document.getElementById('eventType').innerHTML = '<option value="other">' + (window.t ? window.t('plan.other') : '其他') + '</option>';
         }
@@ -308,6 +316,26 @@
 
     // 每 30 秒刷新状态
     _statusTimer = setInterval(refreshStatuses, 30000);
+
+    // 页面隐藏时清理定时器，可见时恢复
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+            if (_statusTimer) {
+                clearInterval(_statusTimer);
+                _statusTimer = null;
+            }
+        } else {
+            if (!_statusTimer) {
+                _statusTimer = setInterval(refreshStatuses, 30000);
+            }
+        }
+    });
+    window.addEventListener('pagehide', function() {
+        if (_statusTimer) {
+            clearInterval(_statusTimer);
+            _statusTimer = null;
+        }
+    });
 
 })();
 </script>
