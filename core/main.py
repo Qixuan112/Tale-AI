@@ -543,7 +543,7 @@ class TaleCore:
                 return
 
             first_messages = parsed.get("messages", [])
-            needs_follow_up = parsed.get("tool") or parsed.get("plan") or parsed.get("actions")
+            needs_follow_up = self._has_tool_content(parsed) or parse_function_call(chatllm_reply) is not None
 
             # ChatLLM 可能返回不包含 <msg> XML 标签的文本（如纯文本回复）
             # 此时 parse_xml_msg 返回空消息列表但不报错，导致回复被静默丢弃
@@ -624,9 +624,13 @@ class TaleCore:
                     await asyncio.sleep(inter_delay)
 
     @staticmethod
-    def _has_tool_content(parsed: dict) -> bool:
-        """检查解析结果中是否还有待处理的工具/动作/计划内容"""
-        return bool(parsed.get("actions") or parsed.get("tool") or parsed.get("plan"))
+    def _has_tool_content(parsed: dict, raw_reply: str = "") -> bool:
+        """检查解析结果中是否还有待处理的工具/动作/计划/FC 内容"""
+        if parsed.get("actions") or parsed.get("tool") or parsed.get("plan"):
+            return True
+        if raw_reply and parse_function_call(raw_reply) is not None:
+            return True
+        return False
 
     async def _call_chatllm_with_timeout(self, user_input: str, timeout: float) -> str:
         """带超时的 ChatLLM 调用
@@ -636,8 +640,10 @@ class TaleCore:
             timeout: 超时秒数
 
         Returns:
-            AI 回复文本，超时时返回空字符串
+            AI 回复文本，超时时返回错误提示
         """
+        if not user_input:
+            return ""
         try:
             return await asyncio.wait_for(
                 self._call_chatllm(user_input),
@@ -645,106 +651,115 @@ class TaleCore:
             )
         except asyncio.TimeoutError:
             logger.warning("AgentExecutor 步骤超时 (%.1fs)", timeout)
-            return ""
+            timeout_msg = "[系统] 思考时间较长，已自动结束当前推理。"
+            return f"<msg><text>{timeout_msg}</text></msg>"
 
     async def _resolve_follow_up(self, chatllm_reply: str, parsed: dict = None) -> list:
         """
         AgentExecutor 多步骤推理循环。
 
-        将工具/动作/计划结果回送 ChatLLM，检查新回复是否仍有工具调用，
-        重复直到达到最大轮数或没有更多工具内容。
+        每轮执行当前回复中所有待处理的工具/动作/计划/FC，
+        将结果汇总回送 ChatLLM，重复直到达到最大轮数或没有更多工具内容。
         """
         if parsed is None:
             parsed = parse_xml_msg(chatllm_reply)
 
-        max_steps = getattr(config_loader.bot.bot, 'max_agent_steps', 3)
-        per_step_timeout = getattr(config_loader.bot.bot, 'per_step_timeout', 60.0)
+        bot_config = config_loader.bot.bot
+        max_steps = bot_config.max_agent_steps
+        per_step_timeout = bot_config.per_step_timeout
         current_reply = chatllm_reply
         current_parsed = parsed
         iteration = 0
+        # 用于去重 bus 事件发射（按事件名+数据字符串）
+        _event_seen: set = set()
+
+        def _emit_once(name: str, data, subscriber: str = "user") -> None:
+            key = (name, str(data))
+            if key not in _event_seen:
+                _event_seen.add(key)
+                bus.emit(name, data, subscriber)
 
         while iteration < max_steps:
             iteration += 1
             logger.debug("AgentExecutor 第 %d/%d 轮", iteration, max_steps)
+            remaining = max_steps - iteration
 
-            # --- Phase A: 内嵌 Function Calling（直接在 JSON 中） ---
+            # ── 批量收集本轮所有可执行操作 ──
+            result_parts = []  # [(title, content), ...]
+
+            # Phase A: 内嵌 Function Calling
             has_func, func_result = handle_function_call(current_reply)
             if has_func:
-                logger.info("[Agent %d/%d] 内嵌 FC: %s", iteration, max_steps, func_result)
-                remaining = max_steps - iteration
-                follow_up = self._build_agent_prompt(
-                    iteration, max_steps, func_result,
-                    "工具执行结果", remaining
-                )
-                current_reply = await self._call_chatllm_with_timeout(follow_up, per_step_timeout)
-                current_parsed = parse_xml_msg(current_reply)
-                bus.emit("tool_executed", func_result, "user")
-                continue
+                logger.info("[Agent %d/%d] 内嵌 FC", iteration, max_steps)
+                result_parts.append(("工具执行结果", str(func_result)))
+                # 统一 tool_executed 事件载荷为列表，与 Phase B 保持一致
+                _emit_once("tool_executed", [func_result] if not isinstance(func_result, list) else func_result)
 
-            # --- Phase B: <act> 标签 ---
+            # Phase B: <act> 标签
             if current_parsed.get("actions"):
                 logger.info("[Agent %d/%d] 执行动作: %s",
                             iteration, max_steps, current_parsed["actions"])
                 results = await self._execute_actions(current_parsed["actions"])
-                remaining = max_steps - iteration
                 if results:
-                    result_text = "工具执行结果（共%d个）：\n" % len(results)
-                    for i, result in enumerate(results, 1):
-                        result_text += "\n[%d] %s\n" % (i, result)
+                    texts = []
+                    for i, r in enumerate(results, 1):
+                        texts.append(f"[{i}] {r}")
+                    result_parts.append((
+                        "动作执行结果",
+                        f"共执行 {len(results)} 个工具：\n" + "\n".join(texts)
+                    ))
+                    _emit_once("tool_executed", results)
                 else:
-                    result_text = "工具执行全部失败，请告知用户。"
-                follow_up = self._build_agent_prompt(
-                    iteration, max_steps, result_text,
-                    "工具执行结果" if results else "工具执行失败", remaining
-                )
-                current_reply = await self._call_chatllm_with_timeout(follow_up, per_step_timeout)
-                current_parsed = parse_xml_msg(current_reply)
-                if results:
-                    bus.emit("tool_executed", results, "user")
-                continue
+                    result_parts.append(("动作执行失败", "所有工具执行均失败，请告知用户。"))
 
-            # --- Phase C: <tool> 标签 ---
+            # Phase C: <tool> 标签
             if current_parsed.get("tool"):
-                logger.info("[Agent %d/%d] 查询工具: %s",
-                            iteration, max_steps, current_parsed["tool"])
+                logger.info("[Agent %d/%d] 查询工具列表", iteration, max_steps)
                 tools_result = self.toolllm.query_tools()
                 first_reply = self._extract_reply_text(current_parsed)
-                remaining = max_steps - iteration
-                result_text = "你刚才对用户说：\"%s\"\n\n现在我已经获取到可用工具列表：\n%s" % (
-                    first_reply, tools_result
+                tool_content = (
+                    f'你刚才对用户说："{first_reply}"\n\n'
+                    f"现在我已经获取到可用工具列表：\n{tools_result}\n\n"
+                    f"请介绍这些工具的功能。"
                 )
-                follow_up = self._build_agent_prompt(
-                    iteration, max_steps, result_text,
-                    "可用工具列表", remaining
-                )
-                current_reply = await self._call_chatllm_with_timeout(follow_up, per_step_timeout)
-                current_parsed = parse_xml_msg(current_reply)
-                bus.emit("tools_queried", tools_result, "user")
-                continue
+                result_parts.append(("可用工具列表", tool_content))
+                _emit_once("tools_queried", tools_result)
 
-            # --- Phase D: <plan> 标签 ---
+            # Phase D: <plan> 标签
             if current_parsed.get("plan"):
-                logger.info("[Agent %d/%d] 制定计划: %s",
-                            iteration, max_steps, current_parsed["plan"])
+                logger.info("[Agent %d/%d] 制定计划", iteration, max_steps)
                 plan_result = await get_planllm().generate_async(current_parsed["plan"])
                 first_reply = self._extract_reply_text(current_parsed)
-                remaining = max_steps - iteration
-                result_text = "你刚才对用户说：\"%s\"\n\n现在我已经获取到日程信息：\n%s" % (
-                    first_reply, plan_result
+                plan_content = (
+                    f'你刚才对用户说："{first_reply}"\n\n'
+                    f"现在我已经获取到日程信息：\n{plan_result}\n\n"
+                    "请整合以上信息，给用户一个完整的回复。"
+                    "如果日程为空，可以说'今天还没有安排呢，要不要添加一些？'"
+                    "如果有安排，请列出具体事项。"
                 )
-                follow_up = self._build_agent_prompt(
-                    iteration, max_steps, result_text,
-                    "日程信息", remaining
+                result_parts.append(("日程信息", plan_content))
+                _emit_once("plan_generated", plan_result)
+
+            # ── 本轮无任何操作 → 退出循环 ──
+            if not result_parts:
+                break
+
+            # ── 合并结果 ──
+            if len(result_parts) == 1:
+                combined_result = result_parts[0][1]
+            else:
+                combined_result = "\n\n---\n\n".join(
+                    f"【{title}】\n{content}" for title, content in result_parts
                 )
-                current_reply = await self._call_chatllm_with_timeout(follow_up, per_step_timeout)
-                current_parsed = parse_xml_msg(current_reply)
-                bus.emit("plan_generated", plan_result, "user")
-                continue
 
-            # --- 无工具内容，退出循环 ---
-            break
+            follow_up_prompt = self._build_agent_prompt(
+                iteration, max_steps, combined_result,
+                f"第 {iteration} 轮执行结果", remaining,
+            )
+            current_reply = await self._call_chatllm_with_timeout(follow_up_prompt, per_step_timeout)
+            current_parsed = parse_xml_msg(current_reply)
 
-        if iteration >= max_steps and self._has_tool_content(current_parsed):
+        if iteration >= max_steps and self._has_tool_content(current_parsed, current_reply):
             logger.warning(
                 "AgentExecutor 已达最大轮数 (%d)，仍有未处理的工具调用，"
                 "最终回复可能不完整", max_steps
