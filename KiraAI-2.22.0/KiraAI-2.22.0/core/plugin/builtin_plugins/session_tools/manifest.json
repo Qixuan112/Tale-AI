@@ -1,0 +1,15 @@
+{
+    "display_name": "Session Tools",
+    "plugin_id": "kira_session_plugin",
+    "version": "1.0.0",
+    "author": "KiraAI",
+    "description": "Session tools that enable LLM to interact across sessions",
+    "repo": null,
+    "tags": ["session", "tools"],
+    "locales": {
+        "zh": {
+            "display_name": "会话工具",
+            "description": "跨会话交互的 LLM 工具"
+        }
+    }
+}

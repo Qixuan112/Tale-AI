@@ -46,7 +46,7 @@ class QQAdapter(BaseAdapter):
         self.ws_url = self.get_config("ws_url", "ws://localhost:3001")
         self.http_url = self.get_config("http_url", "http://localhost:3000")
         self.access_token = self.get_config("access_token", "")
-        self.bot_uin = self.get_config("bot_uin", "")
+        self.bot_uin = self.get_config("bot_uin") or self.get_config("bot_pid", "")
         self.auto_reconnect = self.get_config("auto_reconnect", True)
 
         # 消息去重

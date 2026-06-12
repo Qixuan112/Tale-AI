@@ -21,7 +21,7 @@
         "default": ""
     },
     {
-        "name": "bot_pid",
+        "name": "bot_uin",
         "type": "string",
         "required": true,
         "description": "机器人QQ号（用于登录验证）",
