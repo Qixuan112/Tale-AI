@@ -247,9 +247,9 @@ class NapCatWebSocketClient:
                         elif data.get("meta_event_type") == "lifecycle":
                             self.login_success_event.set()
 
-                    # 抛给上层回调
+                    # 抛给上层回调（用 create_task 避免阻塞消息接收）
                     if self._message_callback:
-                        await self._message_callback(data)
+                        asyncio.create_task(self._message_callback(data))
 
             except websockets.exceptions.ConnectionClosed:
                 logger.warning("WebSocket 连接已关闭")

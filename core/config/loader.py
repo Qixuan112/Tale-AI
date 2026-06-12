@@ -117,7 +117,7 @@ _SCHEMAS = {
             "adapter_type": str, "desc": str,
             "ws_url": str, "ws_uri": str, "http_url": str,
             "access_token": str, "ws_token": str, "ws_listen_ip": str,
-            "auto_reconnect": bool, "reconnect_interval": (int, float),
+            "auto_reconnect": bool,
             "bot_pid": (str, int), "owner_pid": (str, int),
             "bot_token": str, "bot_uid": (str, int),
             "permission_mode": str,
