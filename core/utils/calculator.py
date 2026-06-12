@@ -5,6 +5,7 @@
 支持函数：abs, round, max, min, sum, pow, int, float
 """
 import ast
+import builtins
 import operator
 from typing import Union, Any
 

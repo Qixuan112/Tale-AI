@@ -13,13 +13,10 @@
 
 from typing import Optional
 
-import httpx
-from openai import OpenAI
-
 from ..bus import bus
 from ..config import MAX_CONTEXT
-from ..config.provide import config_loader
 from ..utils import get_logger
+from .provider import provider_manager, OpenAICompatibleProvider
 
 logger = get_logger(__name__)
 
@@ -30,24 +27,25 @@ class GenericLLM:
     """
 
     def __init__(self, api_key=None, model=None, url=None):
-        cfg = config_loader.generic_api
+        cfg = provider_manager.get_api_config("generic_llm")
         self.api_key = api_key or cfg.get("api_key", "")
         self.model = model or cfg.get("model", "")
         self.base_url = url or cfg.get("url", "")
 
-        self._client = None
+        self._provider: Optional[OpenAICompatibleProvider] = None
         if self.api_key and self.base_url:
-            self._client = OpenAI(
+            self._provider = OpenAICompatibleProvider(
+                name="generic_llm",
                 api_key=self.api_key,
                 base_url=self.base_url,
-                timeout=httpx.Timeout(120.0, connect=10.0),
+                default_model=self.model,
             )
 
         bus.on("config_reloaded", self._on_config_reloaded)
 
     def _on_config_reloaded(self):
         """配置重载后热更新 API 客户端。"""
-        cfg = config_loader.generic_api
+        cfg = provider_manager.get_api_config("generic_llm")
         api_key = cfg.get("api_key", "")
         base_url = cfg.get("url", "")
         model = cfg.get("model", "")
@@ -60,24 +58,26 @@ class GenericLLM:
             self.model = model
 
         if self.api_key and self.base_url:
-            self._client = OpenAI(
+            self._provider = OpenAICompatibleProvider(
+                name="generic_llm",
                 api_key=self.api_key,
                 base_url=self.base_url,
-                timeout=httpx.Timeout(120.0, connect=10.0),
+                default_model=self.model,
             )
         logger.info("GenericLLM: 配置已热更新")
 
-    def _ensure_client(self) -> bool:
-        """确保客户端可用，返回 False 表示不可用。"""
-        if self._client is not None:
+    def _ensure_provider(self) -> bool:
+        """确保 provider 可用，返回 False 表示不可用。"""
+        if self._provider is not None:
             return True
         if not self.api_key or not self.base_url:
             logger.warning("GenericLLM 未配置 API key 或 base_url，跳过调用")
             return False
-        self._client = OpenAI(
+        self._provider = OpenAICompatibleProvider(
+            name="generic_llm",
             api_key=self.api_key,
             base_url=self.base_url,
-            timeout=httpx.Timeout(120.0, connect=10.0),
+            default_model=self.model,
         )
         return True
 
@@ -100,7 +100,7 @@ class GenericLLM:
         Returns:
             LLM 回复文本，失败返回 None
         """
-        if not self._ensure_client():
+        if not self._ensure_provider():
             return None
 
         messages = [
@@ -108,17 +108,12 @@ class GenericLLM:
             {"role": "user", "content": user_message},
         ]
 
-        try:
-            response = self._client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            logger.error("GenericLLM API 调用失败: %s", e)
-            return None
+        return self._provider.chat(
+            messages=messages,
+            model=self.model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
 
     def chat_with_messages(
         self,
@@ -137,20 +132,15 @@ class GenericLLM:
         Returns:
             LLM 回复文本，失败返回 None
         """
-        if not self._ensure_client():
+        if not self._ensure_provider():
             return None
 
-        try:
-            response = self._client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            logger.error("GenericLLM API 调用失败: %s", e)
-            return None
+        return self._provider.chat(
+            messages=messages,
+            model=self.model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
 
 
 # 模块级单例

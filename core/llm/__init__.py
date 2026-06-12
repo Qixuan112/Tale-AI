@@ -3,6 +3,7 @@ from .planllm import PlanLLM, get_planllm, add_event, get_today_schedule, add_go
 from .toolllm import ToolLLM, get_toolllm
 from .generic import GenericLLM, get_generic_llm
 from .vlm import VlmLLM, get_vlm_llm
+from .provider import BaseProvider, OpenAICompatibleProvider, ProviderManager, provider_manager
 from .diary_models import (
     DiaryEntry, DailyPlan, Goal, LongTermGoals,
     EventType, Priority, EventStatus
@@ -26,6 +27,10 @@ __all__ = [
     'add_event',
     'get_today_schedule',
     'add_goal',
+    'BaseProvider',
+    'OpenAICompatibleProvider',
+    'ProviderManager',
+    'provider_manager',
     'DiaryEntry',
     'DailyPlan',
     'Goal',

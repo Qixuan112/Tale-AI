@@ -82,17 +82,22 @@
 
             grid.innerHTML = tools.map(t => `
                 <div class="tool-card">
-                    <h3>${t.title || t.name}</h3>
-                    <div class="tool-desc">${t.description || ''}</div>
+                    <h3>${escapeHtml(t.title || t.name)}</h3>
+                    <div class="tool-desc">${escapeHtml(t.description || '')}</div>
                     <div class="tool-form">
                         ${(t.fields || []).map(f => `
-                            <input type="text" id="tool_${t.name}_${f.key}" placeholder="${f.placeholder || f.label}" data-key="${f.key}">
+                            <input type="text" id="tool_${escapeHtml(t.name)}_${escapeHtml(f.key)}" placeholder="${escapeHtml(f.placeholder || f.label)}" data-key="${escapeHtml(f.key)}">
                         `).join('')}
-                        <button class="btn btn-primary btn-sm" onclick="runTool('${t.name}')">${window.t ? window.t('tools.execute') : '执行'}</button>
+                        <button class="btn btn-primary btn-sm" data-tool-name="${escapeHtml(t.name)}">${window.t ? window.t('tools.execute') : '执行'}</button>
                     </div>
-                    <div class="tool-result hidden" id="result_${t.name}"></div>
+                    <div class="tool-result hidden" id="result_${escapeHtml(t.name)}"></div>
                 </div>
             `).join('');
+            grid.querySelectorAll('[data-tool-name]').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    runTool(this.dataset.toolName);
+                });
+            });
         } catch (e) {
             grid.innerHTML = '<div class="empty-tip">' + (window.t ? window.t('tools.loadFailed') : '加载失败') + '</div>';
         }

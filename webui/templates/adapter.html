@@ -394,12 +394,20 @@
                 return;
             }
             adapterSelectGrid.innerHTML = availableAdapters.map(a => `
-                <div class="adapter-select-card" data-id="${a.id}" onclick="selectAdapter('${a.id}')">
-                    <div class="sa-name">${a.name || a.id}</div>
-                    <div class="sa-desc">${a.description || ''}</div>
-                    <div class="sa-desc" style="margin-top:4px;">${window.t ? window.t('adapter.version') : '版本'}: ${a.version || '-'} | ${window.t ? window.t('adapter.author') : '作者'}: ${a.author || '-'}</div>
+                <div class="adapter-select-card" data-id="${escapeHtml(a.id)}" data-adapter-id="${escapeHtml(a.id)}">
+                    <div class="sa-name">${escapeHtml(a.name || a.id)}</div>
+                    <div class="sa-desc">${escapeHtml(a.description || '')}</div>
+                    <div class="sa-desc" style="margin-top:4px;">${window.t ? window.t('adapter.version') : '版本'}: ${escapeHtml(a.version || '-')} | ${window.t ? window.t('adapter.author') : '作者'}: ${escapeHtml(a.author || '-')}</div>
                 </div>
             `).join('');
+            // 事件委托：选择适配器
+            adapterSelectGrid.addEventListener('click', function(e) {
+                var card = e.target.closest('.adapter-select-card');
+                if (card) {
+                    var id = card.dataset.adapterId;
+                    if (id) selectAdapter(id);
+                }
+            });
         } catch (e) {
             adapterSelectGrid.innerHTML = '<div class="empty-tip">' + (window.t ? window.t('adapter.loadFailed') : '加载失败') + '</div>';
         }
@@ -448,7 +456,10 @@
         schema.forEach(field => {
             const row = document.createElement('div');
             row.className = 'form-row';
-            const labelText = field.name + (field.required ? ' *' : '');
+            const escapedLabel = escapeHtml(field.name);
+            const labelText = escapedLabel + (field.required ? ' *' : '');
+            const escapedDesc = field.description ? escapeHtml(field.description) : '';
+            const escapedDefault = field.default !== undefined ? escapeHtml(String(field.default)) : '';
 
             if (field.type === 'boolean') {
                 row.innerHTML = `
@@ -456,20 +467,20 @@
                         <input type="checkbox" id="cfg_${field.name}" name="${field.name}" ${field.default ? 'checked' : ''}>
                         <label for="cfg_${field.name}">${labelText}</label>
                     </div>
-                    ${field.description ? `<div class="field-desc">${field.description}</div>` : ''}
+                    ${field.description ? `<div class="field-desc">${escapedDesc}</div>` : ''}
                 `;
             } else if (field.type === 'enum') {
-                const options = (field.options || []).map(o => `<option value="${o}" ${o === field.default ? 'selected' : ''}>${o}</option>`).join('');
+                const options = (field.options || []).map(o => `<option value="${escapeHtml(o)}" ${o === field.default ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('');
                 row.innerHTML = `
                     <label for="cfg_${field.name}">${labelText}</label>
-                    ${field.description ? `<div class="field-desc">${field.description}</div>` : ''}
+                    ${field.description ? `<div class="field-desc">${escapedDesc}</div>` : ''}
                     <select id="cfg_${field.name}" name="${field.name}">${options}</select>
                 `;
             } else if (field.type === 'list') {
                 const listId = 'list_' + field.name;
                 row.innerHTML = `
                     <label>${labelText}</label>
-                    ${field.description ? `<div class="field-desc">${field.description}</div>` : ''}
+                    ${field.description ? `<div class="field-desc">${escapedDesc}</div>` : ''}
                     <div class="list-input-row">
                         <input type="text" id="input_${listId}" placeholder="${window.t ? window.t('adapter.pressEnter') : '输入后按回车添加'}">
                         <button type="button" class="btn btn-sm" onclick="addListItem('${listId}')">+</button>
@@ -492,14 +503,14 @@
                 const step = field.type === 'integer' ? '1' : '0.1';
                 row.innerHTML = `
                     <label for="cfg_${field.name}">${labelText}</label>
-                    ${field.description ? `<div class="field-desc">${field.description}</div>` : ''}
-                    <input type="number" id="cfg_${field.name}" name="${field.name}" value="${field.default !== undefined ? field.default : ''}" step="${step}">
+                    ${field.description ? `<div class="field-desc">${escapedDesc}</div>` : ''}
+                    <input type="number" id="cfg_${field.name}" name="${field.name}" value="${escapedDefault}" step="${step}">
                 `;
             } else {
                 row.innerHTML = `
                     <label for="cfg_${field.name}">${labelText}</label>
-                    ${field.description ? `<div class="field-desc">${field.description}</div>` : ''}
-                    <input type="text" id="cfg_${field.name}" name="${field.name}" value="${field.default !== undefined ? field.default : ''}">
+                    ${field.description ? `<div class="field-desc">${escapedDesc}</div>` : ''}
+                    <input type="text" id="cfg_${field.name}" name="${field.name}" value="${escapedDefault}">
                 `;
             }
             configForm.appendChild(row);
@@ -513,7 +524,7 @@
         if (!val) return;
         const tag = document.createElement('div');
         tag.className = 'tag-item';
-        tag.innerHTML = `<span>${val}</span><button type="button" onclick="this.parentElement.remove();updateListHidden('${listId}')">&times;</button>`;
+        tag.innerHTML = `<span>${escapeHtml(val)}</span><button type="button" onclick="this.parentElement.remove();updateListHidden('${listId}')">&times;</button>`;
         container.appendChild(tag);
         input.value = '';
         updateListHidden(listId);
@@ -588,27 +599,46 @@
             grid.innerHTML = adapters.map(a => `
                 <div class="adapter-card">
                     <div class="adapter-header">
-                        <span class="adapter-name">${a.instance_name}</span>
+                        <span class="adapter-name">${escapeHtml(a.instance_name)}</span>
                         <span class="adapter-status ${a.running ? 'running' : ''}">
                             ${a.running ? '● ' + (window.t ? window.t('adapter.running') : '运行中') : '○ ' + (window.t ? window.t('adapter.stopped') : '已停止')}
                         </span>
                     </div>
-                    <div class="adapter-meta">类型: ${a.name || a.adapter_type}</div>
-                    <div class="adapter-meta">${window.t ? window.t('adapter.version') : '版本'}: ${a.version || (window.t ? window.t('adapter.unknown') : 'unknown')}</div>
-                    <div class="adapter-meta">${window.t ? window.t('adapter.author') : '作者'}: ${a.author || (window.t ? window.t('adapter.unknown') : 'unknown')}</div>
+                    <div class="adapter-meta">类型: ${escapeHtml(a.name || a.adapter_type)}</div>
+                    <div class="adapter-meta">${window.t ? window.t('adapter.version') : '版本'}: ${escapeHtml(a.version || (window.t ? window.t('adapter.unknown') : 'unknown'))}</div>
+                    <div class="adapter-meta">${window.t ? window.t('adapter.author') : '作者'}: ${escapeHtml(a.author || (window.t ? window.t('adapter.unknown') : 'unknown'))}</div>
                     <div class="adapter-actions">
-                        <button class="btn btn-sm ${a.running ? 'btn-danger' : 'btn-primary'}" onclick="toggleAdapter('${a.instance_name}', ${a.running})">
+                        <button class="btn btn-sm ${a.running ? 'btn-danger' : 'btn-primary'}" data-action="toggle" data-instance="${escapeHtml(a.instance_name)}" data-running="${a.running}">
                             ${a.running ? (window.t ? window.t('adapter.stop') : '停止') : (window.t ? window.t('adapter.start') : '启动')}
                         </button>
-                        <button class="btn btn-sm" onclick="editAdapterConfig('${a.instance_name}')">
+                        <button class="btn btn-sm" data-action="edit" data-instance="${escapeHtml(a.instance_name)}">
                             ${window.t ? window.t('adapter.config') : '配置'}
-                        </button>                        <button class="btn btn-sm btn-danger" onclick="deleteAdapter('${a.instance_name}')\" style="margin-left:auto;">
+                        </button>
+                        <button class="btn btn-sm btn-danger" data-action="delete" data-instance="${escapeHtml(a.instance_name)}" style="margin-left:auto;">
                             ${window.t ? window.t('adapter.delete') : '删除'}
-                        </button>                    </div>
+                        </button>
+                    </div>
                 </div>
             `).join('');
+            // 事件委托：适配器操作按钮
+            grid.removeEventListener('click', adapterActionHandler);
+            grid.addEventListener('click', adapterActionHandler);
         } catch (e) {
             grid.innerHTML = '<div class="empty-tip">' + (window.t ? window.t('adapter.loadFailed') : '加载失败') + '</div>';
+        }
+    }
+
+    function adapterActionHandler(e) {
+        var btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        var action = btn.dataset.action;
+        var instance = btn.dataset.instance;
+        if (action === 'toggle') {
+            toggleAdapter(instance, btn.dataset.running === 'true');
+        } else if (action === 'edit') {
+            editAdapterConfig(instance);
+        } else if (action === 'delete') {
+            deleteAdapter(instance);
         }
     }
 
@@ -649,7 +679,8 @@
         schema.forEach(field => {
             const row = document.createElement('div');
             row.className = 'form-row';
-            const labelText = field.name + (field.required ? ' *' : '');
+            const escapedLabel = escapeHtml(field.name);
+            const labelText = escapedLabel + (field.required ? ' *' : '');
             const currentVal = currentConfig[field.name] !== undefined ? currentConfig[field.name] : field.default;
 
             if (field.type === 'boolean') {
@@ -659,29 +690,29 @@
                         <input type="checkbox" id="edit_cfg_${field.name}" name="${field.name}" ${checked}>
                         <label for="edit_cfg_${field.name}">${labelText}</label>
                     </div>
-                    ${field.description ? `<div class="field-desc">${field.description}</div>` : ''}
+                    ${field.description ? `<div class="field-desc">${escapeHtml(field.description)}</div>` : ''}
                 `;
             } else if (field.type === 'enum') {
                 const val = currentVal !== undefined ? currentVal : field.default;
-                const options = (field.options || []).map(o => `<option value="${o}" ${o === val ? 'selected' : ''}>${o}</option>`).join('');
+                const options = (field.options || []).map(o => `<option value="${escapeHtml(o)}" ${o === val ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('');
                 row.innerHTML = `
                     <label for="edit_cfg_${field.name}">${labelText}</label>
-                    ${field.description ? `<div class="field-desc">${field.description}</div>` : ''}
+                    ${field.description ? `<div class="field-desc">${escapeHtml(field.description)}</div>` : ''}
                     <select id="edit_cfg_${field.name}" name="${field.name}">${options}</select>
                 `;
             } else if (field.type === 'list') {
                 const listId = 'edit_list_' + field.name;
                 const values = Array.isArray(currentVal) ? currentVal : (field.default || []);
-                const tagsHtml = values.map(v => `<div class="tag-item"><span>${v}</span><button type="button" onclick="this.parentElement.remove();updateEditListHidden('${listId}')">&times;</button></div>`).join('');
+                const tagsHtml = values.map(v => `<div class="tag-item"><span>${escapeHtml(v)}</span><button type="button" onclick="this.parentElement.remove();updateEditListHidden('${listId}')">&times;</button></div>`).join('');
                 row.innerHTML = `
                     <label>${labelText}</label>
-                    ${field.description ? `<div class="field-desc">${field.description}</div>` : ''}
+                    ${field.description ? `<div class="field-desc">${escapeHtml(field.description)}</div>` : ''}
                     <div class="list-input-row">
                         <input type="text" id="input_${listId}" placeholder="${window.t ? window.t('adapter.pressEnter') : '输入后按回车添加'}">
                         <button type="button" class="btn btn-sm" onclick="addEditListItem('${listId}')">+</button>
                     </div>
                     <div class="tag-list" id="${listId}">${tagsHtml}</div>
-                    <input type="hidden" name="${field.name}" id="hidden_${listId}" value="${JSON.stringify(values)}">
+                    <input type="hidden" name="${field.name}" id="hidden_${listId}" value="${escapeHtml(JSON.stringify(values))}">
                 `;
                 setTimeout(() => {
                     const input = document.getElementById('input_' + listId);
@@ -699,15 +730,15 @@
                 const step = field.type === 'integer' ? '1' : '0.1';
                 row.innerHTML = `
                     <label for="edit_cfg_${field.name}">${labelText}</label>
-                    ${field.description ? `<div class="field-desc">${field.description}</div>` : ''}
-                    <input type="number" id="edit_cfg_${field.name}" name="${field.name}" value="${val}" step="${step}">
+                    ${field.description ? `<div class="field-desc">${escapeHtml(field.description)}</div>` : ''}
+                    <input type="number" id="edit_cfg_${field.name}" name="${field.name}" value="${escapeHtml(String(val))}" step="${step}">
                 `;
             } else {
                 const val = currentVal !== undefined ? currentVal : (field.default !== undefined ? field.default : '');
                 row.innerHTML = `
                     <label for="edit_cfg_${field.name}">${labelText}</label>
-                    ${field.description ? `<div class="field-desc">${field.description}</div>` : ''}
-                    <input type="text" id="edit_cfg_${field.name}" name="${field.name}" value="${val}">
+                    ${field.description ? `<div class="field-desc">${escapeHtml(field.description)}</div>` : ''}
+                    <input type="text" id="edit_cfg_${field.name}" name="${field.name}" value="${escapeHtml(String(val))}">
                 `;
             }
             editConfigForm.appendChild(row);
@@ -721,7 +752,7 @@
         if (!val) return;
         const tag = document.createElement('div');
         tag.className = 'tag-item';
-        tag.innerHTML = `<span>${val}</span><button type="button" onclick="this.parentElement.remove();updateEditListHidden('${listId}')">&times;</button>`;
+        tag.innerHTML = `<span>${escapeHtml(val)}</span><button type="button" onclick="this.parentElement.remove();updateEditListHidden('${listId}')">&times;</button>`;
         container.appendChild(tag);
         input.value = '';
         updateEditListHidden(listId);

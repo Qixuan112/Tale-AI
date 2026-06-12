@@ -1023,14 +1023,15 @@
 window.fetchRoutingModels = function (providerName, onSelect) {
     if (!providerName) return;
 
+    var escProvider = escapeHtml(providerName);
     var overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
 
     overlay.innerHTML = '<div class="modal-dialog" style="max-width:520px;">'
-        + '<div class="modal-dialog-header">' + (window.t('field.service.fetchModels') || '选择模型') + ' - ' + providerName + '</div>'
+        + '<div class="modal-dialog-header">' + (window.t('field.service.fetchModels') || '选择模型') + ' - ' + escProvider + '</div>'
         + '<div class="modal-dialog-body" style="min-height:100px;">'
-        + '<input type="text" id="routingModelSearch-' + providerName + '" placeholder="' + (window.t('common.search', '搜索模型...')) + '" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:14px;background:var(--bg);color:var(--text);margin-bottom:8px;">'
-        + '<div id="routingModelList-' + providerName + '" style="max-height:320px;overflow-y:auto;"></div>'
+        + '<input type="text" id="routingModelSearch-' + escProvider + '" placeholder="' + (window.t('common.search', '搜索模型...')) + '" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:14px;background:var(--bg);color:var(--text);margin-bottom:8px;">'
+        + '<div id="routingModelList-' + escProvider + '" style="max-height:320px;overflow-y:auto;"></div>'
         + '</div>'
         + '<div class="modal-dialog-footer">'
         + '<button class="modal-btn" id="routingModalCloseBtn">' + (window.t('common.cancel', '关闭')) + '</button>'
@@ -1039,7 +1040,7 @@ window.fetchRoutingModels = function (providerName, onSelect) {
 
     document.body.appendChild(overlay);
 
-    var listEl = overlay.querySelector('#routingModelList-' + providerName);
+    var listEl = overlay.querySelector('#routingModelList-' + escProvider);
     listEl.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-secondary);">' + (window.t('common.loading', '加载中...')) + '</div>';
 
     function closeModal() {
@@ -1064,10 +1065,9 @@ window.fetchRoutingModels = function (providerName, onSelect) {
             }
             var html = '';
             models.forEach(function (m) {
-                var mid = (m.id || '').replace(/'/g, "\\'");
-                html += '<div class="model-item" data-model-id="' + (m.id || '') + '" style="padding:8px 12px;cursor:pointer;font-size:14px;border-bottom:1px solid var(--border);border-radius:4px;">'
-                    + '<span>' + (m.id || '') + '</span>'
-                    + (m.owned_by ? ' <span style="color:var(--text-secondary);font-size:12px;">' + m.owned_by + '</span>' : '')
+                html += '<div class="model-item" data-model-id="' + escapeHtml(m.id || '') + '" style="padding:8px 12px;cursor:pointer;font-size:14px;border-bottom:1px solid var(--border);border-radius:4px;">'
+                    + '<span>' + escapeHtml(m.id || '') + '</span>'
+                    + (m.owned_by ? ' <span style="color:var(--text-secondary);font-size:12px;">' + escapeHtml(m.owned_by) + '</span>' : '')
                     + '</div>';
             });
             listEl.innerHTML = html;
@@ -1088,7 +1088,7 @@ window.fetchRoutingModels = function (providerName, onSelect) {
         });
 
     // 搜索过滤
-    overlay.querySelector('#routingModelSearch-' + providerName).addEventListener('input', function () {
+    overlay.querySelector('#routingModelSearch-' + escProvider).addEventListener('input', function () {
         var q = this.value.toLowerCase();
         var items = listEl.querySelectorAll('.model-item');
         for (var i = 0; i < items.length; i++) {
@@ -1102,14 +1102,15 @@ window.fetchRoutingModels = function (providerName, onSelect) {
 window.fetchModels = function (providerName) {
     if (!providerName) return;
 
+    var escProvider = escapeHtml(providerName);
     var overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
 
     overlay.innerHTML = '<div class="modal-dialog" style="max-width:520px;">'
-        + '<div class="modal-dialog-header">' + (window.t('field.service.fetchModels') || '选择模型') + ' - ' + providerName + '</div>'
+        + '<div class="modal-dialog-header">' + (window.t('field.service.fetchModels') || '选择模型') + ' - ' + escProvider + '</div>'
         + '<div class="modal-dialog-body" style="min-height:100px;">'
-        + '<input type="text" id="modelSearchModal-' + providerName + '" placeholder="' + (window.t('common.search', '搜索模型...')) + '" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:14px;background:var(--bg);color:var(--text);margin-bottom:8px;">'
-        + '<div id="modelListModal-' + providerName + '" style="max-height:320px;overflow-y:auto;"></div>'
+        + '<input type="text" id="modelSearchModal-' + escProvider + '" placeholder="' + (window.t('common.search', '搜索模型...')) + '" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:14px;background:var(--bg);color:var(--text);margin-bottom:8px;">'
+        + '<div id="modelListModal-' + escProvider + '" style="max-height:320px;overflow-y:auto;"></div>'
         + '</div>'
         + '<div class="modal-dialog-footer">'
         + '<button class="modal-btn" id="modalCloseBtn">' + (window.t('common.cancel', '关闭')) + '</button>'
@@ -1118,7 +1119,7 @@ window.fetchModels = function (providerName) {
 
     document.body.appendChild(overlay);
 
-    var listEl = overlay.querySelector('#modelListModal-' + providerName);
+    var listEl = overlay.querySelector('#modelListModal-' + escProvider);
     listEl.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-secondary);">' + (window.t('common.loading', '加载中...')) + '</div>';
 
     function closeModal() {
@@ -1143,20 +1144,31 @@ window.fetchModels = function (providerName) {
             }
             var html = '';
             models.forEach(function (m) {
-                var mid = (m.id || '').replace(/'/g, "\\'");
-                html += '<div class="model-item" onclick="window.selectModel(\'' + providerName.replace(/'/g, "\\'") + '\',\'' + mid + '\')" style="padding:8px 12px;cursor:pointer;font-size:14px;border-bottom:1px solid var(--border);border-radius:4px;" data-model-id="' + (m.id || '') + '">'
-                    + '<span>' + (m.id || '') + '</span>'
-                    + (m.owned_by ? ' <span style="color:var(--text-secondary);font-size:12px;">' + m.owned_by + '</span>' : '')
+                html += '<div class="model-item" style="padding:8px 12px;cursor:pointer;font-size:14px;border-bottom:1px solid var(--border);border-radius:4px;" data-provider="' + escapeHtml(providerName) + '" data-model-id="' + escapeHtml(m.id || '') + '">'
+                    + '<span>' + escapeHtml(m.id || '') + '</span>'
+                    + (m.owned_by ? ' <span style="color:var(--text-secondary);font-size:12px;">' + escapeHtml(m.owned_by) + '</span>' : '')
                     + '</div>';
             });
             listEl.innerHTML = html;
+
+            // 绑定点击事件（同 fetchRoutingModels 的安全模式）
+            listEl.querySelectorAll('.model-item').forEach(function(item) {
+                item.addEventListener('click', function() {
+                    var modelId = this.dataset.modelId;
+                    var prov = this.dataset.provider;
+                    closeModal();
+                    if (typeof window.selectModel === 'function') {
+                        window.selectModel(prov, modelId);
+                    }
+                });
+            });
         })
         .catch(function () {
             listEl.innerHTML = '<div style="padding:12px;text-align:center;color:#ef4444;">' + (window.t('common.networkError', '网络错误')) + '</div>';
         });
 
     // 搜索过滤
-    overlay.querySelector('#modelSearchModal-' + providerName).addEventListener('input', function () {
+    overlay.querySelector('#modelSearchModal-' + escProvider).addEventListener('input', function () {
         var q = this.value.toLowerCase();
         var items = listEl.querySelectorAll('.model-item');
         for (var i = 0; i < items.length; i++) {

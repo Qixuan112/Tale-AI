@@ -9,8 +9,6 @@ PlanLLM - 日程规划与记事本管理系统
 5. 双向同步：PlanLLM ↔ 当日记事本 ↔ 长期记事本
 """
 
-import httpx
-
 import os
 import json
 import uuid
@@ -20,13 +18,9 @@ from typing import Optional, List, Dict, Any
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
-from typing import Optional
-
-from openai import OpenAI
 from filelock import FileLock
 
 from ..bus import bus
-from ..config import provide
 from ..config.prompt import get_plan_character_info
 from ..utils import get_logger
 from .diary_models import (
@@ -34,6 +28,7 @@ from .diary_models import (
     EventType, Priority, EventStatus
 )
 from .context import AgentContext, create_plan_context
+from .provider import OpenAICompatibleProvider, provider_manager
 
 logger = get_logger(__name__)
 
@@ -76,10 +71,11 @@ class PlanLLM:
             context: 可选的 AgentContext；缺省时通过工厂函数自动创建
             cache_strategy: "single_message"（默认）或 "multi_message"
         """
-        self._api_key = api_key or provide.PLAN_API_KEY
-        self._base_url = url or provide.PLAN_URL
-        self.model = model or provide.PLAN_MODEL
-        self.client = None  # 惰性初始化，见 _get_client()
+        cfg = provider_manager.get_api_config("plan_llm")
+        self._api_key = api_key or cfg.get("api_key", "")
+        self._base_url = url or cfg.get("url", "")
+        self.model = model or cfg.get("model", "")
+        self._provider: Optional[OpenAICompatibleProvider] = None
         self.cache_strategy = cache_strategy
 
         if context is not None:
@@ -105,18 +101,18 @@ class PlanLLM:
                     self.cache_strategy = agent_cfg.cache_strategy
         except Exception:
             pass
-        
+
         # 数据存储路径
         self.data_dir = Path("data/diary")
         self.data_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # 当前日期
         self._current_date = datetime.now().date()
-        
+
         # 加载数据
         self._today_plan: Optional[DailyPlan] = None
         self._long_term_goals: LongTermGoals = LongTermGoals()
-        
+
         # 线程池用于异步执行
         self._executor = ThreadPoolExecutor(max_workers=2)
 
@@ -124,16 +120,19 @@ class PlanLLM:
         bus.on("config_reloaded", self._on_config_reloaded)
 
         self._load_data()
-    
-    def _get_client(self) -> OpenAI:
-        """惰性获取 OpenAI 客户端，避免启动时因凭据缺失而阻塞"""
-        if self.client is None:
-            self.client = OpenAI(
+
+    def _get_provider(self) -> OpenAICompatibleProvider:
+        """惰性获取 provider，避免启动时因凭据缺失而阻塞。"""
+        if self._provider is None and self._api_key and self._base_url:
+            self._provider = OpenAICompatibleProvider(
+                name="planllm",
                 api_key=self._api_key,
                 base_url=self._base_url,
-                timeout=httpx.Timeout(120.0, connect=10.0),
+                default_model=self.model,
             )
-        return self.client
+        if self._provider is None:
+            raise RuntimeError("PlanLLM provider 未初始化（缺少 API key 或 base_url）")
+        return self._provider
 
     def _get_plan_file_path(self, date: datetime.date) -> Path:
         """获取某日期程文件路径"""
@@ -221,17 +220,21 @@ class PlanLLM:
     
     def _on_config_reloaded(self):
         """配置重载后热更新 API 客户端和角色上下文。"""
-        cfg = provide.config_loader.get_api_config("plan_llm")
+        cfg = provider_manager.get_api_config("plan_llm")
         api_key = cfg.get("api_key")
         base_url = cfg.get("url")
         model = cfg.get("model")
         if api_key:
             self._api_key = api_key
-            self._base_url = base_url  # 为空时 OpenAI 会用默认值
-            self.client = OpenAI(api_key=self._api_key, base_url=self._base_url or None,
-                                  timeout=httpx.Timeout(120.0, connect=10.0))
+            self._base_url = base_url
+            self._provider = OpenAICompatibleProvider(
+                name="planllm",
+                api_key=self._api_key,
+                base_url=self._base_url or "",
+                default_model=self.model,
+            )
         else:
-            self.client = None
+            self._provider = None
         if model:
             self.model = model
         # 重建角色上下文
@@ -439,14 +442,14 @@ class PlanLLM:
             event_data = json.loads(json_str)
             
             # 创建日程条目
-            event_type_str = str(event_data.get("event_type") or "other").lower()
+            event_type_str = event_data.get("event_type", "other").lower()
             try:
                 event_type = EventType(event_type_str)
             except ValueError:
                 logger.warning("未知事件类型 '%s'，使用 'other' 代替", event_type_str)
                 event_type = EventType.OTHER
 
-            priority_str = str(event_data.get("priority") or "medium").lower()
+            priority_str = event_data.get("priority", "medium").lower()
             try:
                 priority = Priority(priority_str)
             except ValueError:
@@ -459,7 +462,7 @@ class PlanLLM:
                 description=event_data.get("description", ""),
                 event_type=event_type,
                 priority=priority,
-                start_time=datetime.strptime(event_data.get("start_time", "08:00"), "%H:%M").time(),
+                start_time=datetime.strptime(event_data["start_time"], "%H:%M").time(),
                 end_time=datetime.strptime(event_data["end_time"], "%H:%M").time() if event_data.get("end_time") else None,
                 related_people=event_data.get("related_people", []),
                 location=event_data.get("location"),
@@ -683,14 +686,12 @@ class PlanLLM:
         messages = self.context.build_messages_head(self.cache_strategy) + [
             {"role": "user", "content": prompt}
         ]
-        
-        response = self._get_client().chat.completions.create(
+
+        provider = self._get_provider()
+        return provider.chat(
+            messages=messages,
             model=self.model,
-            messages=messages
-        )
-        
-        assistant_reply = response.choices[0].message.content if response.choices else ""
-        return assistant_reply
+        ) or ""
 
     def _build_plan_context(self) -> str:
         """构建计划制定的上下文信息"""
