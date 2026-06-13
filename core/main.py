@@ -965,9 +965,9 @@ class TaleCore:
                 at_targets=at_targets,
             )
             if success:
-                logger.info("发送成功 -> %s", target_id)
+                logger.info("发送成功 [%s] -> %s", platform, target_id)
             else:
-                logger.warning("发送失败 -> %s", target_id)
+                logger.warning("发送失败 [%s] -> %s", platform, target_id)
         except Exception as e:
             logger.error("发送错误: %s", e)
 
