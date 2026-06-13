@@ -317,7 +317,7 @@
 
             // login.html
             'login.title': '认证令牌',
-            'login.placeholder': '输入 6 位令牌',
+            'login.placeholder': '输入 16 位令牌',
             'login.submit': '登 录',
             'login.emptyToken': '请输入认证令牌',
             'login.authFailed': '认证失败',
@@ -841,7 +841,7 @@
 
             // login.html
             'login.title': 'Auth Token',
-            'login.placeholder': 'Enter 6-digit token',
+            'login.placeholder': 'Enter 16-digit token',
             'login.submit': 'Login',
             'login.emptyToken': 'Please enter auth token',
             'login.authFailed': 'Authentication failed',
