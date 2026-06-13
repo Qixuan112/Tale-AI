@@ -53,6 +53,13 @@ class OpenAIEmbedder(BaseEmbedder):
             self._dim = len(probe.data[0].embedding)
         return self._dim
 
+    def _build_kwargs(self, input_batch: list) -> dict:
+        """构造传给 embeddings.create 的参数"""
+        kwargs: dict = {"input": input_batch, "model": self._model}
+        if self._dim is not None:
+            kwargs["dimensions"] = self._dim
+        return kwargs
+
     def _l2_normalize(self, arr: np.ndarray) -> np.ndarray:
         norms = np.linalg.norm(arr, axis=1, keepdims=True)
         norms[norms == 0] = 1.0
@@ -66,7 +73,7 @@ class OpenAIEmbedder(BaseEmbedder):
         all_vectors = []
         for i in range(0, len(texts), batch_size):
             batch = texts[i:i + batch_size]
-            resp = self._client.embeddings.create(input=batch, model=self._model)
+            resp = self._client.embeddings.create(**self._build_kwargs(batch))
             all_vectors.extend(r.embedding for r in resp.data)
         arr = np.array(all_vectors, dtype=np.float32)
         # 首次调用时从响应推断维度

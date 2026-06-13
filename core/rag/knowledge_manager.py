@@ -195,7 +195,8 @@ class KnowledgeManager:
             else:
                 return False
 
-        # 在锁外重建索引（rebuild_index 涉及网络 embedding 调用）
+        # 在锁外重建索引(rebuild_index 涉及网络 embedding 调用,
+        # 但这也意味着并发 upload_document 可能在重建期间新增向量)
         self.rebuild_index(kb_name)
         return True
 
