@@ -233,7 +233,6 @@
     transition: all 0.25s ease;
     z-index: 200;
     user-select: none;
-    backdrop-filter: blur(8px);
 }
 
 .nav-arrow:hover {

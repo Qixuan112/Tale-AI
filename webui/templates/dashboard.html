@@ -672,7 +672,7 @@
             }
             // 角色人设：检查 character.yaml 是否有内容（走 api 排查）
             var p1 = fetch('/api/config/character/raw').then(function(r) { return r.text(); }).then(function(text) {
-                if (text && text.trim().length > 50 && text.indexOf('ChineseName') !== -1 && text.indexOf("''") === -1) {
+                if (text && /ChineseName/.test(text) && !/ChineseName\s*:\s*(['"])\1/.test(text)) {
                     if (charCheck) { charCheck.textContent = '✅'; qsChar.classList.add('done'); }
                 }
                 return true;

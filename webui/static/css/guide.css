@@ -7,26 +7,26 @@
 
 /* ---- CSS 自定义属性 ---- */
 :root {
-    --vn-accent: rgba(80, 60, 160, 1);
-    --vn-accent-hover: rgba(100, 75, 200, 1);
-    --vn-accent-light: rgba(160, 120, 255, 1);
-    --vn-text-primary: #e8e8f0;
+    --vn-accent: #C56A1C;
+    --vn-accent-hover: #B05D16;
+    --vn-accent-light: #FDF2E8;
+    --vn-text-primary: #3A2A2A;
     --vn-text-white: #fff;
-    --vn-text-muted: rgba(255, 255, 255, 0.4);
-    --vn-text-secondary: rgba(255, 255, 255, 0.7);
+    --vn-text-muted: rgba(60, 40, 40, 0.5);
+    --vn-text-secondary: rgba(60, 40, 40, 0.75);
     --vn-bg-overlay: #000;
-    --vn-bg-dialog: rgba(10, 10, 30, 0.88);
-    --vn-bg-element: rgba(255, 255, 255, 0.08);
-    --vn-border-default: rgba(255, 255, 255, 0.12);
-    --vn-border-hover: rgba(255, 255, 255, 0.22);
-    --vn-state-success: rgba(16, 185, 129, 1);
-    --vn-state-danger: #ef4444;
-    --vn-shadow: rgba(0, 0, 0, 0.5);
-    --vn-accent-90: rgba(80, 60, 160, 0.9);
-    --vn-accent-80: rgba(80, 60, 160, 0.8);
-    --vn-accent-70: rgba(80, 60, 160, 0.7);
-    --vn-accent-40: rgba(80, 60, 160, 0.4);
-    --vn-accent-20: rgba(80, 60, 160, 0.2);
+    --vn-bg-dialog: rgba(240, 230, 230, 0.88);
+    --vn-bg-element: rgba(200, 180, 180, 0.15);
+    --vn-border-default: rgba(200, 180, 180, 0.35);
+    --vn-border-hover: rgba(180, 160, 160, 0.5);
+    --vn-state-success: #5E9E5E;
+    --vn-state-danger: #C07070;
+    --vn-shadow: rgba(60, 40, 40, 0.3);
+    --vn-accent-90: rgba(197, 106, 28, 0.9);
+    --vn-accent-80: rgba(197, 106, 28, 0.8);
+    --vn-accent-70: rgba(197, 106, 28, 0.7);
+    --vn-accent-40: rgba(197, 106, 28, 0.4);
+    --vn-accent-20: rgba(197, 106, 28, 0.2);
 }
 
 /* ---- 全屏覆盖层 ---- */
@@ -35,7 +35,7 @@
     inset: 0;
     z-index: 9999;
     display: none;
-    background: var(--vn-bg-overlay);
+    background: transparent;
     overflow: hidden;
     user-select: none;
     -webkit-user-select: none;
@@ -52,16 +52,16 @@
 .vn-scene-gradient {
     position: absolute;
     inset: 0;
-    /* 默认场景渐变：暮色室内，后续可替换为背景图 */
-    background: linear-gradient(
-        180deg,
-        #1a1a2e 0%,
-        #16213e 15%,
-        #2d2d44 30%,
-        #3d3d5c 50%,
-        #2a2a3e 70%,
-        #1a1a2e 100%
-    );
+    /* 用面板背景图 + 毛玻璃代替旧紫色渐变 */
+    background: url('/static/img/misty_rose_v2.png') center / cover fixed;
+}
+.vn-scene-gradient::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(240, 230, 230, 0.45);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
 }
 /* 覆盖层：底部渐暗以突出对话框 */
 .vn-background::after {
@@ -71,7 +71,7 @@
     left: 0;
     right: 0;
     height: 38%;
-    background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.4) 50%, rgba(0,0,0,0.75) 100%);
+    background: linear-gradient(180deg, transparent 0%, rgba(240,230,230,0.3) 50%, rgba(232,216,216,0.8) 100%);
     pointer-events: none;
 }
 
@@ -123,6 +123,8 @@
 /* ---- 对话框 ---- */
 .vn-textbox {
     background: var(--vn-bg-dialog);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     border: 1px solid var(--vn-border-default);
     border-radius: 6px;
     padding: 28px 24px 18px;
