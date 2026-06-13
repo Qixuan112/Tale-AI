@@ -367,7 +367,7 @@
     flex: 1;
     position: relative;
     padding-left: 12px;
-    border-left: 2px solid #bfdbfe;
+    border-left: 2px solid var(--accent);
 }
 
 .schedule-title {
@@ -467,8 +467,8 @@
 
 /* 新手快速开始卡片 */
 .quickstart-card {
-    background: linear-gradient(135deg, var(--accent-light, #f0eeff), var(--card-bg, #fff));
-    border: 1px solid var(--accent, #6c5ce7);
+    background: linear-gradient(135deg, var(--accent-light), var(--card-bg));
+    border: 1px solid var(--accent);
     border-radius: 14px;
     padding: 16px 20px;
     margin-bottom: 20px;
@@ -483,12 +483,12 @@
 .qs-step {
     display: flex; align-items: center; gap: 8px;
     padding: 6px 10px; border-radius: 8px;
-    background: var(--bg-primary, #fff); text-decoration: none;
+    background: var(--bg-primary); text-decoration: none;
     color: var(--text-primary); font-size: 13px;
-    border: 1px solid var(--border, #e2e8f0);
+    border: 1px solid var(--border);
     transition: all 0.2s;
 }
-.qs-step:hover { border-color: var(--accent, #6c5ce7); background: var(--accent-light, #f5f3ff); }
+.qs-step:hover { border-color: var(--accent); background: var(--accent-light); }
 .qs-check { font-size: 14px; width: 20px; text-align: center; flex-shrink: 0; }
 .qs-step.done { opacity: 0.6; }
 .qs-step.done .qs-check { opacity: 0.5; }

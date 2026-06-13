@@ -6,54 +6,67 @@
 }
 
 :root {
-    /* 暗色主题（默认） */
-    --bg-primary: #0b0f18;
-    --bg-secondary: #0f1117;
-    --bg-tertiary: #1a1f2b;
-    --bg-hover: #232837;
-    --bg-active: #2a3142;
+    /* Misty Rose — 莫兰迪雾感色系（默认） */
+    --bg-primary: #F0E6E6;
+    --bg-secondary: #E8D8D8;
+    --bg-tertiary: #DDD0D2;
+    --bg-hover: #F5EDED;
+    --bg-active: #E8D0D0;
 
-    --text-primary: #e8eaf0;
-    --text-secondary: #9ca3af;
-    --text-muted: #6b7280;
+    --text-primary: #2D2D2D;
+    --text-secondary: #6B5C5C;
+    --text-muted: #A89898;
 
-    --accent: #60a5fa;
-    --accent-hover: #3b82f6;
-    --accent-light: #1e3a8a;
-    --success: #34d399;
-    --success-light: #064e3b;
-    --warning: #fbbf24;
-    --danger: #f87171;
+    --accent: #E67E22;
+    --accent-hover: #D4721E;
+    --accent-light: #FDF2E8;
+    --success: #7EB87E;
+    --success-light: #E8F0E8;
+    --warning: #D4A84B;
+    --danger: #D48989;
 
-    --border: #1f2937;
-    --border-light: #374151;
+    --border: #D5C8C8;
+    --border-light: #E5D8D8;
 
     --sidebar-width: 240px;
     --topbar-height: 64px;
+    --card-bg: rgba(255,255,255,0.35);
+    --text-tertiary: #8A7A7A;
+    --warning-bg: #F5EDD0;
+    --warning-text: #8A7030;
+    --accent-alpha-15: rgba(230,126,34,0.12);
+    --accent-alpha-25: rgba(230,126,34,0.22);
 }
 
 /* 亮色主题 */
 [data-theme="light"] {
-    --bg-primary: #f3f4f6;
-    --bg-secondary: #ffffff;
-    --bg-tertiary: #f9fafb;
-    --bg-hover: #eff6ff;
-    --bg-active: #dbeafe;
+    --bg-primary: #F7F0F0;
+    --bg-secondary: #FFFFFF;
+    --bg-tertiary: #FAF5F5;
+    --bg-hover: #FDF5F5;
+    --bg-active: #F5E8E8;
 
-    --text-primary: #111827;
-    --text-secondary: #4b5563;
-    --text-muted: #9ca3af;
+    --text-primary: #2D2D2D;
+    --text-secondary: #6B5C5C;
+    --text-muted: #A89898;
 
-    --accent: #2563eb;
-    --accent-hover: #1d4ed8;
-    --accent-light: #dbeafe;
-    --success: #10b981;
-    --success-light: #ecfdf5;
-    --warning: #f59e0b;
-    --danger: #ef4444;
+    --accent: #E67E22;
+    --accent-hover: #D4721E;
+    --accent-light: #FDF2E8;
+    --success: #7EB87E;
+    --success-light: #E8F0E8;
+    --warning: #D4A84B;
+    --danger: #D48989;
 
-    --border: #e5e7eb;
-    --border-light: #f3f4f6;
+    --border: #E5D8D8;
+    --border-light: #F0E8E8;
+
+    --card-bg: rgba(255,255,255,0.6);
+    --text-tertiary: #A89898;
+    --warning-bg: #F5EDD0;
+    --warning-text: #8A7030;
+    --accent-alpha-15: rgba(230,126,34,0.08);
+    --accent-alpha-25: rgba(230,126,34,0.15);
 }
 
 html, body {
@@ -63,6 +76,10 @@ html, body {
     line-height: 1.5;
     color: var(--text-primary);
     background: var(--bg-primary);
+    background-image: url('/static/img/misty_rose_v2.png');
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
     overflow: hidden;
 }
 
@@ -76,7 +93,9 @@ html, body {
 /* ===== 侧边栏 ===== */
 .sidebar {
     width: var(--sidebar-width);
-    background: var(--bg-secondary);
+    background: rgba(255,255,255,0.2);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
@@ -94,7 +113,7 @@ html, body {
 .logo-box {
     width: 32px;
     height: 32px;
-    background: #111827;
+    background: var(--accent);
     color: #fff;
     border-radius: 6px;
     display: flex;
@@ -196,14 +215,16 @@ html, body {
     position: absolute;
     left: 100%;
     bottom: 0;
-    background: var(--bg-secondary);
+    background: rgba(255,255,255,0.25);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 6px;
     min-width: 180px;
     display: none;
     z-index: 100;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
     flex-direction: column;
     gap: 2px;
 }
@@ -310,13 +331,15 @@ html, body {
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background: var(--bg-primary);
+    background: transparent;
 }
 
 /* ===== 顶部栏 ===== */
 .topbar {
     height: var(--topbar-height);
-    background: var(--bg-secondary);
+    background: rgba(255,255,255,0.15);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
@@ -464,13 +487,13 @@ html, body {
 }
 
 .btn-danger {
-    background: rgba(239, 68, 68, 0.1);
+    background: rgba(212, 137, 137, 0.12);
     border-color: var(--danger);
     color: var(--danger);
 }
 
 .btn-danger:hover {
-    background: rgba(239, 68, 68, 0.18);
+    background: rgba(212, 137, 137, 0.2);
 }
 
 input, textarea, select {

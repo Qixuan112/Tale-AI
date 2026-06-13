@@ -24,7 +24,7 @@
                     titleDefault: '自由编辑',
                     subtitleKey: 'card.char.rawPersonaDesc',
                     subtitleDefault: '用你自己的话描述角色人格，随意写',
-                    color: '#f59e0b',
+                    color: '#D4A84B',
                     fields: [
                         { key: 'raw_persona', labelKey: 'field.char.rawPersona', labelDefault: '人格描述', type: 'textarea', placeholder: '用自然语言描述你的角色...\n\n比如：\n我是初念（Aurora），17岁，一个温柔又有点小腹黑的女孩子。\n我喜欢听雨声、看星星、写日记。\n我说话简短，一般不超过3-5个分条...' },
                     ]
@@ -36,7 +36,7 @@
                     titleDefault: '基本信息',
                     subtitleKey: 'card.char.basicInfoDesc',
                     subtitleDefault: '角色的身份标识',
-                    color: '#6366f1',
+                    color: '#A0A8D0',
                     fields: [
                         { key: 'character.ChineseName', labelKey: 'field.char.ChineseName', labelDefault: '中文名', type: 'text', placeholder: '角色的中文名字' },
                         { key: 'character.EnglishName', labelKey: 'field.char.EnglishName', labelDefault: '英文名', type: 'text', placeholder: '角色的英文名字' },
@@ -53,7 +53,7 @@
                     titleDefault: '语言偏好',
                     subtitleKey: 'card.char.languageDesc',
                     subtitleDefault: '角色的语言习惯',
-                    color: '#8b5cf6',
+                    color: '#B8A0C0',
                     fields: [
                         { key: 'character.language.primary', labelKey: 'field.char.langPrimary', labelDefault: '主要语言', type: 'text', placeholder: 'Chinese / English / Japanese' },
                         { key: 'character.language.style', labelKey: 'field.char.langStyle', labelDefault: '语言风格', type: 'text', placeholder: 'casual / formal / cute' },
@@ -66,7 +66,7 @@
                     titleDefault: '外貌与性格',
                     subtitleKey: 'card.char.personalityDesc',
                     subtitleDefault: '角色的形象与内在特征',
-                    color: '#ec4899',
+                    color: '#D4A0A0',
                     fields: [
                         { key: 'character.appearance', labelKey: 'field.char.appearance', labelDefault: '外貌', type: 'textarea', placeholder: '描述角色的外貌特征...' },
                         { key: 'character.views', labelKey: 'field.char.views', labelDefault: '世界观', type: 'textarea', placeholder: '角色对世界的看法...' },
@@ -82,7 +82,7 @@
                     titleDefault: '对话风格',
                     subtitleKey: 'card.char.dialogueDesc',
                     subtitleDefault: '角色的语言表达方式',
-                    color: '#f59e0b',
+                    color: '#D4A84B',
                     fields: [
                         { key: 'character.dialogue_style_imitation', labelKey: 'field.char.styleImitation', labelDefault: '风格示例', type: 'array', placeholder: '添加对话风格示例' },
                     ]
@@ -99,7 +99,7 @@
                     titleDefault: '机器人行为',
                     subtitleKey: 'card.behavior.botDesc',
                     subtitleDefault: '消息处理与响应参数',
-                    color: '#10b981',
+                    color: '#7EB87E',
                     fields: [
                         { key: 'bot.max_memory_length', labelKey: 'field.behavior.memoryLen', labelDefault: '记忆长度', type: 'number', placeholder: '记住的消息条数', descKey: 'field.behavior.memoryLenDesc', descDefault: '角色能记住的最大消息数' },
                         { key: 'bot.max_message_interval', labelKey: 'field.behavior.msgInterval', labelDefault: '消息间隔', type: 'number', placeholder: '秒', descKey: 'field.behavior.msgIntervalDesc', descDefault: '回复消息的间隔时间（秒）' },
@@ -118,7 +118,7 @@
                     titleDefault: '个性化',
                     subtitleKey: 'card.behavior.selfieDesc',
                     subtitleDefault: '头像与外观设置',
-                    color: '#f472b6',
+                    color: '#D4A0A0',
                     fields: [
                         { key: 'selfie.path', labelKey: 'field.behavior.selfiePath', labelDefault: '头像路径', type: 'text', placeholder: '自定义头像文件路径，留空使用默认' },
                     ]
@@ -130,7 +130,7 @@
                     titleDefault: '唤醒设置',
                     subtitleKey: 'card.behavior.wakeDesc',
                     subtitleDefault: '群聊中触发机器人响应的方式',
-                    color: '#f97316',
+                    color: '#E6A050',
                     fields: [
                         {
                             key: 'wake.enable_keyword_wake',
@@ -168,7 +168,7 @@
             dynamicItemSchema: {
                 idKey: null,  // 使用对象的顶层 key 作为 ID
                 label: '适配器',
-                color: '#06b6d4',
+                color: '#80B8C0',
                 titleKey: null,  // 使用 key 名作为标题
                 fields: [
                     { key: 'enabled', labelKey: 'field.platform.enabled', labelDefault: '启用', type: 'boolean' },
@@ -192,7 +192,7 @@
             dynamicItemSchema: {
                 idKey: null,
                 label: '服务',
-                color: '#3b82f6',
+                color: '#90A8D0',
                 titleKey: null,
                 fields: [
                     { key: 'type', labelKey: 'field.service.type', labelDefault: '服务类型', type: 'select', options: ['llm', 'tts', 'image'] },
@@ -216,7 +216,7 @@
                     titleDefault: '模型路由',
                     subtitleKey: 'card.routing.desc',
                     subtitleDefault: '为不同 LLM 选择提供商与模型',
-                    color: '#f59e0b',
+                    color: '#D4A84B',
                     fields: [
                         { key: 'main_llm.provider', labelKey: 'field.routing.mainLLM', labelDefault: '主对话模型', type: 'select', placeholder: '提供商名称' },
                         { key: 'main_llm.model', labelKey: 'field.routing.mainLLMModel', labelDefault: '模型', type: 'routing-model', providerField: 'main_llm.provider' },
@@ -1035,7 +1035,7 @@ window.fetchRoutingModels = function (providerName, onSelect) {
     overlay.innerHTML = '<div class="modal-dialog" style="max-width:520px;">'
         + '<div class="modal-dialog-header">' + (window.t('field.service.fetchModels') || '选择模型') + ' - ' + escProvider + '</div>'
         + '<div class="modal-dialog-body" style="min-height:100px;">'
-        + '<input type="text" id="routingModelSearch-' + escProvider + '" placeholder="' + (window.t('common.search', '搜索模型...')) + '" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:14px;background:var(--bg);color:var(--text);margin-bottom:8px;">'
+        + '<input type="text" id="routingModelSearch-' + escProvider + '" placeholder="' + (window.t('common.search', '搜索模型...')) + '" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:14px;background:var(--bg-primary);color:var(--text-primary);margin-bottom:8px;">'
         + '<div id="routingModelList-' + escProvider + '" style="max-height:320px;overflow-y:auto;"></div>'
         + '</div>'
         + '<div class="modal-dialog-footer">'
@@ -1118,7 +1118,7 @@ window.fetchModels = function (providerName) {
     overlay.innerHTML = '<div class="modal-dialog" style="max-width:520px;">'
         + '<div class="modal-dialog-header">' + (window.t('field.service.fetchModels') || '选择模型') + ' - ' + escProvider + '</div>'
         + '<div class="modal-dialog-body" style="min-height:100px;">'
-        + '<input type="text" id="modelSearchModal-' + escProvider + '" placeholder="' + (window.t('common.search', '搜索模型...')) + '" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:14px;background:var(--bg);color:var(--text);margin-bottom:8px;">'
+        + '<input type="text" id="modelSearchModal-' + escProvider + '" placeholder="' + (window.t('common.search', '搜索模型...')) + '" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:14px;background:var(--bg-primary);color:var(--text-primary);margin-bottom:8px;">'
         + '<div id="modelListModal-' + escProvider + '" style="max-height:320px;overflow-y:auto;"></div>'
         + '</div>'
         + '<div class="modal-dialog-footer">'
