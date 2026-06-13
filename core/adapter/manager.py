@@ -249,18 +249,19 @@ class AdapterManager:
         adapter = adapter_class(adapter_config, self.event_callback)
         adapter.adapter_id = adapter_id
 
-        # 启动适配器
-        await adapter.start()
-
+        # 先注册到 _adapters 和 platform 索引，再启动
+        # 避免竞态：start() 内部可能立即收到消息触发回复，
+        # 回复路由需要 _adapters 中已有该实例
         self._adapters[adapter_id] = adapter
         self._enabled_adapters.append(adapter_id)
-
-        # 更新 platform 索引
         platform_key = adapter.platform.value
         if platform_key not in self._platform_index:
             self._platform_index[platform_key] = []
         if adapter_id not in self._platform_index[platform_key]:
             self._platform_index[platform_key].append(adapter_id)
+
+        # 启动适配器
+        await adapter.start()
 
         logger.info(f"Started adapter: {adapter_id} (platform={platform_key})")
         return True
