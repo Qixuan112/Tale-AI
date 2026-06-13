@@ -1,6 +1,6 @@
 import asyncio
 import json
-import threading
+from collections import OrderedDict
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
@@ -16,6 +16,10 @@ from ....utils import get_logger
 from .napcat_client import NapCatWebSocketClient
 
 logger = get_logger(__name__)
+
+# 去重窗口大小（LRU 淘汰）
+_DEDUP_MAX = 1000
+_DEDUP_TRIM = 500
 
 
 class QQAdapter(BaseAdapter):
@@ -49,16 +53,15 @@ class QQAdapter(BaseAdapter):
         self.bot_uin = self.get_config("bot_uin") or self.get_config("bot_pid", "")
         self.auto_reconnect = self.get_config("auto_reconnect", True)
 
-        # 消息去重
-        self._seen_msg_ids: set[str] = set()
-        self._seen_fingerprints: set[str] = set()
-        self._dedup_lock = threading.Lock()  # 用于保障 set 操作的原子性
+        # 消息去重（OrderedDict 实现 FIFO/LRU 语义）
+        self._seen_msg_ids: OrderedDict[str, None] = OrderedDict()
+        self._seen_fingerprints: OrderedDict[str, None] = OrderedDict()
 
         # 创建 NapCatWebSocketClient
         self.client = NapCatWebSocketClient()
         self.client.set_message_callback(self._on_raw_message)
 
-        # 在后台运行 client（run 方法会阻塞到连接断开）
+        # 在后台运行 client（通过 _run_done 观察结果）
         self._client_task = asyncio.create_task(
             self.client.run(
                 bot_uin=self.bot_uin,
@@ -67,21 +70,18 @@ class QQAdapter(BaseAdapter):
             )
         )
 
-        # 等待登录成功事件（最多 10 秒）
+        # 等待 client.run 完成（成功或失败），最多 20 秒
         self._running = True
         try:
-            await asyncio.wait_for(self.client.login_success_event.wait(), timeout=10)
-            logger.info(f"[QQ] Adapter started, connected to {self.ws_url}")
-        except asyncio.TimeoutError:
-            if self.client.websocket:
-                logger.info(
-                    f"[QQ] Adapter started, connected to {self.ws_url} "
-                    "(login event pending)"
-                )
+            ok = await asyncio.wait_for(self.client._run_done, timeout=20)
+            if ok:
+                logger.info(f"[QQ] Adapter started, connected to {self.ws_url}")
             else:
-                logger.warning(
-                    f"[QQ] Adapter may not be connected to {self.ws_url}"
-                )
+                logger.warning(f"[QQ] Adapter startup failed (login check)")
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"[QQ] Adapter start timeout (ws connected but login pending)"
+            )
 
     async def stop(self):
         """停止QQ适配器"""
@@ -122,27 +122,29 @@ class QQAdapter(BaseAdapter):
 
         # 去重（message_id 维度）
         msg_id = event.message_id
-        with self._dedup_lock:
-            if msg_id and msg_id in self._seen_msg_ids:
-                logger.debug(f"[QQ] Duplicate message (id={msg_id}), skipped")
-                return
+        if msg_id and msg_id in self._seen_msg_ids:
+            logger.debug(f"[QQ] Duplicate message (id={msg_id}), skipped")
+            return
 
-            fp = (
-                f"{event.message_id}:{event.sender.id}:"
-                f"{event.content.text or ''}"
+        # fingerprint 去重（不含 message_id，用于捕获内容相同的重发）
+        fp = (
+            f"{event.sender.id}:{event.content.text or ''}"
+        )
+        if fp in self._seen_fingerprints:
+            logger.debug("[QQ] Duplicate message (fingerprint matched), skipped")
+            return
+
+        if msg_id:
+            self._seen_msg_ids[msg_id] = None
+            if len(self._seen_msg_ids) > _DEDUP_MAX:
+                self._seen_msg_ids = OrderedDict(
+                    list(self._seen_msg_ids.items())[-_DEDUP_TRIM:]
+                )
+        self._seen_fingerprints[fp] = None
+        if len(self._seen_fingerprints) > _DEDUP_MAX:
+            self._seen_fingerprints = OrderedDict(
+                list(self._seen_fingerprints.items())[-_DEDUP_TRIM:]
             )
-            if msg_id:
-                self._seen_msg_ids.add(msg_id)
-                if len(self._seen_msg_ids) > 1000:
-                    self._seen_msg_ids = set(list(self._seen_msg_ids)[-500:])
-
-            if fp in self._seen_fingerprints:
-                logger.debug("[QQ] Duplicate message (fingerprint matched), skipped")
-                return
-
-            self._seen_fingerprints.add(fp)
-            if len(self._seen_fingerprints) > 1000:
-                self._seen_fingerprints = set(list(self._seen_fingerprints)[-500:])
 
         # 异步触发事件（不阻塞消息接收）
         task = asyncio.create_task(self.emit_event(event))
@@ -166,8 +168,8 @@ class QQAdapter(BaseAdapter):
         group_id = raw_event.get("group_id")
         message_id = str(raw_event.get("message_id", ""))
 
-        # 解析消息内容
-        content = await self._parse_message_content(raw_event.get("message", []))
+        # 解析消息内容（纯 CPU 解析，保持 sync）
+        content = self._parse_message_content(raw_event.get("message", []))
 
         # 确定事件类型
         if message_type == "group":
@@ -228,7 +230,7 @@ class QQAdapter(BaseAdapter):
                     result[key] = content[key]
         return result
 
-    async def _parse_message_content(self, message: Any) -> MessageContent:
+    def _parse_message_content(self, message: Any) -> MessageContent:
         """解析OneBot消息段"""
         text_parts = []
         images = []
