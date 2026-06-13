@@ -48,6 +48,10 @@ class FaissVectorStore:
         import faiss
         if self._index is not None and self._index.ntotal > 0:
             faiss.write_index(self._index, str(self._index_path))
+        else:
+            # 无可写入的数据，清理过期文件
+            if self._index_path.exists():
+                self._index_path.unlink()
         with open(self._mapping_path, "w", encoding="utf-8") as f:
             json.dump(self._chunks, f, ensure_ascii=False, indent=2)
 
@@ -59,13 +63,25 @@ class FaissVectorStore:
             embeddings: (N, D) float32 数组
             chunk_records: 分块元数据列表，每项包含 chunk_id, doc_id, text, metadata
         """
+        if not isinstance(embeddings, np.ndarray) or embeddings.dtype != np.float32:
+            raise ValueError("embeddings 必须是 float32 的 numpy 数组")
+        if embeddings.ndim != 2:
+            raise ValueError(f"embeddings 必须是 2D 数组，得到 {embeddings.ndim}D")
+        if embeddings.shape[0] != len(chunk_records):
+            raise ValueError(
+                f"embeddings 数量 ({embeddings.shape[0]}) 与 chunk_records ({len(chunk_records)}) 不匹配"
+            )
+        if embeddings.shape[1] != self._index.d:
+            raise ValueError(
+                f"embeddings 维度 ({embeddings.shape[1]}) 与索引维度 ({self._index.d}) 不匹配"
+            )
         self._index.add(embeddings)
         self._chunks.extend(chunk_records)
         self._save()
 
     def search(self, query_vec: np.ndarray, top_k: int = 5) -> List[Tuple[dict, float]]:
         """搜索相似分块，返回 [(chunk_dict, score), ...]"""
-        if self._index.ntotal == 0:
+        if self._index is None or self._index.ntotal == 0:
             return []
         distances, indices = self._index.search(query_vec.reshape(1, -1), min(top_k, self._index.ntotal))
         results = []

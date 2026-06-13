@@ -27,6 +27,28 @@ class TextChunker:
 
         for para in paragraphs:
             para_len = len(para)
+
+            # 如果单个段落超过 chunk_size，需要拆分
+            if para_len > self.chunk_size:
+                # 先提交当前累积的段落
+                if current:
+                    chunks.append("\n\n".join(current))
+                # 将超大段落按 chunk_size 拆分
+                start = 0
+                while start < para_len:
+                    end = min(start + self.chunk_size, para_len)
+                    slice_text = para[start:end]
+                    if start > 0:
+                        # 重叠前一 slice 的尾部
+                        overlap_start = max(0, start - self.overlap)
+                        if overlap_start < start:
+                            slice_text = para[overlap_start:end]
+                    chunks.append(slice_text)
+                    start = end
+                current = []
+                current_len = 0
+                continue
+
             if current_len + para_len <= self.chunk_size:
                 current.append(para)
                 current_len += para_len

@@ -31,8 +31,10 @@ class DocumentParser:
     def _parse_pdf(self, path: str) -> str:
         try:
             from pypdf import PdfReader
-        except ImportError:
-            raise ImportError("解析 PDF 需要 pypdf 库: pip install pypdf")
+        except ImportError as e:
+            raise ImportError(
+                "解析 PDF 需要 pypdf 库: pip install pypdf"
+            ) from e
         reader = PdfReader(path)
         parts = []
         for page in reader.pages:

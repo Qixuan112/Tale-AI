@@ -15,6 +15,9 @@ from ..utils import get_logger
 
 logger = get_logger(__name__)
 
+# RAG 注入上下文时使用的标记头，用于在 ChatLLM 中精准定位已注入的消息
+RAG_KNOWLEDGE_HEADER = "## 知识库参考信息"
+
 
 class KnowledgeManager:
     """知识库管理器（单例）"""
@@ -62,8 +65,8 @@ class KnowledgeManager:
             for store in self._stores.values():
                 try:
                     store.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("关闭 FAISS 索引时出错: %s", e)
             self._stores.clear()
             self._retrievers.clear()
 
@@ -150,7 +153,7 @@ class KnowledgeManager:
 
         # 向量化并添加索引
         if not self._embedder:
-            return
+            raise RuntimeError("Embedder 未初始化，请检查 API 密钥或 BGE 模型配置")
         chunk_texts = [c["text"] for c in chunk_records]
         embeddings = self._embedder.embed(chunk_texts)
         store.add(embeddings, chunk_records)
@@ -178,14 +181,15 @@ class KnowledgeManager:
 
     def delete_document(self, doc_id: str) -> bool:
         """删除文档"""
-        for kb_name, records in list(self._documents.items()):
-            for rec in list(records):
-                if rec.id == doc_id:
-                    records.remove(rec)
-                    self.rebuild_index(kb_name)
-                    self._save_document_index()
-                    logger.info("文档已删除: %s (从知识库 '%s')", rec.filename, kb_name)
-                    return True
+        with self._lock:
+            for kb_name, records in list(self._documents.items()):
+                for rec in list(records):
+                    if rec.id == doc_id:
+                        records.remove(rec)
+                        self.rebuild_index(kb_name)
+                        self._save_document_index()
+                        logger.info("文档已删除: %s (从知识库 '%s')", rec.filename, kb_name)
+                        return True
         return False
 
     def rebuild_index(self, kb_name: str):
@@ -228,6 +232,9 @@ class KnowledgeManager:
                 logger.warning("重建索引时解析文档 '%s' 失败: %s", rec.filename, e)
 
         if all_chunk_records:
+            if not self._embedder:
+                logger.error("重建索引失败：Embedder 未初始化")
+                return
             texts = [c["text"] for c in all_chunk_records]
             embeddings = self._embedder.embed(texts)
             store.rebuild_from_chunks(embeddings, all_chunk_records)
@@ -260,7 +267,7 @@ class KnowledgeManager:
             return ""
 
         lines = [
-            "\n## 知识库参考信息",
+            "\n" + RAG_KNOWLEDGE_HEADER,
             "以下内容来自知识库，请参考这些信息回答用户的问题：",
             "",
         ]
@@ -287,18 +294,19 @@ class KnowledgeManager:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
     def _load_document_index(self):
-        self._documents = {}
-        if self._document_index_path and self._document_index_path.exists():
-            try:
-                with open(self._document_index_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                from .models import DocumentRecord
-                for kb_name, records in data.items():
-                    self._documents[kb_name] = [
-                        DocumentRecord(**r) for r in records
-                    ]
-            except Exception as e:
-                logger.warning("加载文档索引失败: %s", e)
+        with self._lock:
+            self._documents = {}
+            if self._document_index_path and self._document_index_path.exists():
+                try:
+                    with open(self._document_index_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    from .models import DocumentRecord
+                    for kb_name, records in data.items():
+                        self._documents[kb_name] = [
+                            DocumentRecord(**r) for r in records
+                        ]
+                except Exception as e:
+                    logger.warning("加载文档索引失败: %s", e)
 
     # ---- 状态查询 ----
 

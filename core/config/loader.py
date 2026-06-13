@@ -246,8 +246,8 @@ class ConfigLoader:
             try:
                 from core.rag.knowledge_manager import knowledge_manager
                 knowledge_manager.initialize(self._knowledge_config, self._data_dir)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("初始化知识库管理器失败: %s", e)
 
     def _get_data_dir(self) -> str:
         """获取数据目录路径"""
@@ -505,6 +505,9 @@ class ConfigLoader:
         kbs_data = data.get("knowledge_bases", [])
         knowledge_bases = []
         for kb in kbs_data if isinstance(kbs_data, list) else []:
+            if not isinstance(kb, dict):
+                logger.warning("知识库配置项非 dict 类型，已跳过: %s", type(kb).__name__)
+                continue
             knowledge_bases.append(KnowledgeBaseConfig(
                 name=kb.get("name", "default"),
                 enabled=kb.get("enabled", True),

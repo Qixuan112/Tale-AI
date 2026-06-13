@@ -109,6 +109,7 @@
                     statusBadge.className = 'badge badge-' + d.status;
                     statusBadge.textContent = d.status === 'indexed' ? t('knowledge.indexed') : d.status;
                     header.appendChild(statusBadge);
+                    card.appendChild(header);
 
                     // meta
                     var meta = document.createElement('div');

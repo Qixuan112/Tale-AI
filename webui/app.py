@@ -1588,13 +1588,32 @@ def api_knowledge_upload(kb_name):
         if ext not in {".txt", ".md", ".pdf", ".csv"}:
             return jsonify({"ok": False, "error": f"不支持的文件类型: {ext}"}), 400
 
+        import re
+        # 安全化 kb_name（仅允许字母、数字、中划线、下划线）
+        safe_kb_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', kb_name)
+        if safe_kb_name != kb_name:
+            logger.warning("知识库名称包含不安全字符，已规范化: '%s' -> '%s'", kb_name, safe_kb_name)
+            kb_name = safe_kb_name
+
+        # 安全化文件名（剥离路径组件，防止路径穿越）
+        safe_filename = Path(file.filename).name
+        if safe_filename != file.filename:
+            logger.warning("文件名包含路径组件，已规范化: '%s' -> '%s'", file.filename, safe_filename)
+
         from core.rag.knowledge_manager import knowledge_manager
 
-        rag_docs_dir = Path(config_loader._data_dir) / "rag" / "documents" / kb_name
+        rag_docs_base = Path(config_loader._data_dir) / "rag" / "documents"
+        rag_docs_dir = rag_docs_base / kb_name
         upload_id = str(uuid.uuid4())
         dest_dir = rag_docs_dir / upload_id
         dest_dir.mkdir(parents=True, exist_ok=True)
-        dest_path = dest_dir / file.filename
+        dest_path = dest_dir / safe_filename
+
+        # 验证最终路径在预期范围内（防止路径穿越）
+        resolved = dest_path.resolve()
+        if not str(resolved).startswith(str(rag_docs_base.resolve())):
+            return jsonify({"ok": False, "error": "非法路径"}), 400
+
         file.save(str(dest_path))
 
         record = knowledge_manager.upload_document(kb_name, str(dest_path), file.filename)
