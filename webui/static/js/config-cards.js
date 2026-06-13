@@ -1103,6 +1103,7 @@ window.fetchRoutingModels = function (providerName, onSelect) {
             items[i].style.display = items[i].textContent.toLowerCase().indexOf(q) >= 0 ? '' : 'none';
         }
     });
+    }
 };
 
 // ===== 全局模型获取函数 =====
@@ -1186,6 +1187,7 @@ window.fetchModels = function (providerName) {
             items[i].style.display = items[i].textContent.toLowerCase().indexOf(q) >= 0 ? '' : 'none';
         }
     });
+    }
 };
 
 window.selectModel = function (providerName, modelId) {
