@@ -9,6 +9,8 @@ from .context import AgentContext, create_chat_context
 from .context.section import PromptSection
 from .provider import OpenAICompatibleProvider, provider_manager
 
+from ..rag.knowledge_manager import RAG_KNOWLEDGE_HEADER
+
 logger = get_logger(__name__)
 
 
@@ -60,6 +62,15 @@ class ChatLLM:
 
         # Add dynamic plan section that injects today's schedule
         self._add_plan_section()
+
+        # Initialize RAG knowledge base flag
+        self._rag_enabled = False
+        try:
+            from ..config.loader import config_loader
+            if config_loader.knowledge.enabled and config_loader.knowledge.inject_into_chat:
+                self._rag_enabled = True
+        except Exception as e:
+            logger.debug("RAG 初始化跳过: %s", e)
 
         # Build initial messages from context
         self.messages = list(self.context.build_messages_head(self.cache_strategy))
@@ -144,8 +155,31 @@ class ChatLLM:
         """
         发送消息并获取回复，自动维护上下文
         """
+        # RAG 检索：在 system 消息之后、conversation 之前注入知识库上下文
+        rag_system_msg = None
+        if self._rag_enabled:
+            try:
+                from ..rag.knowledge_manager import knowledge_manager
+                rag_text = knowledge_manager.retrieve(user_input)
+                if rag_text:
+                    rag_system_msg = {"role": "system", "content": rag_text}
+            except Exception as e:
+                logger.debug("RAG 检索失败: %s", e)
+
         # 挂起用户消息并获取当前上下文快照（短持有锁）
+        rag_injected = False
         with self._lock:
+            if rag_system_msg:
+                # 插入在所有 system 消息之后、对话历史之前
+                cut = 0
+                for m in self.messages:
+                    if m.get("role") == "system":
+                        cut += 1
+                    else:
+                        break
+                self.messages.insert(cut, rag_system_msg)
+                rag_injected = True
+
             self.messages.append({"role": "user", "content": user_input})
             self._trim_context()
             messages_snapshot = list(self.messages)
@@ -158,8 +192,13 @@ class ChatLLM:
             )
         except Exception as e:
             logger.error("ChatLLM API 调用失败: %s", e)
-            # API 失败时回滚已追加的 user 消息，避免孤立 user 轮次
+            # API 失败时回滚已追加的消息，避免孤立消息
             with self._lock:
+                if rag_injected:
+                    for i in range(len(self.messages) - 1, -1, -1):
+                        if self.messages[i].get("role") == "system" and RAG_KNOWLEDGE_HEADER in self.messages[i].get("content", ""):
+                            del self.messages[i]
+                            break
                 if self.messages and self.messages[-1].get("role") == "user":
                     self.messages.pop()
             raise
@@ -167,6 +206,11 @@ class ChatLLM:
         if response is None:
             logger.error("ChatLLM API 返回空响应")
             with self._lock:
+                if rag_injected:
+                    for i in range(len(self.messages) - 1, -1, -1):
+                        if self.messages[i].get("role") == "system" and RAG_KNOWLEDGE_HEADER in self.messages[i].get("content", ""):
+                            del self.messages[i]
+                            break
                 if self.messages and self.messages[-1].get("role") == "user":
                     self.messages.pop()
             raise RuntimeError("ChatLLM API 返回空响应")
@@ -175,6 +219,11 @@ class ChatLLM:
 
         # 重新获取锁，追加助手回复
         with self._lock:
+            if rag_injected:
+                self.messages = [
+                    m for m in self.messages
+                    if not (isinstance(m.get("content"), str) and RAG_KNOWLEDGE_HEADER in m["content"])
+                ]
             self.messages.append({"role": "assistant", "content": assistant_reply})
 
         return assistant_reply

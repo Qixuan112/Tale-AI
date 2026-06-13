@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Knowledge — Tale WebUI{% endblock %}
+{% block extra_css %}
+<style>
+    .page-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; }
+    .page-header h1 { font-size:1.4rem; font-weight:600; margin:0; }
+    .page-header .subtitle { font-size:0.85rem; color:var(--text-secondary); margin-top:4px; }
+    .state-loading { text-align:center; padding:48px; color:var(--text-secondary); }
+    .state-empty { text-align:center; padding:48px; color:var(--text-secondary); }
+
+    /* 状态指示 */
+    .kb-status { display:flex; align-items:center; gap:8px; margin-bottom:16px; padding:12px 16px; background:var(--card-bg); border:1px solid var(--border); border-radius:8px; }
+    .kb-status-dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+    .kb-status-dot.enabled { background:#10b981; }
+    .kb-status-dot.disabled { background:#ef4444; }
+
+    /* KB tabs */
+    .kb-tabs { display:flex; gap:8px; margin-bottom:16px; }
+    .kb-tab { padding:6px 16px; border-radius:8px; border:1px solid var(--border); background:var(--card-bg); cursor:pointer; font-size:0.85rem; transition:all 0.15s; }
+    .kb-tab.active { border-color:var(--accent); background:var(--accent); color:#fff; }
+    .kb-tab:hover:not(.active) { border-color:var(--accent); }
+
+    /* 上传区域 */
+    .kb-upload-bar { display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+    .kb-upload-area { border:2px dashed var(--border); border-radius:12px; padding:32px; text-align:center; margin-bottom:16px; transition:border-color 0.2s; cursor:pointer; }
+    .kb-upload-area:hover { border-color:var(--accent); }
+    .kb-upload-area.dragover { border-color:var(--accent); background:var(--accent-bg); }
+    .kb-upload-icon { font-size:2rem; color:var(--text-secondary); margin-bottom:8px; }
+    .kb-upload-text { font-size:0.9rem; color:var(--text-secondary); }
+    .kb-upload-hint { font-size:0.78rem; color:var(--text-tertiary); margin-top:4px; }
+
+    /* 文档列表 */
+    .kb-doc-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px,1fr)); gap:12px; margin-bottom:16px; }
+    .kb-doc-card { background:var(--card-bg); border:1px solid var(--border); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:8px; transition:border-color 0.2s; }
+    .kb-doc-card:hover { border-color:var(--accent); }
+    .kb-doc-header { display:flex; align-items:flex-start; justify-content:space-between; }
+    .kb-doc-name { font-size:0.9rem; font-weight:600; word-break:break-all; }
+    .kb-doc-meta { display:flex; flex-wrap:wrap; gap:8px; font-size:0.78rem; color:var(--text-secondary); }
+    .kb-doc-meta span { display:flex; align-items:center; gap:4px; }
+    .badge { display:inline-block; padding:2px 8px; border-radius:6px; font-size:0.72rem; font-weight:500; }
+    .badge-indexed { background:#d1fae5; color:#065f46; }
+    .badge-pending { background:#fef3c7; color:#92400e; }
+    .badge-error { background:#fee2e2; color:#991b1b; }
+    .badge-txt { background:#dbeafe; color:#1e40af; }
+    .badge-md { background:#ede9fe; color:#5b21b6; }
+    .badge-pdf { background:#fce7f3; color:#9d174d; }
+    .badge-csv { background:#d1fae5; color:#065f46; }
+    .btn-delete { background:transparent; border:1px solid #ef4444; color:#ef4444; padding:2px 10px; border-radius:6px; font-size:0.75rem; cursor:pointer; }
+    .btn-delete:hover { background:#fee2e2; }
+
+    /* 操作按钮 */
+    .kb-actions { display:flex; gap:8px; margin-bottom:16px; }
+
+    /* 测试检索 */
+    .kb-test-section { background:var(--card-bg); border:1px solid var(--border); border-radius:12px; padding:20px; }
+    .kb-test-section h3 { font-size:1rem; font-weight:600; margin:0 0 12px; }
+    .kb-test-row { display:flex; gap:8px; margin-bottom:12px; }
+    .kb-test-row input { flex:1; padding:8px 12px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--text); font-size:0.85rem; }
+    .kb-test-row input:focus { outline:none; border-color:var(--accent); }
+    .kb-test-results { padding:12px; background:var(--bg); border-radius:8px; white-space:pre-wrap; font-size:0.82rem; line-height:1.5; max-height:400px; overflow-y:auto; color:var(--text-secondary); }
+    .kb-test-empty { color:var(--text-tertiary); font-size:0.85rem; text-align:center; padding:24px; }
+
+    /* modal */
+    .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; display:flex; align-items:center; justify-content:center; }
+    .modal-card { background:var(--card-bg); border:1px solid var(--border); border-radius:12px; padding:24px; max-width:420px; width:90%; }
+    .modal-card h3 { margin:0 0 12px; font-size:1.1rem; }
+    .modal-card p { color:var(--text-secondary); font-size:0.9rem; line-height:1.5; margin:0 0 20px; }
+    .modal-actions { display:flex; gap:8px; justify-content:flex-end; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 data-i18n="knowledge.title">知识库管理</h1>
+        <p class="subtitle" data-i18n="knowledge.subtitle">上传文档、管理索引、测试检索效果</p>
+    </div>
+</div>
+
+<!-- 状态 -->
+<div class="kb-status" id="kbStatus">
+    <span class="kb-status-dot" id="kbStatusDot"></span>
+    <span id="kbStatusText" data-i18n="knowledge.loading">加载中...</span>
+</div>
+
+<!-- KB tabs -->
+<div class="kb-tabs" id="kbTabs"></div>
+
+<!-- 主面板 -->
+<div id="kbPanel">
+    <!-- 上传区域 -->
+    <div class="kb-upload-area" id="kbUploadArea">
+        <div class="kb-upload-icon">📄</div>
+        <div class="kb-upload-text" data-i18n="knowledge.uploadText">点击或拖拽文件到此处上传</div>
+        <div class="kb-upload-hint" data-i18n="knowledge.uploadHint">支持 .txt .md .pdf .csv</div>
+    </div>
+    <input type="file" id="kbFileInput" accept=".txt,.md,.pdf,.csv" style="display:none" multiple>
+
+    <!-- 操作 -->
+    <div class="kb-actions">
+        <button id="kbRebuildBtn" class="btn btn-warning" data-i18n="knowledge.rebuild">重建索引</button>
+    </div>
+
+    <!-- 文档列表 -->
+    <div id="kbDocList">
+        <div class="state-empty" id="kbEmpty" data-i18n="knowledge.noDocs">暂无文档</div>
+        <div class="kb-doc-grid" id="kbDocGrid" style="display:none"></div>
+    </div>
+
+    <!-- 测试检索 -->
+    <div class="kb-test-section">
+        <h3 data-i18n="knowledge.testTitle">测试检索</h3>
+        <div class="kb-test-row">
+            <input type="text" id="kbQueryInput" data-i18n-placeholder="knowledge.testQuery" placeholder="输入测试查询...">
+            <button id="kbTestBtn" class="btn btn-primary" data-i18n="knowledge.test">检索</button>
+        </div>
+        <div id="kbTestResults" class="kb-test-results" style="display:none"></div>
+        <div class="kb-test-empty" id="kbTestEmpty" data-i18n="knowledge.testEmpty">输入查询并点击检索</div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/knowledge.js') }}"></script>
+{% endblock %}
