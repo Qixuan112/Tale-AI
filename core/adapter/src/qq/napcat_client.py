@@ -326,11 +326,14 @@ class NapCatWebSocketClient:
 
         # 等待首次可用（最多 10 秒，后续不再等待）
         if not self._send_ready:
-            try:
-                await asyncio.wait_for(self._run_done, timeout=10)
-            except (asyncio.TimeoutError, asyncio.InvalidStateError):
-                logger.error("send_action 失败: 尚未就绪")
-                return None
+            # 如果 websocket 已连接但尚未标记就绪（run() 正在验证登录），
+            # 直接放行，避免与 _run_done 形成死锁
+            if self.websocket is None:
+                try:
+                    await asyncio.wait_for(self._run_done, timeout=10)
+                except (asyncio.TimeoutError, asyncio.InvalidStateError):
+                    logger.error("send_action 失败: 尚未就绪")
+                    return None
 
         echo = str(uuid.uuid4())
         future = asyncio.get_running_loop().create_future()
