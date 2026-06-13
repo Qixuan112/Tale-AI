@@ -187,7 +187,11 @@ class NapCatWebSocketClient:
 
         data = login_info.get("data") or {}
         logged_in_uin = str(data.get("user_id", ""))
-        if logged_in_uin != bot_uin:
+        if not bot_uin:
+            # 未配置 bot_uin，自动使用 NapCat 当前登录账号
+            logger.info(f"未配置 bot_uin，自动使用 NapCat 登录账号: {logged_in_uin}")
+            self.self_id = logged_in_uin
+        elif logged_in_uin != bot_uin:
             logger.error(
                 f"配置的账号 {bot_uin} 与 NapCat 登录账号 {logged_in_uin} 不一致"
             )
