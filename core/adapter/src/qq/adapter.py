@@ -324,16 +324,20 @@ class QQAdapter(BaseAdapter):
                 params = {"user_id": int(target_id), "message": message_segments}
 
             if not self.client.websocket:
-                logger.info("[QQ] WebSocket not connected")
+                logger.warning("[QQ] send_message 失败: WebSocket 未连接 (target=%s)", target_id)
                 return False
 
             result = await self.client.send_action(api_action, params)
             if result is None:
-                logger.info("[QQ] Failed to send message (no response)")
+                logger.warning(
+                    "[QQ] send_message 失败: 未收到响应 (target=%s, action=%s)",
+                    target_id, api_action,
+                )
                 return False
             if result.get("status") != "ok":
-                logger.info(
-                    f"[QQ] Message send failed: {result.get('retcode', 'unknown')}"
+                logger.warning(
+                    "[QQ] send_message 失败: status=%s, retcode=%s (target=%s)",
+                    result.get("status"), result.get("retcode", "unknown"), target_id,
                 )
                 return False
 
