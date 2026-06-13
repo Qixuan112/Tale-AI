@@ -117,22 +117,6 @@ class FaissVectorStore:
     def get_document_chunks(self, doc_id: str) -> List[dict]:
         return [c for c in self._chunks if c.get("doc_id") == doc_id]
 
-    def remove_document(self, doc_id: str):
-        """移除指定文档的所有分块，触发索引重建"""
-        remaining = [c for c in self._chunks if c.get("doc_id") != doc_id]
-        if len(remaining) == len(self._chunks):
-            return
-        # 重建索引（需要调用者提供 embedding，或外部重新索引）
-        self._chunks = remaining
-        # 标记需要重建，调用方负责 rebuild
-        self._index = None
-        self._save_mapping_only()
-
-    def _save_mapping_only(self):
-        if self._mapping_path:
-            with open(self._mapping_path, "w", encoding="utf-8") as f:
-                json.dump(self._chunks, f, ensure_ascii=False, indent=2)
-
     def rebuild_from_chunks(self, embeddings: np.ndarray, chunk_records: List[dict]):
         """从已有的分块列表重建 FAISS 索引和元数据"""
         import faiss

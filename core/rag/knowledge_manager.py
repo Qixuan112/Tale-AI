@@ -186,11 +186,19 @@ class KnowledgeManager:
                 for rec in list(records):
                     if rec.id == doc_id:
                         records.remove(rec)
-                        self.rebuild_index(kb_name)
                         self._save_document_index()
                         logger.info("文档已删除: %s (从知识库 '%s')", rec.filename, kb_name)
-                        return True
-        return False
+                        break
+                else:
+                    continue
+                break
+            else:
+                return False
+
+        # 在锁外重建索引(rebuild_index 涉及网络 embedding 调用,
+        # 但这也意味着并发 upload_document 可能在重建期间新增向量)
+        self.rebuild_index(kb_name)
+        return True
 
     def rebuild_index(self, kb_name: str):
         """重建知识库索引"""

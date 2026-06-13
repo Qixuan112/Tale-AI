@@ -25,6 +25,12 @@ class BaseEmbedder(ABC):
 class OpenAIEmbedder(BaseEmbedder):
     """OpenAI Compatible Embedding API"""
 
+    KNOWN_DIMENSIONS = {
+        "text-embedding-3-small": 1536,
+        "text-embedding-3-large": 3072,
+        "text-embedding-ada-002": 1536,
+    }
+
     def __init__(self, api_key: str, base_url: str = "",
                  model: str = "text-embedding-3-small",
                  dimensions: Optional[int] = None):
@@ -36,14 +42,28 @@ class OpenAIEmbedder(BaseEmbedder):
         import openai
         self._client = openai.OpenAI(api_key=api_key, base_url=base_url or None)
         self._model = model
-        # 优先使用显式配置的维度，否则首次 embed 时从结果推断
-        self._dim = dimensions
+        # 优先使用显式配置的维度，否则用已知模型映射表，最后通过探针请求获取
+        self._dim = dimensions or self.KNOWN_DIMENSIONS.get(model)
 
     @property
     def dimension(self) -> int:
         if self._dim is None:
-            raise RuntimeError("维度尚未初始化，请先调用 embed()")
+            # 模型不在已知映射表中，用一条短文本探针获取维度
+            probe = self._client.embeddings.create(input=["a"], model=self._model)
+            self._dim = len(probe.data[0].embedding)
         return self._dim
+
+    def _build_kwargs(self, input_batch: list) -> dict:
+        """构造传给 embeddings.create 的参数"""
+        kwargs: dict = {"input": input_batch, "model": self._model}
+        if self._dim is not None:
+            kwargs["dimensions"] = self._dim
+        return kwargs
+
+    def _l2_normalize(self, arr: np.ndarray) -> np.ndarray:
+        norms = np.linalg.norm(arr, axis=1, keepdims=True)
+        norms[norms == 0] = 1.0
+        return arr / norms
 
     def embed(self, texts: List[str]) -> np.ndarray:
         if not texts:
@@ -53,13 +73,14 @@ class OpenAIEmbedder(BaseEmbedder):
         all_vectors = []
         for i in range(0, len(texts), batch_size):
             batch = texts[i:i + batch_size]
-            resp = self._client.embeddings.create(input=batch, model=self._model)
+            resp = self._client.embeddings.create(**self._build_kwargs(batch))
             all_vectors.extend(r.embedding for r in resp.data)
         arr = np.array(all_vectors, dtype=np.float32)
         # 首次调用时从响应推断维度
         if self._dim is None and arr.shape[0] > 0:
             self._dim = arr.shape[1]
-        return arr
+        # 归一化使内积等价于余弦相似度（与 IndexFlatIP + BGEEmbedder 行为一致）
+        return self._l2_normalize(arr)
 
 
 class BGEEmbedder(BaseEmbedder):
