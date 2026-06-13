@@ -619,8 +619,9 @@ class TaleCore:
                             at_list.append(qq_id)
                     if at_list:
                         at_targets = at_list
-                # AI 可主动通过 <reply> 指定引用回复的消息 ID
-                reply_to = msg.reply_to or processed.message_id
+                # AI 可主动通过 <reply> 指定引用回复的消息 ID；
+                # 不写 <reply> 则不引用（而非默认引用当前消息）
+                reply_to = msg.reply_to or None
                 await self._send_reply(
                     adapter_instance or processed.platform.value,
                     target_id,
