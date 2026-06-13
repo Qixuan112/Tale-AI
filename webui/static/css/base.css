@@ -18,13 +18,13 @@
     --text-secondary: #6B5C5C;
     --text-muted: #A89898;
 
-    --accent: #E67E22;
-    --accent-hover: #D4721E;
+    --accent: #C56A1C;
+    --accent-hover: #B05D16;
     --accent-light: #FDF2E8;
-    --success: #7EB87E;
+    --success: #5E9E5E;
     --success-light: #E8F0E8;
     --warning: #D4A84B;
-    --danger: #D48989;
+    --danger: #C07070;
     /* 文字用语义色（高对比度变体，确保在白底上 ≥4.5:1） */
     --danger-text: #B05656;
     --success-text: #4E7E4E;
@@ -38,10 +38,10 @@
     --card-bg: rgba(255,255,255,0.35);
     --text-tertiary: #8A7A7A;
     --warning-bg: #F5EDD0;
-    --accent-alpha-15: rgba(230,126,34,0.12);
-    --accent-alpha-25: rgba(230,126,34,0.22);
-    --danger-alpha-12: rgba(212, 137, 137, 0.12);
-    --danger-alpha-20: rgba(212, 137, 137, 0.20);
+    --accent-alpha-15: rgba(197,106,28,0.12);
+    --accent-alpha-25: rgba(197,106,28,0.22);
+    --danger-alpha-12: rgba(192, 112, 112, 0.12);
+    --danger-alpha-20: rgba(192, 112, 112, 0.20);
 }
 
 /* 亮色主题 */
@@ -56,13 +56,13 @@
     --text-secondary: #6B5C5C;
     --text-muted: #A89898;
 
-    --accent: #E67E22;
-    --accent-hover: #D4721E;
+    --accent: #C56A1C;
+    --accent-hover: #B05D16;
     --accent-light: #FDF2E8;
-    --success: #7EB87E;
+    --success: #5E9E5E;
     --success-light: #E8F0E8;
     --warning: #D4A84B;
-    --danger: #D48989;
+    --danger: #C07070;
     --danger-text: #B05656;
     --success-text: #4E7E4E;
     --warning-text: #8A7030;
@@ -73,10 +73,10 @@
     --card-bg: rgba(255,255,255,0.6);
     --text-tertiary: #A89898;
     --warning-bg: #F5EDD0;
-    --accent-alpha-15: rgba(230,126,34,0.08);
-    --accent-alpha-25: rgba(230,126,34,0.15);
-    --danger-alpha-12: rgba(212, 137, 137, 0.12);
-    --danger-alpha-20: rgba(212, 137, 137, 0.20);
+    --accent-alpha-15: rgba(197,106,28,0.08);
+    --accent-alpha-25: rgba(197,106,28,0.15);
+    --danger-alpha-12: rgba(192, 112, 112, 0.12);
+    --danger-alpha-20: rgba(192, 112, 112, 0.20);
 }
 
 html, body {
