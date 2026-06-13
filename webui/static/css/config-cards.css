@@ -93,7 +93,7 @@
 
 .card-badge.ok { background: var(--accent-light); color: var(--success); }
 .card-badge.warn { background: var(--warning-bg); color: var(--warning-text); }
-.card-badge.error { background: rgba(212, 137, 137, 0.12); color: var(--danger); }
+.card-badge.error { background: var(--danger-alpha-12); color: var(--danger); }
 
 .card-collapse-icon {
     font-size: 12px;
@@ -942,7 +942,7 @@
     transform: translateX(-50%);
     padding: 10px 24px;
     border-radius: 8px;
-    background: var(--danger);
+    background: var(--accent);
     color: #fff;
     font-size: 13px;
     font-weight: 500;

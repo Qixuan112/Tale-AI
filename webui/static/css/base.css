@@ -5,8 +5,9 @@
     padding: 0;
 }
 
-:root {
-    /* Misty Rose — 莫兰迪雾感色系（默认） */
+:root,
+[data-theme="dark"] {
+    /* Misty Rose — 莫兰迪雾感色系（默认/暗色） */
     --bg-primary: #F0E6E6;
     --bg-secondary: #E8D8D8;
     --bg-tertiary: #DDD0D2;
@@ -36,6 +37,8 @@
     --warning-text: #8A7030;
     --accent-alpha-15: rgba(230,126,34,0.12);
     --accent-alpha-25: rgba(230,126,34,0.22);
+    --danger-alpha-12: rgba(212, 137, 137, 0.12);
+    --danger-alpha-20: rgba(212, 137, 137, 0.20);
 }
 
 /* 亮色主题 */
@@ -67,6 +70,8 @@
     --warning-text: #8A7030;
     --accent-alpha-15: rgba(230,126,34,0.08);
     --accent-alpha-25: rgba(230,126,34,0.15);
+    --danger-alpha-12: rgba(212, 137, 137, 0.12);
+    --danger-alpha-20: rgba(212, 137, 137, 0.20);
 }
 
 html, body {
@@ -487,13 +492,13 @@ html, body {
 }
 
 .btn-danger {
-    background: rgba(212, 137, 137, 0.12);
+    background: var(--danger-alpha-12);
     border-color: var(--danger);
     color: var(--danger);
 }
 
 .btn-danger:hover {
-    background: rgba(212, 137, 137, 0.2);
+    background: var(--danger-alpha-20);
 }
 
 input, textarea, select {
