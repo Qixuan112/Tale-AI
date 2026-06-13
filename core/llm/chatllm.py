@@ -66,7 +66,6 @@ class ChatLLM:
         # Initialize RAG knowledge base flag
         self._rag_enabled = False
         try:
-            from ..config.loader import config_loader
             if config_loader.knowledge.enabled and config_loader.knowledge.inject_into_chat:
                 self._rag_enabled = True
         except Exception as e:

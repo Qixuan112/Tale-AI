@@ -91,9 +91,9 @@
     flex-shrink: 0;
 }
 
-.card-badge.ok { background: #e6f7e6; color: #2e7d32; }
-.card-badge.warn { background: #fff3e0; color: #e65100; }
-.card-badge.error { background: #fce4ec; color: #c62828; }
+.card-badge.ok { background: var(--success-light); color: var(--success-text); }
+.card-badge.warn { background: var(--warning-bg); color: var(--warning-text); }
+.card-badge.error { background: var(--danger-alpha-12); color: var(--danger-text); }
 
 .card-collapse-icon {
     font-size: 12px;
@@ -158,7 +158,7 @@
 }
 
 .field-label .required-star {
-    color: var(--danger, #e74c3c);
+    color: var(--danger);
 }
 
 .field-desc {
@@ -192,7 +192,7 @@
 .card-field textarea:focus {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+    box-shadow: 0 0 0 2px var(--accent-alpha-15);
 }
 
 .card-field textarea {
@@ -296,7 +296,7 @@
     width: 16px;
     left: 3px;
     bottom: 3px;
-    background: #fff;
+    background: var(--bg-primary);
     border-radius: 50%;
     transition: 0.2s;
 }
@@ -342,7 +342,7 @@
 .card-ae-remove {
     background: none;
     border: none;
-    color: var(--danger, #e74c3c);
+    color: var(--danger);
     font-size: 16px;
     cursor: pointer;
     padding: 2px 4px;
@@ -351,7 +351,7 @@
 }
 
 .card-ae-remove:hover {
-    background: #fce4ec;
+    background: var(--accent-light);
 }
 
 .card-ae-add {
@@ -395,8 +395,8 @@
 }
 
 .card-action-btn.danger:hover {
-    border-color: var(--danger, #e74c3c);
-    color: var(--danger, #e74c3c);
+    border-color: var(--danger);
+    color: var(--danger);
 }
 
 /* 添加卡片按钮 */
@@ -582,7 +582,7 @@
 /* Section 滚动高亮 */
 .config-section.section-highlight {
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+    box-shadow: 0 0 0 3px var(--accent-alpha-25);
     transition: border-color 0.3s, box-shadow 0.6s;
 }
 
@@ -880,7 +880,7 @@
 
 .modal-dialog-body input:focus {
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+    box-shadow: 0 0 0 3px var(--accent-alpha-15);
 }
 
 .modal-dialog-body .modal-hint {
@@ -942,7 +942,7 @@
     transform: translateX(-50%);
     padding: 10px 24px;
     border-radius: 8px;
-    background: var(--danger, #e74c3c);
+    background: var(--accent);
     color: #fff;
     font-size: 13px;
     font-weight: 500;
