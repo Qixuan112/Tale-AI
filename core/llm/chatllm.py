@@ -192,27 +192,12 @@ class ChatLLM:
             )
         except Exception as e:
             logger.error("ChatLLM API 调用失败: %s", e)
-            # API 失败时回滚已追加的消息，避免孤立消息
-            with self._lock:
-                if rag_injected:
-                    for i in range(len(self.messages) - 1, -1, -1):
-                        if self.messages[i].get("role") == "system" and RAG_KNOWLEDGE_HEADER in self.messages[i].get("content", ""):
-                            del self.messages[i]
-                            break
-                if self.messages and self.messages[-1].get("role") == "user":
-                    self.messages.pop()
+            self._rollback_rag_and_user(rag_injected)
             raise
 
         if response is None:
             logger.error("ChatLLM API 返回空响应")
-            with self._lock:
-                if rag_injected:
-                    for i in range(len(self.messages) - 1, -1, -1):
-                        if self.messages[i].get("role") == "system" and RAG_KNOWLEDGE_HEADER in self.messages[i].get("content", ""):
-                            del self.messages[i]
-                            break
-                if self.messages and self.messages[-1].get("role") == "user":
-                    self.messages.pop()
+            self._rollback_rag_and_user(rag_injected)
             raise RuntimeError("ChatLLM API 返回空响应")
 
         assistant_reply = response
@@ -220,13 +205,25 @@ class ChatLLM:
         # 重新获取锁，追加助手回复
         with self._lock:
             if rag_injected:
-                self.messages = [
-                    m for m in self.messages
-                    if not (isinstance(m.get("content"), str) and RAG_KNOWLEDGE_HEADER in m["content"])
-                ]
+                self._remove_rag_message()
             self.messages.append({"role": "assistant", "content": assistant_reply})
 
         return assistant_reply
+
+    def _remove_rag_message(self):
+        """移除已注入的 RAG system 消息（须在持锁时调用）"""
+        for i in range(len(self.messages) - 1, -1, -1):
+            if self.messages[i].get("role") == "system" and RAG_KNOWLEDGE_HEADER in self.messages[i].get("content", ""):
+                del self.messages[i]
+                return
+
+    def _rollback_rag_and_user(self, rag_injected: bool):
+        """API 调用失败时回滚已追加的 RAG 和用户消息"""
+        with self._lock:
+            if rag_injected:
+                self._remove_rag_message()
+            if self.messages and self.messages[-1].get("role") == "user":
+                self.messages.pop()
 
     def _trim_context(self):
         """修剪上下文，确保不超过 max_context 限制。
