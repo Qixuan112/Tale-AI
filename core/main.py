@@ -492,18 +492,43 @@ class TaleCore:
             processed: 处理后的消息
             adapter_instance: 来源适配器实例名，用于同类多实例精确路由
         """
-        # 构建用户输入
-        if processed.is_group_message:
-            user_input = f"[{processed.sender_name}] {processed.text}"
-        else:
-            user_input = processed.text or ""
+        # ================================================================
+        # 格式化用户消息（参考 KiraAI 格式）
+        # ================================================================
+        # 平台
+        platform_name = processed.platform.value if processed.platform else adapter_instance or "unknown"
 
-        # 把当前消息的元数据注入，AI 在回复时可用 <at_targets> 和 <reply> 引用
-        # ⚠️ 只给昵称不给 ID，LLM 对数字不敏感，但写昵称更准确
-        msg_meta = f"\n[消息元数据] 当前消息ID={processed.message_id}，发送者昵称={processed.sender_name}"
-        if processed.is_group_message and processed.group_id:
-            msg_meta += f"，群ID={processed.group_id}"
-        user_input += msg_meta
+        # 构建消息头：[At xxx] [Reply xxx] 内容
+        msg_parts = []
+        if processed.at_targets:
+            for at_id in processed.at_targets:
+                msg_parts.append(f"[At {at_id}]")
+        if processed.reply_to:
+            msg_parts.append(f"[Reply {processed.reply_to}]")
+        msg_parts.append(processed.text or "")
+        user_input = " ".join(msg_parts)
+
+        # ================================================================
+        # 注入时间和环境元数据
+        # ================================================================
+        import datetime
+        now = datetime.datetime.now()
+        time_str = now.strftime("%Y-%m-%d %H:%M")
+
+        env_lines = [
+            f"\n[当前时间] {time_str}",
+            f"[消息元数据] 消息ID={processed.message_id}，发送者昵称={processed.sender_name}",
+        ]
+        if processed.is_group_message:
+            env_lines.append(f"群ID={processed.group_id}")
+            if processed.group_name:
+                env_lines[-1] += f"，群名称={processed.group_name}"
+            chat_type = "群聊"
+        else:
+            chat_type = "私聊"
+        env_lines.append(f"[环境] 平台={platform_name}，聊天类型={chat_type}")
+
+        user_input += "，" .join(env_lines)
 
         # 维护昵称→ID 映射表（按群分组，供发送时解析 @ 用）
         if processed.sender_name and processed.sender_id:
@@ -540,6 +565,11 @@ class TaleCore:
 
             chatllm_reply = await self._call_chatllm(user_input)
             parsed = parse_xml_msg(chatllm_reply)
+
+            # AI 使用 <msg></msg> 主动结束对话，不发送任何消息
+            if parsed.get("skip_reply") and not parsed.get("messages") and not self._has_tool_content(parsed):
+                logger.info("AI 选择不回复消息 (skip_reply) -> %s", target_id)
+                return
 
             if parsed.get("parse_error"):
                 logger.warning("XML 解析失败，使用原始回复")
@@ -614,7 +644,7 @@ class TaleCore:
                     group_key = processed.group_id or "_private"
                     name_map = self._name_to_id.get(group_key, {})
                     for name in raw_at:
-                        qq_id = name_map.get(name)
+                        qq_id = "all" if name == "all" else name_map.get(name)
                         if qq_id:
                             at_list.append(qq_id)
                     if at_list:

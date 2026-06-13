@@ -142,7 +142,12 @@ def _fallback_extract(data: str, error_msg: str) -> dict:
         "plan": None,
         "tool": None,
         "parse_error": error_msg,
+        "skip_reply": False,
     }
+
+    # 检测 <msg></msg>
+    if re.search(r'<msg>\s*</msg>', data):
+        result["skip_reply"] = True
 
     # 尝试正则提取 <msg><text>...</text></msg>
     text_pattern = re.compile(r'<text>\s*(.*?)\s*</text>', re.DOTALL)
@@ -187,11 +192,17 @@ def _parse_root(root: ET.Element) -> dict:
         "actions": [],
         "plan": None,
         "tool": None,
+        "skip_reply": False,  # AI 使用 <msg></msg> 表示不发送消息
     }
 
     # 解析 <msg> 标签
     for msg_elem in root.findall("msg"):
         message = Message()
+
+        # 检测 <msg></msg>（空消息 = 结束对话，不发送）
+        if not list(msg_elem):
+            result["skip_reply"] = True
+            continue
 
         for child in msg_elem:
             tag = child.tag
