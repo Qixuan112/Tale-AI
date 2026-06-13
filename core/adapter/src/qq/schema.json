@@ -21,17 +21,17 @@
         "default": ""
     },
     {
+        "name": "bot_uin",
+        "type": "string",
+        "required": true,
+        "description": "机器人QQ号（用于登录验证）",
+        "default": ""
+    },
+    {
         "name": "auto_reconnect",
         "type": "boolean",
         "required": false,
         "description": "是否自动重连",
         "default": true
-    },
-    {
-        "name": "reconnect_interval",
-        "type": "integer",
-        "required": false,
-        "description": "重连间隔（秒）",
-        "default": 5
     }
 ]

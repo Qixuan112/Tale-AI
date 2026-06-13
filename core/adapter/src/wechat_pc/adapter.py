@@ -131,7 +131,7 @@ class WeChatPCAdapter(BaseAdapter):
             logger.error(f"Failed to send message to {target_id}: {e}")
             return False
 
-    def parse_event(self, raw_event: dict) -> Optional[PlatformEvent]:
+    async def parse_event(self, raw_event: dict) -> Optional[PlatformEvent]:
         """将原始微信消息转换为统一事件格式
 
         轮询模式下通常由内部直接 emit，但此方法提供标准解析入口。

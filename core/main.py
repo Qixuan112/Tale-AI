@@ -350,6 +350,10 @@ class TaleCore:
                 images=content_data.get("images", []),
                 at_targets=content_data.get("at_targets", []),
                 reply_to=content_data.get("reply_to"),
+                faces=content_data.get("faces", []),
+                stickers=content_data.get("stickers", []),
+                videos=content_data.get("videos", []),
+                json_cards=content_data.get("json_cards", []),
             )
 
             timestamp_str = event_data.get("timestamp")

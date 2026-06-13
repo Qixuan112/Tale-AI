@@ -1,17 +1,8 @@
 import asyncio
 import json
+import threading
 from typing import Dict, Any, Optional, List
 from datetime import datetime
-
-try:
-    import websockets
-except ImportError:
-    websockets = None
-
-try:
-    import aiohttp
-except ImportError:
-    aiohttp = None
 
 from core.adapter.base import BaseAdapter
 from core.adapter.event import (
@@ -22,6 +13,7 @@ from core.adapter.event import (
     SenderInfo,
 )
 from ....utils import get_logger
+from .napcat_client import NapCatWebSocketClient
 
 logger = get_logger(__name__)
 
@@ -33,15 +25,15 @@ class QQAdapter(BaseAdapter):
     需要配合 NapCatQQ 使用。
 
     Required:
-        pip install websockets aiohttp
+        pip install websockets
 
     Example Config:
         {
             "ws_url": "ws://localhost:3001",
             "http_url": "http://localhost:3000",
             "access_token": "",
-            "auto_reconnect": true,
-            "reconnect_interval": 5
+            "bot_uin": "123456789",
+            "auto_reconnect": true
         }
     """
 
@@ -51,150 +43,118 @@ class QQAdapter(BaseAdapter):
 
     async def start(self):
         """启动QQ适配器，建立WebSocket连接"""
-        if websockets is None:
-            raise ImportError("websockets is required for QQ adapter. Install: pip install websockets")
-
         self.ws_url = self.get_config("ws_url", "ws://localhost:3001")
         self.http_url = self.get_config("http_url", "http://localhost:3000")
         self.access_token = self.get_config("access_token", "")
+        self.bot_uin = self.get_config("bot_uin") or self.get_config("bot_pid", "")
         self.auto_reconnect = self.get_config("auto_reconnect", True)
-        self.reconnect_interval = self.get_config("reconnect_interval", 5)
-
-        self._ws = None
-        self._session = None
-        self._reconnect_task = None
-        self._receive_task = None
-
-        self._pending_api_echos: Dict[str, asyncio.Future] = {}
-
-        self._running = True
 
         # 消息去重
         self._seen_msg_ids: set[str] = set()
         self._seen_fingerprints: set[str] = set()
+        self._dedup_lock = threading.Lock()  # 用于保障 set 操作的原子性
 
-        await self._connect()
-        self._receive_task = asyncio.create_task(self._receive_loop())
-        logger.info(f"[QQ] Adapter started, connecting to {self.ws_url}")
+        # 创建 NapCatWebSocketClient
+        self.client = NapCatWebSocketClient()
+        self.client.set_message_callback(self._on_raw_message)
+
+        # 在后台运行 client（run 方法会阻塞到连接断开）
+        self._client_task = asyncio.create_task(
+            self.client.run(
+                bot_uin=self.bot_uin,
+                ws_url=self.ws_url,
+                access_token=self.access_token,
+            )
+        )
+
+        # 等待登录成功事件（最多 10 秒）
+        self._running = True
+        try:
+            await asyncio.wait_for(self.client.login_success_event.wait(), timeout=10)
+            logger.info(f"[QQ] Adapter started, connected to {self.ws_url}")
+        except asyncio.TimeoutError:
+            if self.client.websocket:
+                logger.info(
+                    f"[QQ] Adapter started, connected to {self.ws_url} "
+                    "(login event pending)"
+                )
+            else:
+                logger.warning(
+                    f"[QQ] Adapter may not be connected to {self.ws_url}"
+                )
 
     async def stop(self):
         """停止QQ适配器"""
         self._running = False
-
-        # 取消并等待重连任务
-        if self._reconnect_task and not self._reconnect_task.done():
-            self._reconnect_task.cancel()
+        await self.client.close()
+        if self._client_task and not self._client_task.done():
+            self._client_task.cancel()
             try:
-                await self._reconnect_task
+                await self._client_task
             except asyncio.CancelledError:
                 pass
-        self._reconnect_task = None
+        self._client_task = None
+        logger.info("[QQ] Adapter stopped")
 
-        # 取消并等待接收循环任务
-        if self._receive_task and not self._receive_task.done():
-            self._receive_task.cancel()
-            try:
-                await self._receive_task
-            except asyncio.CancelledError:
-                pass
-        self._receive_task = None
+    # ── 消息回调 ──────────────────────────────────────────────────────
 
-        if self._ws:
-            await self._ws.close()
+    async def _on_raw_message(self, data: dict):
+        """收到原始消息回调（由 NapCatWebSocketClient 的消息循环调用）。
 
-        if self._session and aiohttp:
-            await self._session.close()
-
-    async def _connect(self):
-        """建立WebSocket连接"""
-        headers = {}
-        if self.access_token:
-            headers["Authorization"] = f"Bearer {self.access_token}"
-
-        try:
-            self._ws = await websockets.connect(self.ws_url, additional_headers=headers)
-            logger.info(f"[QQ] Connected to {self.ws_url}")
-        except Exception as e:
-            logger.error(f"[QQ] Connection failed: {e}")
-            self._ws = None
-            raise
-
-    def _schedule_reconnect(self):
-        """调度重连"""
-        if not self._running:
+        API 响应（含 echo）已由 Client 层消费并路由到对应的 Future，
+        此处只处理 ``post_type`` 事件。
+        """
+        if "post_type" not in data:
             return
-        self._reconnect_task = asyncio.create_task(self._reconnect_loop())
 
-    async def _reconnect_loop(self):
-        """重连循环：等待间隔 → 重新连接 → 重启接收循环"""
-        await asyncio.sleep(self.reconnect_interval)
-        try:
-            await self._connect()
-            logger.info(f"[QQ] Reconnected, restarting receive loop")
-            await self._receive_loop()
-        except Exception as e:
-            logger.error(f"[QQ] Reconnect failed: {e}")
-            if self.auto_reconnect and self._running:
-                self._schedule_reconnect()
+        # 处理元事件 —— 仅日志
+        post_type = data.get("post_type")
+        if post_type == "meta_event":
+            return
 
-    async def _receive_loop(self):
-        """消息接收循环"""
-        try:
-            while self._running:
-                try:
-                    if not self._ws:
-                        await asyncio.sleep(1)
-                        continue
+        # 只关注消息事件
+        if post_type != "message":
+            return
 
-                    message = await self._ws.recv()
-                    data = json.loads(message)
+        event = await self.parse_event(data)
+        if not event:
+            return
 
-                    if "status" in data:
-                        self._handle_api_response(data)
-                    elif "post_type" in data:
-                        event = self.parse_event(data)
-                        if event:
-                            msg_id = event.message_id
-                            if msg_id and msg_id in self._seen_msg_ids:
-                                logger.debug(f"[QQ] Duplicate message (id={msg_id}), skipped")
-                                continue
+        # 去重（message_id 维度）
+        msg_id = event.message_id
+        with self._dedup_lock:
+            if msg_id and msg_id in self._seen_msg_ids:
+                logger.debug(f"[QQ] Duplicate message (id={msg_id}), skipped")
+                return
 
-                            fp = (
-                                f"{event.message_id}:{event.sender.id}:"
-                                f"{event.content.text or ''}"
-                            )
-                            if msg_id:
-                                self._seen_msg_ids.add(msg_id)
-                                if len(self._seen_msg_ids) > 1000:
-                                    self._seen_msg_ids = set(list(self._seen_msg_ids)[-500:])
+            fp = (
+                f"{event.message_id}:{event.sender.id}:"
+                f"{event.content.text or ''}"
+            )
+            if msg_id:
+                self._seen_msg_ids.add(msg_id)
+                if len(self._seen_msg_ids) > 1000:
+                    self._seen_msg_ids = set(list(self._seen_msg_ids)[-500:])
 
-                            if fp in self._seen_fingerprints:
-                                logger.debug(f"[QQ] Duplicate message (fingerprint matched), skipped")
-                                continue
+            if fp in self._seen_fingerprints:
+                logger.debug("[QQ] Duplicate message (fingerprint matched), skipped")
+                return
 
-                            self._seen_fingerprints.add(fp)
-                            if len(self._seen_fingerprints) > 1000:
-                                self._seen_fingerprints = set(list(self._seen_fingerprints)[-500:])
+            self._seen_fingerprints.add(fp)
+            if len(self._seen_fingerprints) > 1000:
+                self._seen_fingerprints = set(list(self._seen_fingerprints)[-500:])
 
-                            await self.emit_event(event)
+        # 异步触发事件（不阻塞消息接收）
+        task = asyncio.create_task(self.emit_event(event))
+        task.add_done_callback(
+            lambda t: logger.error(
+                "[QQ] emit_event 异常: %s", t.exception()
+            ) if t.exception() else None
+        )
 
-                except websockets.exceptions.ConnectionClosed:
-                    logger.info("[QQ] Connection closed")
-                    if self.auto_reconnect and self._running:
-                        self._schedule_reconnect()
-                    break
-                except asyncio.CancelledError:
-                    logger.info("[QQ] Receive loop cancelled")
-                    break
-                except Exception as e:
-                    logger.info(f"[QQ] Error in receive loop: {e}")
-                    await asyncio.sleep(1)
-        except asyncio.CancelledError:
-            logger.info("[QQ] Receive loop cancelled (outer)")
-        finally:
-            logger.info("[QQ] Receive loop ended")
+    # ── 事件解析 ──────────────────────────────────────────────────────
 
-    def parse_event(self, raw_event: Dict[str, Any]) -> Optional[PlatformEvent]:
+    async def parse_event(self, raw_event: Dict[str, Any]) -> Optional[PlatformEvent]:
         """解析OneBot事件为统一格式"""
         post_type = raw_event.get("post_type")
 
@@ -207,7 +167,7 @@ class QQAdapter(BaseAdapter):
         message_id = str(raw_event.get("message_id", ""))
 
         # 解析消息内容
-        content = self._parse_message_content(raw_event.get("message", []))
+        content = await self._parse_message_content(raw_event.get("message", []))
 
         # 确定事件类型
         if message_type == "group":
@@ -237,32 +197,47 @@ class QQAdapter(BaseAdapter):
             group_id=str(group_id) if group_id else None,
         )
 
-    def _handle_api_response(self, data: Dict[str, Any]) -> None:
-        """处理 OneBot API 响应，路由到等待的 api_call 或缓存已发送消息 ID"""
-        echo = data.get("echo")
-        if echo and echo in self._pending_api_echos:
-            future = self._pending_api_echos[echo]
-            if not future.done():
-                if data.get("status") == "ok":
-                    future.set_result(data.get("data"))
-                else:
-                    future.set_exception(
-                        Exception(data.get("retcode", "unknown")))
-            return
+    # ── 消息内容解析 ──────────────────────────────────────────────────
 
-        # 无 echo 匹配的响应：缓存已发送消息 ID
-        if data.get("status") == "ok":
-            message_id = data.get("data", {}).get("message_id")
-            if message_id:
-                from ...sent_message_cache import sent_message_cache
-                sent_message_cache.add(str(message_id))
+    @staticmethod
+    def _extract_card_info(card_json: str) -> Dict[str, Any]:
+        """解析 OneBot json 段中的卡片信息为结构化 dict
 
-    def _parse_message_content(self, message: Any) -> MessageContent:
+        参考 KiraAI.extract_card_info 实现
+        """
+        try:
+            data = json.loads(card_json)
+        except (json.JSONDecodeError, TypeError):
+            return {"raw": card_json} if isinstance(card_json, str) else {}
+
+        result = {}
+        for key in ("app", "prompt", "bizsrc", "view"):
+            if key in data:
+                result[key] = data[key]
+
+        meta = data.get("meta", {})
+        content = (
+            meta.get("detail_1")
+            or meta.get("news")
+            or meta.get("music")
+            or meta
+        )
+        if isinstance(content, dict):
+            for key in ("title", "desc", "jumpUrl", "qqdocurl", "tag"):
+                if key in content:
+                    result[key] = content[key]
+        return result
+
+    async def _parse_message_content(self, message: Any) -> MessageContent:
         """解析OneBot消息段"""
         text_parts = []
         images = []
         at_targets = []
         reply_to = None
+        faces = []
+        stickers = []
+        videos = []
+        json_cards = []
 
         if isinstance(message, str):
             # CQ码格式
@@ -281,85 +256,102 @@ class QQAdapter(BaseAdapter):
                     at_targets.append(data.get("qq", ""))
                 elif seg_type == "reply":
                     reply_to = str(data.get("id", ""))
+                elif seg_type == "face":
+                    faces.append(dict(data))
+                elif seg_type == "mface":
+                    stickers.append(dict(data))
+                elif seg_type == "video":
+                    videos.append(dict(data))
+                elif seg_type == "json":
+                    card_info = self._extract_card_info(data.get("data", ""))
+                    json_cards.append(card_info)
 
         return MessageContent(
             text=" ".join(text_parts) if text_parts else None,
             images=images,
             at_targets=at_targets,
             reply_to=reply_to,
+            faces=faces,
+            stickers=stickers,
+            videos=videos,
+            json_cards=json_cards,
         )
 
-    async def send_message(self, target_id: str, content: MessageContent, **kwargs) -> bool:
-        """发送消息（使用 WebSocket）"""
+    # ── 消息发送 ──────────────────────────────────────────────────────
+
+    async def send_message(
+        self, target_id: str, content: MessageContent, **kwargs
+    ) -> bool:
+        """发送消息（通过 NapCatWebSocketClient）"""
         try:
             # 构建消息
             message_segments = []
 
             # 引用回复（必须先于其他段，OneBot 协议要求）
             if content.reply_to:
-                message_segments.append({
-                    "type": "reply",
-                    "data": {"id": content.reply_to}
-                })
+                message_segments.append(
+                    {"type": "reply", "data": {"id": content.reply_to}}
+                )
 
             # 群聊回复时，需要 @ 发送者才能触发实际提醒
-            if kwargs.get('is_group') and content.at_targets:
+            if kwargs.get("is_group") and content.at_targets:
                 for at_qq in content.at_targets:
-                    message_segments.append({
-                        "type": "at",
-                        "data": {"qq": at_qq}
-                    })
+                    message_segments.append(
+                        {"type": "at", "data": {"qq": at_qq}}
+                    )
 
             if content.text:
-                message_segments.append({
-                    "type": "text",
-                    "data": {"text": content.text}
-                })
+                message_segments.append(
+                    {"type": "text", "data": {"text": content.text}}
+                )
 
             for img_url in content.images:
-                message_segments.append({
-                    "type": "image",
-                    "data": {"file": img_url}
-                })
+                message_segments.append(
+                    {"type": "image", "data": {"file": img_url}}
+                )
 
             # 从 kwargs 获取 is_group 参数
-            is_group = kwargs.get('is_group', False)
-            
-            # 构建 OneBot API 请求
-            if is_group:  # 群消息
-                api_action = "send_group_msg"
-                params = {
-                    "group_id": int(target_id),
-                    "message": message_segments
-                }
-            else:  # 私聊消息
-                api_action = "send_private_msg"
-                params = {
-                    "user_id": int(target_id),
-                    "message": message_segments
-                }
+            is_group = kwargs.get("is_group", False)
 
-            # 通过 WebSocket 发送 API 请求
-            if not self._ws:
+            # 构建 OneBot API 请求
+            if is_group:
+                api_action = "send_group_msg"
+                params = {"group_id": int(target_id), "message": message_segments}
+            else:
+                api_action = "send_private_msg"
+                params = {"user_id": int(target_id), "message": message_segments}
+
+            if not self.client.websocket:
                 logger.info("[QQ] WebSocket not connected")
                 return False
 
-            request = {
-                "action": api_action,
-                "params": params,
-                "echo": str(asyncio.get_event_loop().time())  # 用于匹配响应
-            }
+            result = await self.client.send_action(api_action, params)
+            if result is None:
+                logger.info("[QQ] Failed to send message (no response)")
+                return False
+            if result.get("status") != "ok":
+                logger.info(
+                    f"[QQ] Message send failed: {result.get('retcode', 'unknown')}"
+                )
+                return False
 
-            await self._ws.send(json.dumps(request))
-            logger.info(f"[QQ] Message sent via WebSocket: {api_action}")
+            # 缓存已发送消息 ID（用于引用唤醒）
+            message_id = (result.get("data") or {}).get("message_id")
+            if message_id:
+                from ...sent_message_cache import sent_message_cache
+
+                sent_message_cache.add(str(message_id))
+
             return True
 
         except Exception as e:
             logger.info(f"[QQ] Failed to send message: {e}")
             return False
 
-    async def api_call(self, action: str, params: dict = None) -> Optional[dict]:
-        """发送 OneBot API 请求并等待响应（带 echo 匹配）
+    async def api_call(
+        self, action: str, params: dict = None
+    ) -> Optional[dict]:
+        """发送 OneBot API 请求并等待响应（委托给 Client）。
 
         Args:
             action: OneBot API 动作名，如 get_group_member_list
@@ -368,33 +360,14 @@ class QQAdapter(BaseAdapter):
         Returns:
             API 响应的 data 部分，失败返回 None
         """
-        if not self._ws:
+        if not self.client.websocket:
             logger.warning("[QQ] WebSocket not connected for API call")
             return None
 
-        echo = f"api_{id(self)}_{asyncio.get_running_loop().time()}"
-        request = {
-            "action": action,
-            "params": params or {},
-            "echo": echo,
-        }
-
-        loop = asyncio.get_running_loop()
-        future = loop.create_future()
-        self._pending_api_echos[echo] = future
-
-        try:
-            await self._ws.send(json.dumps(request))
-            result = await asyncio.wait_for(future, timeout=15)
-            return result
-        except asyncio.TimeoutError:
-            logger.warning("[QQ] API call %s timeout", action)
+        result = await self.client.send_action(action, params)
+        if result is None:
             return None
-        except Exception as e:
-            logger.warning("[QQ] API call %s failed: %s", action, e)
-            return None
-        finally:
-            self._pending_api_echos.pop(echo, None)
+        return result.get("data")
 
 
 class QQApiClient:
@@ -416,13 +389,17 @@ class QQApiClient:
         if not cls._adapter:
             logger.warning("[QQApi] QQAdapter not bound")
             return []
-        data = await cls._adapter.api_call("get_group_member_list",
-                                            {"group_id": int(group_id)})
+        data = await cls._adapter.api_call(
+            "get_group_member_list", {"group_id": int(group_id)}
+        )
         if not data:
             return []
         members = data if isinstance(data, list) else data.get("list", data)
         return [
-            {"user_id": str(m.get("user_id", "")),
-             "nickname": m.get("nickname", "") or m.get("card", "")}
+            {
+                "user_id": str(m.get("user_id", "")),
+                "nickname": m.get("nickname", "")
+                or m.get("card", ""),
+            }
             for m in members
         ]

@@ -114,7 +114,7 @@ class BaseAdapter(ABC):
         pass
 
     @abstractmethod
-    def parse_event(self, raw_event: Dict[str, Any]) -> Optional[PlatformEvent]:
+    async def parse_event(self, raw_event: Dict[str, Any]) -> Optional[PlatformEvent]:
         """解析原始事件为统一格式
 
         将平台特定的原始事件数据转换为 PlatformEvent 对象。
