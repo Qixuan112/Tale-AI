@@ -110,3 +110,8 @@ docs/*
 # Project Specific - TODO
 # ──────────────────────────────────────────────
 TODO.md
+
+# ──────────────────────────────────────────────
+# Project Specific - Release Assets (built locally)
+# ──────────────────────────────────────────────
+release/
