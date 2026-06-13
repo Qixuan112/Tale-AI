@@ -75,14 +75,19 @@ class NapCatWebSocketClient:
         # 事件
         self.login_success_event: asyncio.Event = asyncio.Event()
         self.shutdown_event: asyncio.Event = asyncio.Event()
-        # 用于 send_action 快速路径：首次完成后不再阻塞
-        self._login_completed: bool = False
+
+        # run() 完成时通过此 Future 回传结果（供 adapter.start() 等待）
+        self._run_done: Optional[asyncio.Future[bool]] = None
 
         # 任务引用
         self._listening_task: Optional[asyncio.Task] = None
 
-        # 心跳
+        # 心跳检测
         self.last_heartbeat: Optional[int] = None
+        self._heartbeat_watchdog_task: Optional[asyncio.Task] = None
+
+        # send_action 快速路径标志
+        self._send_ready: bool = False
 
         # 消息回调（由 QQAdapter 注入）
         self._message_callback: Optional[Callable[[dict], Awaitable[None]]] = None
@@ -157,26 +162,27 @@ class NapCatWebSocketClient:
         self._ws_url = ws_url
         self._access_token = access_token or ""
 
+        # 创建 run_done Future 供 adapter.start() 等待
+        loop = asyncio.get_running_loop()
+        self._run_done = loop.create_future()
+
         conn_resp = await self.connect()
         if conn_resp.get("status") != "ok":
+            self._run_done.set_result(False)
             return False
 
-        # 启动消息监听
-        self._listening_task = asyncio.create_task(self._listen_messages())
+        # 启动心跳 watchdog
+        self._heartbeat_watchdog_task = asyncio.create_task(self._heartbeat_watchdog())
 
-        # 等待 lifecycle 事件标记登录成功
-        logger.info(f"等待账号 {bot_uin} 的登录成功事件")
-        try:
-            await asyncio.wait_for(self.login_success_event.wait(), timeout=5)
-            logger.info(f"账号 {bot_uin} 登录成功")
-        except asyncio.TimeoutError:
-            logger.warning(f"账号 {bot_uin} 登录超时（可能 NapCat 未完全就绪）")
+        # 启动消息监听（内部 while 循环处理重连）
+        self._listening_task = asyncio.create_task(self._listen_loop())
 
-        # 验证 bot_uin 是否匹配
-        login_info = await self.get_login_info()
+        # 验证 bot_uin 是否匹配（直接用 get_login_info，不依赖 lifecycle）
+        login_info = await self.send_action("get_login_info", {})
         if not login_info:
             logger.error("获取登录信息失败")
             await self.close()
+            self._run_done.set_result(False)
             return False
 
         data = login_info.get("data") or {}
@@ -186,9 +192,12 @@ class NapCatWebSocketClient:
                 f"配置的账号 {bot_uin} 与 NapCat 登录账号 {logged_in_uin} 不一致"
             )
             await self.close()
+            self._run_done.set_result(False)
             return False
 
         logger.info(f"账号验证通过: {bot_uin}")
+        self._send_ready = True
+        self._run_done.set_result(True)
         return True
 
     # ── 重连 ──────────────────────────────────────────────────────────
@@ -208,13 +217,6 @@ class NapCatWebSocketClient:
             resp = await self.connect()
             if resp.get("status") == "ok":
                 logger.info("WebSocket 重连成功")
-                # 重连后等待 lifecycle 事件（最多 3 秒），不强行 set
-                try:
-                    await asyncio.wait_for(
-                        self.login_success_event.wait(), timeout=3
-                    )
-                except asyncio.TimeoutError:
-                    logger.warning("重连后未收到 lifecycle 事件，继续监听")
                 return True
             delay = min(2**attempt, 60)
             logger.warning(
@@ -227,72 +229,76 @@ class NapCatWebSocketClient:
 
     # ── 消息接收 ──────────────────────────────────────────────────────
 
-    async def _listen_messages(self):
-        """唯一的消息接收入口。"""
-        logger.info(f"开始监听账号 {self.self_id} 的消息...")
+    async def _listen_loop(self):
+        """统一消息接收主循环，内部处理重连。"""
         while not self.shutdown_event.is_set():
             try:
                 ws = self.websocket
                 if ws is None:
-                    if self.shutdown_event.is_set():
+                    ok = await self._reconnect()
+                    if not ok:
                         break
-                    await asyncio.sleep(0.5)
-                    continue
+                    ws = self.websocket
 
                 async for message in ws:
-                    try:
-                        data = json.loads(message)
-                    except json.JSONDecodeError:
-                        logger.warning(f"收到非 JSON 消息: {message[:200]}")
-                        continue
-
-                    # 必须先处理 API 响应（同步），再回调上层
-                    echo = data.get("echo")
-                    if echo and echo in self.response_futures:
-                        future = self.response_futures.pop(echo)
-                        if not future.cancelled():
-                            future.set_result(data)
-                        continue
-
-                    # 心跳检测
-                    if data.get("post_type") == "meta_event":
-                        if data.get("meta_event_type") == "heartbeat":
-                            self.last_heartbeat = data.get("time")
-                        elif data.get("meta_event_type") == "lifecycle":
-                            self.login_success_event.set()
-
-                    # 抛给上层回调（用 create_task 避免阻塞消息接收）
-                    if self._message_callback:
-                        task = asyncio.create_task(
-                            self._message_callback(data)
-                        )
-                        task.add_done_callback(
-                            lambda t: logger.error(
-                                "消息回调异常: %s", t.exception()
-                            ) if t.exception() else None
-                        )
+                    self._process_message(message)
 
             except websockets.exceptions.ConnectionClosed:
                 logger.warning("WebSocket 连接已关闭")
-                if not self.shutdown_event.is_set():
-                    ok = await self._reconnect()
-                    if ok:
-                        # 再次检查 shutdown，防止 close() 在重连期间被调用
-                        if self.shutdown_event.is_set():
-                            break
-                        # 重连成功后重新进入接收循环
-                        self._listening_task = asyncio.create_task(
-                            self._listen_messages()
-                        )
-                        return
-                    else:
-                        break
+                continue  # 回到循环头部，触发重连
             except asyncio.CancelledError:
-                logger.info("消息监听任务已取消")
                 break
             except Exception as e:
                 logger.error(f"消息监听异常: {e}", exc_info=True)
                 break
+
+    def _process_message(self, message: str):
+        """同步处理收到的 WebSocket 消息（纯 CPU，无 await）。"""
+        try:
+            data = json.loads(message)
+        except json.JSONDecodeError:
+            logger.warning(f"收到非 JSON 消息: {message[:200]}")
+            return
+
+        # 必须先处理 API 响应（同步），再回调上层
+        echo = data.get("echo")
+        if echo and echo in self.response_futures:
+            future = self.response_futures.pop(echo)
+            if not future.cancelled():
+                future.set_result(data)
+            return
+
+        # 心跳检测
+        if data.get("post_type") == "meta_event":
+            if data.get("meta_event_type") == "heartbeat":
+                self.last_heartbeat = data.get("time")
+            elif data.get("meta_event_type") == "lifecycle":
+                # lifecycle 仅日志，不再作为登录就绪信号
+                logger.info("收到 lifecycle 事件: %s", data.get("sub_type", ""))
+
+        # 抛给上层回调（用 create_task 避免阻塞消息接收）
+        if self._message_callback:
+            task = asyncio.create_task(self._message_callback(data))
+            task.add_done_callback(
+                lambda t: logger.error(
+                    "消息回调异常: %s", t.exception()
+                ) if t.exception() else None
+            )
+
+    # ── 心跳 watchdog ────────────────────────────────────────────────
+
+    async def _heartbeat_watchdog(self):
+        """如果超过 30 秒未收到心跳，主动断开重连。"""
+        while not self.shutdown_event.is_set():
+            await asyncio.sleep(30)
+            if self.last_heartbeat is not None and not self.shutdown_event.is_set():
+                # 检查最后心跳时间
+                now = int(datetime.now().timestamp())
+                if now - self.last_heartbeat > 35:
+                    logger.warning("心跳超时，主动断开 WebSocket 触发重连")
+                    if self.websocket:
+                        await self.websocket.close()
+                        self.websocket = None
 
     # ── API 调用 ──────────────────────────────────────────────────────
 
@@ -318,14 +324,13 @@ class NapCatWebSocketClient:
             logger.warning("WebSocket 未连接，无法发送 API 请求")
             return None
 
-        # 等待登录完成（仅在首次阻塞，后续走快速路径）
-        if not self._login_completed:
+        # 等待首次可用（最多 10 秒，后续不再等待）
+        if not self._send_ready:
             try:
-                await asyncio.wait_for(self.login_success_event.wait(), timeout=10)
-            except asyncio.TimeoutError:
-                logger.error("send_action 失败：登录成功事件未触发")
+                await asyncio.wait_for(self._run_done, timeout=10)
+            except (asyncio.TimeoutError, asyncio.InvalidStateError):
+                logger.error("send_action 失败: 尚未就绪")
                 return None
-            self._login_completed = True
 
         echo = str(uuid.uuid4())
         future = asyncio.get_running_loop().create_future()
@@ -366,6 +371,13 @@ class NapCatWebSocketClient:
                 future.cancel()
             del self.response_futures[echo]
 
+        if self._heartbeat_watchdog_task and not self._heartbeat_watchdog_task.done():
+            self._heartbeat_watchdog_task.cancel()
+            try:
+                await self._heartbeat_watchdog_task
+            except asyncio.CancelledError:
+                pass
+
         if self._listening_task and not self._listening_task.done():
             self._listening_task.cancel()
             try:
@@ -376,5 +388,9 @@ class NapCatWebSocketClient:
         if self.websocket:
             await self.websocket.close()
             self.websocket = None
+
+        # 标记 run_done（防止 adapter.start() 永久等待）
+        if self._run_done and not self._run_done.done():
+            self._run_done.set_result(False)
 
         logger.info(f"账号 {self.self_id} 的连接已关闭")
