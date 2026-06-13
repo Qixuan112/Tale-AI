@@ -103,7 +103,7 @@ html, body {
 /* ===== 侧边栏 ===== */
 .sidebar {
     width: var(--sidebar-width);
-    background: rgba(232, 216, 216, 0.75);
+    background: var(--bg-secondary);
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
@@ -343,7 +343,7 @@ html, body {
 /* ===== 顶部栏 ===== */
 .topbar {
     height: var(--topbar-height);
-    background: rgba(232, 216, 216, 0.7);
+    background: var(--bg-secondary);
     border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
