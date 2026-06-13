@@ -91,9 +91,9 @@
     flex-shrink: 0;
 }
 
-.card-badge.ok { background: var(--accent-light); color: var(--success); }
+.card-badge.ok { background: var(--success-light); color: var(--success-text); }
 .card-badge.warn { background: var(--warning-bg); color: var(--warning-text); }
-.card-badge.error { background: var(--danger-alpha-12); color: var(--danger); }
+.card-badge.error { background: var(--danger-alpha-12); color: var(--danger-text); }
 
 .card-collapse-icon {
     font-size: 12px;

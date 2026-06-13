@@ -7,7 +7,7 @@
 
 :root,
 [data-theme="dark"] {
-    /* Misty Rose — 莫兰迪雾感色系（默认/暗色） */
+    /* Misty Rose — 莫兰迪雾感色系（默认/暗色模式） */
     --bg-primary: #F0E6E6;
     --bg-secondary: #E8D8D8;
     --bg-tertiary: #DDD0D2;
@@ -25,6 +25,10 @@
     --success-light: #E8F0E8;
     --warning: #D4A84B;
     --danger: #D48989;
+    /* 文字用语义色（高对比度变体，确保在白底上 ≥4.5:1） */
+    --danger-text: #B05656;
+    --success-text: #4E7E4E;
+    --warning-text: #8A7030;
 
     --border: #D5C8C8;
     --border-light: #E5D8D8;
@@ -34,7 +38,6 @@
     --card-bg: rgba(255,255,255,0.35);
     --text-tertiary: #8A7A7A;
     --warning-bg: #F5EDD0;
-    --warning-text: #8A7030;
     --accent-alpha-15: rgba(230,126,34,0.12);
     --accent-alpha-25: rgba(230,126,34,0.22);
     --danger-alpha-12: rgba(212, 137, 137, 0.12);
@@ -60,6 +63,8 @@
     --success-light: #E8F0E8;
     --warning: #D4A84B;
     --danger: #D48989;
+    --danger-text: #B05656;
+    --success-text: #4E7E4E;
 
     --border: #E5D8D8;
     --border-light: #F0E8E8;
@@ -67,7 +72,6 @@
     --card-bg: rgba(255,255,255,0.6);
     --text-tertiary: #A89898;
     --warning-bg: #F5EDD0;
-    --warning-text: #8A7030;
     --accent-alpha-15: rgba(230,126,34,0.08);
     --accent-alpha-25: rgba(230,126,34,0.15);
     --danger-alpha-12: rgba(212, 137, 137, 0.12);
@@ -98,7 +102,7 @@ html, body {
 /* ===== 侧边栏 ===== */
 .sidebar {
     width: var(--sidebar-width);
-    background: rgba(255,255,255,0.2);
+    background: rgba(232, 216, 216, 0.85);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border-right: 1px solid var(--border);
@@ -106,6 +110,10 @@ html, body {
     flex-direction: column;
     flex-shrink: 0;
     user-select: none;
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+    .sidebar { background: var(--bg-secondary); }
 }
 
 .sidebar-header {
@@ -220,7 +228,7 @@ html, body {
     position: absolute;
     left: 100%;
     bottom: 0;
-    background: rgba(255,255,255,0.25);
+    background: rgba(232, 216, 216, 0.9);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border: 1px solid var(--border);
@@ -232,6 +240,10 @@ html, body {
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
     flex-direction: column;
     gap: 2px;
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+    .nav-submenu { background: var(--bg-secondary); }
 }
 
 .nav-item.has-submenu:hover .nav-submenu,
@@ -342,7 +354,7 @@ html, body {
 /* ===== 顶部栏 ===== */
 .topbar {
     height: var(--topbar-height);
-    background: rgba(255,255,255,0.15);
+    background: rgba(232, 216, 216, 0.8);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--border);
