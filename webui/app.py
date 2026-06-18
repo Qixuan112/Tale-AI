@@ -1379,6 +1379,25 @@ def api_fetch_models(provider_name):
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+# ============ 引导流程 API ============
+
+@app.route("/api/guide/fetch_models", methods=["POST"])
+def guide_fetch_models():
+    """引导流程中用原始 base_url+api_key 拉取模型列表（不依赖已存配置）"""
+    data = request.get_json(silent=True) or {}
+    base_url = (data.get("base_url") or "").rstrip("/")
+    api_key = data.get("api_key") or ""
+    if not base_url or not api_key:
+        return jsonify({"ok": False, "error": "缺少 base_url 或 api_key"}), 400
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key, base_url=base_url)
+        models = [m.id for m in client.models.list()]
+        return jsonify({"ok": True, "models": models})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+
 # ============ 图片上传 API ============
 
 @app.route("/api/chat/upload", methods=["POST"])

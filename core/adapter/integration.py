@@ -119,7 +119,7 @@ class AdapterEventBridge:
                 continue
 
             adapter_type = str(config.get("adapter_type", "")).lower()
-            if adapter_type not in ("qq", "telegram", "bilibili"):
+            if adapter_type not in ("qq", "telegram", "bilibili", "wechat_pc"):
                 continue
 
             # 去除元数据字段，保留适配器自身需要的配置

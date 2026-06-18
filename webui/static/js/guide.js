@@ -74,6 +74,7 @@
         _savedAnswers: {},   // 引导步骤已保存的答案
         _stepOrder: [],      // 步骤完成顺序
         _allowEmpty: false,  // 当前输入框是否允许空提交
+        _v010: null,         // V0.1.0 流程状态对象
 
         // ---- 初始化 ----
         init: function () {
@@ -558,250 +559,450 @@
         // ============================================
         // 对话式引导配置（不离开 VN 覆盖层）
         // ============================================
+        // ---- 立绘情绪切换（V0.1.0） ----
+        setEmotion: function (emotion) {
+            var img = document.getElementById('guideCharacterImg');
+            if (!img) return;
+            var valid = ['neutral', 'happy', 'thinking', 'compliant', 'troubled',
+                         'surprised', 'impressed', 'proud', 'sad'];
+            if (valid.indexOf(emotion) === -1) emotion = 'neutral';
+            img.style.opacity = '0';
+            var self = this;
+            setTimeout(function () {
+                img.src = '/static/img/tali/tali_' + emotion + '.jpeg';
+                img.style.opacity = '1';
+            }, 150);
+        },
+
+        // ---- 拉取模型列表（V0.1.0） ----
+        fetchModels: function (baseUrl, apiKey) {
+            return fetch('/api/guide/fetch_models', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ base_url: baseUrl, api_key: apiKey })
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (res) {
+                    if (!res.ok) throw new Error(res.error || 'unknown');
+                    return res.models || [];
+                });
+        },
+
+        // ---- 语言选择器（V0.1.0 步骤1） ----
+        showLangSelector: function (onPick) {
+            var self = this;
+            var sel = document.getElementById('vnLangSelector');
+            var preview = document.getElementById('vnLangPreview');
+            if (!sel) return;
+            sel.style.display = 'flex';
+            var btns = sel.querySelectorAll('.vn-lang-btn');
+            var handler = function (e) {
+                e.stopPropagation();
+                var lang = e.currentTarget.getAttribute('data-lang');
+                sel.style.display = 'none';
+                btns.forEach(function (b) {
+                    b.classList.remove('active');
+                    b.removeEventListener('click', handler);
+                    b.removeEventListener('mouseenter', hover);
+                });
+                if (preview) preview.textContent = '';
+                if (onPick) onPick(lang);
+            };
+            var hover = function (e) {
+                var lang = e.currentTarget.getAttribute('data-lang');
+                e.currentTarget.classList.add('active');
+                if (preview) preview.textContent = self._t('guide.v010.lang_preview_' + lang);
+            };
+            var leave = function (e) {
+                e.currentTarget.classList.remove('active');
+            };
+            btns.forEach(function (b) {
+                b.addEventListener('click', handler);
+                b.addEventListener('mouseenter', hover);
+                b.addEventListener('mouseleave', leave);
+            });
+            // 默认预览中文
+            if (preview) preview.textContent = self._t('guide.v010.lang_preview_zh');
+        },
+
+        hideLangSelector: function () {
+            var sel = document.getElementById('vnLangSelector');
+            if (sel) sel.style.display = 'none';
+        },
+
+        // ---- V0.1.0 预设服务商表 ----
+        PROVIDER_PRESETS: {
+            deepseek:   { name: 'DeepSeek',    base_url: 'https://api.deepseek.com/v1' },
+            silicon:    { name: 'SiliconFlow', base_url: 'https://api.siliconflow.cn/v1' },
+            bytedance:  { name: 'ByteDance',   base_url: 'https://ark.cn-beijing.volces.com/api/v3' },
+            custom:     { name: 'Custom',      base_url: '' }
+        },
+
+        // ============================================
+        // 对话式引导配置 V0.1.0（不离开 VN 覆盖层）
+        // ============================================
         startConversationalConfig: async function () {
             var self = this;
             this._onboardingActive = true;
-
-            // 显示后退按钮（第一步会被隐藏）
             if (this.btnBack) this.btnBack.style.display = 'inline-block';
 
+            if (!this._v010) {
+                this._v010 = {
+                    lang: null, userName: '', provider: null, providerName: '', apiKey: '', baseUrl: '',
+                    models: [], assign: { main: '', plan: '', tool: '' },
+                    second: { enabled: false, providerName: '', apiKey: '', baseUrl: '', models: [], assign: { main: '', plan: '', tool: '' } },
+                    adapters: { qq: false, wxpc: false }, persona: ''
+                };
+            }
+            var st = this._v010;
+
             try {
-                // ── 第 1 步：选择服务商 ──
-                var provider = this._savedAnswers['step1'];
-                if (!provider) {
+                // ── 第 1 步：语言选择 ──
+                this.setEmotion('happy');
+                if (!st.lang) {
                     if (this.btnBack && this._stepOrder.length === 0) this.btnBack.style.display = 'none';
-                    provider = await this.askChoice(
-                        this._t('guide.step1_question'),
-                        [
-                            { text: this._t('guide.step1_deepseek'), value: 'deepseek' },
-                            { text: this._t('guide.step1_openai'), value: 'openai' },
-                            { text: this._t('guide.step1_custom'), value: 'custom' }
-                        ],
-                        {stepId: 'step1'}
-                    );
-                    if (provider === '__back__') return;
+                    await this.showVNDialogAsync(this._t('guide.v010.lang_title'));
+                    var lang = await new Promise(function (resolve) { self.showLangSelector(resolve); });
+                    st.lang = lang;
+                    if (typeof window.i18n !== 'undefined' && window.i18n.setLang) window.i18n.setLang(lang);
+                    this.hideLangSelector();
+                    await this.say(this._t('guide.v010.lang_locked', { lang: lang }));
+                    // zh/ja 采集用户名，en 可选
+                    var name = '';
+                    if (lang === 'zh' || lang === 'ja' || lang === 'en') {
+                        name = await this.askText(this._t('guide.v010.name_question'), this._t('guide.v010.name_hint'), { stepId: 'v010_name', allowEmpty: true });
+                        if (name === '__back__') return;
+                    }
+                    st.userName = name || (lang === 'en' ? 'operator' : '操作者');
+                    if (name) await this.say(this._t('guide.v010.name_ack', { name: name }));
                 }
                 if (this.btnBack) this.btnBack.style.display = 'inline-block';
 
-                if (!this._savedAnswers['step1_providerName']) {
-                    var providerName, baseUrl;
-                    if (provider === 'deepseek') {
-                        providerName = 'DeepSeek';
-                        baseUrl = 'https://api.deepseek.com/v1';
-                        await this.say(this._t('guide.deepseek_reply'));
-                    } else if (provider === 'openai') {
-                        providerName = 'OpenAI';
-                        baseUrl = 'https://api.openai.com/v1';
-                        await this.say(this._t('guide.openai_reply'));
-                    } else {
-                        providerName = 'Custom';
-                        baseUrl = '';
-                        await this.say(this._t('guide.custom_reply'));
-                    }
-                    this._savedAnswers['step1_providerName'] = providerName;
-                    this._savedAnswers['step1_baseUrl'] = baseUrl;
-                }
-                providerName = this._savedAnswers['step1_providerName'];
-                baseUrl = this._savedAnswers['step1_baseUrl'];
-
-                // ── 第 2 步：API Key ──
-                var apiKey = this._savedAnswers['step2'];
-                if (!apiKey) {
-                    apiKey = await this.askText(
-                        this._t('guide.step2_question'),
-                        this._t('guide.step2_placeholder'),
-                        {stepId: 'step2', inputType: 'password'}
-                    );
-                    if (apiKey === '__back__') return;
-                }
-
-                // ── 第 3 步：模型名称 ──
-                var model = this._savedAnswers['step3'];
-                if (!model && model !== '') {
-                    var defaultModel = provider === 'deepseek' ? 'deepseek-chat' : (provider === 'openai' ? 'gpt-4o' : '');
-                    var modelPlaceholder = defaultModel || this._t('guide.step3_placeholder');
-                    model = await this.askText(
-                        this._t('guide.step3_question'),
-                        modelPlaceholder,
-                        {stepId: 'step3', allowEmpty: true}
-                    );
-                    if (model === '__back__') return;
-                    if (!model && defaultModel) model = defaultModel;
-                    if (!model) model = '';
-                    this._savedAnswers['step3'] = model;
-                }
-
-                // 保存服务商信息到 services.yaml
-                var servicesData = {};
-                servicesData[providerName] = {
-                    type: 'llm',
-                    format: 'openai',
-                    api_key: apiKey || '',
-                    base_url: baseUrl,
-                    model: model
-                };
-                await this.saveConfig('services', servicesData);
-
-                // 保存路由到 routing.yaml
-                await this.saveConfig('routing', {
-                    main_llm: { provider: providerName },
-                    plan_llm: { provider: providerName },
-                    tool_llm: { provider: providerName },
-                    generic_llm: { provider: providerName },
-                    vlm: { provider: providerName }
-                });
-
-                var modelMsg = model ? this._t('guide.model_set', {model: model}) : this._t('guide.model_not_set');
-                await this.say(this._t('guide.apikey_saved') + modelMsg);
-
-                // ── 第 4 步：角色名 ──
-                var charName = this._savedAnswers['step4'];
-                if (!charName) {
-                    charName = await this.askText(
-                        this._t('guide.step4_question'),
-                        this._t('guide.step4_placeholder'),
-                        {stepId: 'step4'}
-                    );
-                    if (charName === '__back__') return;
-                    if (!charName) charName = this._t('guide.char_unnamed');
-                    this._savedAnswers['step4'] = charName;
-                }
-                if (!this._savedAnswers['step4_said']) {
-                    await this.say(this._t('guide.char_named', {name: charName}));
-                    this._savedAnswers['step4_said'] = true;
-                }
-                if (!this._savedAnswers['step4_saved']) {
-                    await this.saveConfig('character', { character: { ChineseName: charName } });
-                    this._savedAnswers['step4_saved'] = true;
-                }
-
-                // ── 第 5 步：性别 ──
-                var gender = this._savedAnswers['step5'];
-                if (!gender) {
-                    gender = await this.askChoice(
-                        this._t('guide.step5_question', {name: charName}),
+                // ── 第 2 步：分支判断 ──
+                this.setEmotion('thinking');
+                var branch = this._savedAnswers['v010_branch'];
+                if (!branch) {
+                    branch = await this.askChoice(
+                        this._t('guide.v010.branch_question'),
                         [
-                            { text: this._t('guide.gender_secret'), value: '保密' },
-                            { text: this._t('guide.gender_female'), value: '女' },
-                            { text: this._t('guide.gender_male'), value: '男' }
+                            { text: this._t('guide.v010.btn_yes'), value: 'yes' },
+                            { text: this._t('guide.v010.btn_no'), value: 'no' }
                         ],
-                        {stepId: 'step5'}
+                        { stepId: 'v010_branch' }
                     );
-                    if (gender === '__back__') return;
+                    if (branch === '__back__') return;
                 }
-                if (!this._savedAnswers['step5_said']) {
-                    await this.say(this._t('guide.step5_ack'));
-                    this._savedAnswers['step5_said'] = true;
+                if (branch === 'no') {
+                    this.setEmotion('sad');
+                    await this.say(this._t('guide.v010.skip_goodbye'));
+                    this._finishOnboarding();
+                    return;
                 }
-                if (!this._savedAnswers['step5_saved']) {
-                    await this.saveConfig('character', { character: { ChineseName: charName, gender: gender } });
-                    this._savedAnswers['step5_saved'] = true;
+
+                // ── 第 3 步：API Key ──
+                this.setEmotion('troubled');
+                await this._stepApiKey(st, false);
+
+                // ── 第 4 步：模型分配 ──
+                this.setEmotion('surprised');
+                await this._stepModels(st, false);
+
+                // 第二个服务端
+                var wantSecond = this._savedAnswers['v010_second'];
+                if (!wantSecond) {
+                    wantSecond = await this.askChoice(
+                        this._t('guide.v010.ask_second_server'),
+                        [
+                            { text: this._t('guide.v010.btn_second_yes'), value: 'yes' },
+                            { text: this._t('guide.v010.btn_second_no'), value: 'no' }
+                        ],
+                        { stepId: 'v010_second' }
+                    );
+                    if (wantSecond === '__back__') return;
                 }
+                if (wantSecond === 'yes') {
+                    st.second.enabled = true;
+                    this.setEmotion('troubled');
+                    await this._stepApiKey(st, true);
+                    this.setEmotion('surprised');
+                    await this._stepModels(st, true);
+                    await this.say(this._t('guide.v010.second_server_done'));
+                }
+
+                // ── 第 5 步：适配器 ──
+                this.setEmotion('compliant');
+                await this._stepAdapters(st);
+
+                // ── 第 6 步：人格 ──
+                this.setEmotion('impressed');
+                await this._stepPersona(st);
 
                 // 重载配置让系统尝试启动
                 await fetch('/api/system/reload', { method: 'POST' }).catch(function () {});
 
-                // ── 第 6 步：唤醒设置 ──
-                var wantWake = this._savedAnswers['step6_wantWake'];
-                if (!wantWake && wantWake !== 'skip') {
-                    wantWake = await this.askChoice(
-                        this._t('guide.step6_question'),
-                        [
-                            { text: this._t('guide.step6_yes'), value: 'yes' },
-                            { text: this._t('guide.step6_skip'), value: 'skip' }
-                        ],
-                        {stepId: 'step6_wantWake'}
-                    );
-                    if (wantWake === '__back__') return;
-                }
-
-                if (wantWake === 'yes') {
-                    var enableKeyword = this._savedAnswers['step6_enableKeyword'];
-                    if (!enableKeyword && enableKeyword !== false) {
-                        enableKeyword = await this.askChoice(
-                            this._t('guide.step6_keyword_question'),
-                            [
-                                { text: this._t('guide.step6_enable'), value: 'yes' },
-                                { text: this._t('guide.step6_disable'), value: 'no' }
-                            ],
-                            {stepId: 'step6_enableKeyword'}
-                        );
-                        if (enableKeyword === '__back__') return;
-                    }
-                    var keywords = this._savedAnswers['step6_keywords'];
-                    if (!keywords) {
-                        if (enableKeyword === 'yes') {
-                            var kwInput = await this.askText(
-                                this._t('guide.step6_keyword_input'),
-                                this._t('guide.step6_keyword_placeholder'),
-                                {stepId: 'step6_keywords'}
-                            );
-                            if (kwInput === '__back__') return;
-                            keywords = kwInput ? kwInput.split(/[,，\s]+/).filter(function(k) { return k; }) : [];
-                        } else {
-                            keywords = [];
-                        }
-                        this._savedAnswers['step6_keywords'] = keywords;
-                    }
-
-                    var enableQuote = this._savedAnswers['step6_enableQuote'];
-                    if (!enableQuote && enableQuote !== false) {
-                        enableQuote = await this.askChoice(
-                            this._t('guide.step6_quote_question'),
-                            [
-                                { text: this._t('guide.step6_enable'), value: 'yes' },
-                                { text: this._t('guide.step6_disable'), value: 'no' }
-                            ],
-                            {stepId: 'step6_enableQuote'}
-                        );
-                        if (enableQuote === '__back__') return;
-                    }
-
-                    if (!this._savedAnswers['step6_saved']) {
-                        await this.saveConfig('behavior', {
-                            wake: {
-                                enable_keyword_wake: enableKeyword === 'yes',
-                                waking_keywords: keywords,
-                                enable_quote_wake: enableQuote === 'yes'
-                            }
-                        });
-                        this._savedAnswers['step6_saved'] = true;
-                    }
-
-                    if (!this._savedAnswers['step6_said']) {
-                        await this.say(this._t('guide.step6_saved'));
-                        this._savedAnswers['step6_said'] = true;
-                    }
-                }
-
-                // ── 第 7 步：完成 ──
-                if (!this._savedAnswers['step7']) {
-                    await this.askChoice(
-                        this._t('guide.done_title', {name: charName}),
-                        [
-                            { text: this._t('guide.done_use'), value: 'done' },
-                            { text: this._t('guide.done_config'), value: 'config', action: function () {
-                                window.location.href = '/config';
-                            }}
-                        ],
-                        {stepId: 'step7'}
-                    );
-                }
-
-                localStorage.setItem('tale-onboarded', '1');
-                this._onboardingActive = false;
-                this.hideDialog();
+                // ── 第 7 步：收尾 ──
+                this.setEmotion('proud');
+                await this.say(this._t('guide.v010.finished'));
+                this._finishOnboarding();
             } catch (e) {
-                // 用户 SKIP 或其他中断
-                console.warn('[Tali] 对话式引导中断:', e);
+                console.warn('[Tali] V0.1.0 引导中断:', e);
             } finally {
                 this._hideTextInput();
-                // 确保总是标记完成（即使在流程中 SKIP）
+                this.hideLangSelector();
                 if (!localStorage.getItem('tale-onboarded')) {
                     localStorage.setItem('tale-onboarded', '1');
                 }
                 this._onboardingActive = false;
             }
+        },
+
+        // showVNDialog 的 Promise 包装（等待打字+用户点击推进）
+        showVNDialogAsync: function (text) {
+            var self = this;
+            return new Promise(function (resolve) {
+                self.showVNDialog(text, { onComplete: function () { resolve(); } });
+            });
+        },
+
+        _finishOnboarding: function () {
+            localStorage.setItem('tale-onboarded', '1');
+            this._onboardingActive = false;
+            this.hideDialog();
+        },
+
+        // ── 步骤3：API Key（isSecond=true 时采集第二服务端） ──
+        _stepApiKey: async function (st, isSecond) {
+            var self = this;
+            var prefix = isSecond ? 'v010_2_' : 'v010_';
+            var target = isSecond ? st.second : st;
+
+            var providerKey = this._savedAnswers[prefix + 'provider'];
+            if (!providerKey) {
+                providerKey = await this.askChoice(
+                    this._t('guide.v010.key_intro', { name: st.userName }),
+                    [
+                        { text: this._t('guide.v010.provider_deepseek'), value: 'deepseek' },
+                        { text: this._t('guide.v010.provider_silicon'), value: 'silicon' },
+                        { text: this._t('guide.v010.provider_bytedance'), value: 'bytedance' },
+                        { text: this._t('guide.v010.provider_custom'), value: 'custom' }
+                    ],
+                    { stepId: prefix + 'provider' }
+                );
+                if (providerKey === '__back__') return;
+            }
+            var preset = this.PROVIDER_PRESETS[providerKey] || this.PROVIDER_PRESETS.custom;
+            target.provider = providerKey;
+            target.providerName = preset.name;
+
+            var baseUrl = target.baseUrl;
+            if (!baseUrl) {
+                if (preset.base_url) {
+                    target.baseUrl = preset.base_url;
+                    await this.say(this._t('guide.v010.url_autofilled'));
+                } else {
+                    var urlInput = await this.askText(
+                        this._t('guide.v010.url_question'),
+                        this._t('guide.v010.url_placeholder'),
+                        { stepId: prefix + 'url' }
+                    );
+                    if (urlInput === '__back__') return;
+                    target.baseUrl = urlInput;
+                }
+            }
+
+            var apiKey = target.apiKey;
+            if (!apiKey) {
+                apiKey = await this.askText(
+                    this._t('guide.v010.key_hint'),
+                    this._t('guide.v010.key_placeholder'),
+                    { stepId: prefix + 'key', inputType: 'password' }
+                );
+                if (apiKey === '__back__') return;
+                target.apiKey = apiKey;
+            }
+
+            // 保存到 services.yaml
+            var svc = {};
+            svc[target.providerName] = {
+                type: 'llm',
+                format: 'openai',
+                api_key: target.apiKey,
+                base_url: target.baseUrl,
+                model: target.assign && target.assign.main ? target.assign.main : ''
+            };
+            await this.saveConfig('services', svc);
+        },
+
+        // ── 步骤4：模型分配（isSecond=true 时处理第二服务端） ──
+        _stepModels: async function (st, isSecond) {
+            var self = this;
+            var prefix = isSecond ? 'v010_2_' : 'v010_';
+            var target = isSecond ? st.second : st;
+            var assign = target.assign;
+
+            if (!target.models || !target.models.length) {
+                try {
+                    target.models = await this.fetchModels(target.baseUrl, target.apiKey);
+                } catch (e) {
+                    await this.say(this._t('guide.v010.models_fetch_failed', { error: e.message || e }));
+                    target.models = [];
+                }
+            }
+
+            if (!target.models.length) {
+                // 无模型，允许手填
+                var manual = await this.askText(
+                    this._t('guide.v010.models_empty'),
+                    this._t('guide.v010.key_placeholder'),
+                    { stepId: prefix + 'manual_model', allowEmpty: true }
+                );
+                if (manual === '__back__') return;
+                if (manual) {
+                    target.models = [manual];
+                } else {
+                    await this.say(this._t('guide.v010.btn_skip_models'));
+                    return;
+                }
+            }
+
+            await this.say(this._t('guide.v010.models_fetched') + '\n' + target.models.join('、'));
+
+            var mode = this._savedAnswers[prefix + 'assign_mode'];
+            if (!mode) {
+                var choices = [];
+                if (target.models.length >= 1) choices.push({ text: this._t('guide.v010.btn_auto_assign'), value: 'auto' });
+                choices.push({ text: this._t('guide.v010.btn_manual_assign'), value: 'manual' });
+                choices.push({ text: this._t('guide.v010.btn_skip_models'), value: 'skip' });
+                mode = await this.askChoice(this._t('guide.v010.assign_main'), choices, { stepId: prefix + 'assign_mode' });
+                if (mode === '__back__') return;
+            }
+
+            if (mode === 'skip') {
+                await this.say(this._t('guide.v010.btn_skip_models'));
+                return;
+            }
+
+            if (mode === 'auto') {
+                assign.main = assign.plan = assign.tool = target.models[0];
+            } else {
+                // 手动：三次选择
+                var mkChoices = function () {
+                    return target.models.map(function (m) { return { text: m, value: m }; });
+                };
+                if (!assign.main) {
+                    assign.main = await this.askChoice(this._t('guide.v010.assign_main'), mkChoices(), { stepId: prefix + 'm_main' });
+                    if (assign.main === '__back__') return;
+                }
+                if (!assign.plan) {
+                    assign.plan = await this.askChoice(this._t('guide.v010.assign_plan'), mkChoices(), { stepId: prefix + 'm_plan' });
+                    if (assign.plan === '__back__') return;
+                }
+                if (!assign.tool) {
+                    assign.tool = await this.askChoice(this._t('guide.v010.assign_tool'), mkChoices(), { stepId: prefix + 'm_tool' });
+                    if (assign.tool === '__back__') return;
+                }
+            }
+
+            await this.say(this._t('guide.v010.assign_done'));
+
+            // 更新 services.yaml 的 model 字段 + routing.yaml
+            var svc = {};
+            svc[target.providerName] = { model: assign.main };
+            await this.saveConfig('services', svc);
+
+            if (!isSecond) {
+                await this.saveConfig('routing', {
+                    main_llm: { provider: target.providerName, model: assign.main },
+                    plan_llm: { provider: target.providerName, model: assign.plan },
+                    tool_llm: { provider: target.providerName, model: assign.tool }
+                });
+            }
+        },
+
+        // ── 步骤5：适配器 ──
+        _stepAdapters: async function (st) {
+            var self = this;
+            await this.say(this._t('guide.v010.adapter_intro'));
+            await this.say(this._t('guide.v010.onebot_notice'));
+
+            var qqChoice = this._savedAnswers['v010_qq'];
+            if (qqChoice === undefined) {
+                qqChoice = await this.askChoice(
+                    this._t('guide.v010.btn_qq'),
+                    [
+                        { text: this._t('guide.v010.btn_qq'), value: 'yes' },
+                        { text: this._t('guide.v010.btn_skip_chat'), value: 'no' }
+                    ],
+                    { stepId: 'v010_qq' }
+                );
+                if (qqChoice === '__back__') return;
+            }
+            st.adapters.qq = (qqChoice === 'yes');
+
+            var wxChoice = this._savedAnswers['v010_wxpc'];
+            if (wxChoice === undefined) {
+                wxChoice = await this.askChoice(
+                    this._t('guide.v010.btn_wxpc'),
+                    [
+                        { text: this._t('guide.v010.btn_wxpc'), value: 'yes' },
+                        { text: this._t('guide.v010.btn_skip_chat'), value: 'no' }
+                    ],
+                    { stepId: 'v010_wxpc' }
+                );
+                if (wxChoice === '__back__') return;
+            }
+            st.adapters.wxpc = (wxChoice === 'yes');
+
+            var platformsData = {};
+            if (st.adapters.qq) {
+                var wsUrl = this._savedAnswers['v010_qq_ws'];
+                if (wsUrl === undefined) {
+                    wsUrl = await this.askText(
+                        this._t('guide.v010.qq_ws_question'),
+                        this._t('guide.v010.qq_ws_placeholder'),
+                        { stepId: 'v010_qq_ws', allowEmpty: true }
+                    );
+                    if (wsUrl === '__back__') return;
+                }
+                platformsData['QQ Adapter'] = {
+                    adapter_type: 'qq',
+                    enabled: true,
+                    ws_url: wsUrl || '',
+                    http_url: '',
+                    auto_reconnect: true
+                };
+            }
+            if (st.adapters.wxpc) {
+                platformsData['WeChat PC'] = {
+                    adapter_type: 'wechat_pc',
+                    enabled: true,
+                    poll_interval: 2.0,
+                    language: st.lang === 'ja' ? 'cn_t' : 'cn',
+                    permission_mode: 'allow_list'
+                };
+            }
+            if (Object.keys(platformsData).length) {
+                await this.saveConfig('platforms', platformsData);
+            }
+            await this.say(this._t('guide.v010.adapter_saved'));
+        },
+
+        // ── 步骤6：人格 ──
+        _stepPersona: async function (st) {
+            var self = this;
+            await this.say(this._t('guide.v010.persona_missing'));
+            var persona = st.persona;
+            if (!persona) {
+                persona = await this.askText(
+                    this._t('guide.v010.persona_hint'),
+                    this._t('guide.v010.persona_placeholder'),
+                    { stepId: 'v010_persona' }
+                );
+                if (persona === '__back__') return;
+                st.persona = persona;
+            }
+            await this.saveConfig('character', { raw_persona: persona });
+            await this.say(this._t('guide.v010.persona_saved'));
         },
 
         // ============================================
