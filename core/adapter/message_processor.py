@@ -48,9 +48,11 @@ class ProcessedMessage:
     images: List[str] = field(default_factory=list)
     at_targets: List[str] = field(default_factory=list)
     reply_to: Optional[str] = None
+    reply_text: Optional[str] = None
     faces: List[Dict[str, Any]] = field(default_factory=list)
     stickers: List[Dict[str, Any]] = field(default_factory=list)
     videos: List[Dict[str, Any]] = field(default_factory=list)
+    voices: List[Dict[str, Any]] = field(default_factory=list)
     json_cards: List[Dict[str, Any]] = field(default_factory=list)
 
     # 群组信息（如果是群消息）
@@ -91,6 +93,12 @@ class ProcessedMessage:
             "images": self.images,
             "at_targets": self.at_targets,
             "reply_to": self.reply_to,
+            "reply_text": self.reply_text,
+            "faces": self.faces,
+            "stickers": self.stickers,
+            "videos": self.videos,
+            "voices": self.voices,
+            "json_cards": self.json_cards,
             "group_id": self.group_id,
             "group_name": self.group_name,
             "decision": self.decision.value,
@@ -207,9 +215,11 @@ class MessageProcessor:
             images=event.content.images,
             at_targets=event.content.at_targets,
             reply_to=event.content.reply_to,
+            reply_text=event.content.reply_text,
             faces=event.content.faces,
             stickers=event.content.stickers,
             videos=event.content.videos,
+            voices=event.content.voices,
             json_cards=event.content.json_cards,
             group_id=event.group_id,
             group_name=event.group_name,
@@ -264,7 +274,7 @@ class MessageProcessor:
                     return True
                 return False
 
-        return True
+        return False  # 未识别的 mode fail-closed，拒绝放行
 
     def _make_decision(self, message: ProcessedMessage) -> tuple:
         """决策是否需要响应

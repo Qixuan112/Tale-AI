@@ -19,6 +19,7 @@ class EventType(Enum):
     MESSAGE = "message"
     PRIVATE_MESSAGE = "private_message"
     GROUP_MESSAGE = "group_message"
+    NOTICE = "notice"
     MOMENTS_POST = "moments_post"
     JOIN = "join"
     LEAVE = "leave"
@@ -34,15 +35,17 @@ class MessageContent:
     images: List[str] = field(default_factory=list)
     at_targets: List[str] = field(default_factory=list)
     reply_to: Optional[str] = None
+    reply_text: Optional[str] = None
     raw_content: Any = None
     faces: List[Dict[str, Any]] = field(default_factory=list)
     stickers: List[Dict[str, Any]] = field(default_factory=list)
     videos: List[Dict[str, Any]] = field(default_factory=list)
+    voices: List[Dict[str, Any]] = field(default_factory=list)
     json_cards: List[Dict[str, Any]] = field(default_factory=list)
 
     def is_empty(self) -> bool:
         """检查消息是否为空"""
-        return not self.text and not self.images and not self.faces and not self.stickers and not self.videos and not self.json_cards
+        return not self.text and not self.images and not self.faces and not self.stickers and not self.videos and not self.voices and not self.json_cards
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
@@ -51,9 +54,11 @@ class MessageContent:
             "images": self.images,
             "at_targets": self.at_targets,
             "reply_to": self.reply_to,
+            "reply_text": self.reply_text,
             "faces": self.faces,
             "stickers": self.stickers,
             "videos": self.videos,
+            "voices": self.voices,
             "json_cards": self.json_cards,
         }
 

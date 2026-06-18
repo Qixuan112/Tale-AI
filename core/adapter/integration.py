@@ -32,6 +32,7 @@ class AdapterEventBridge:
         self.config_loader = config_loader
         self.manager: Optional[AdapterManager] = None
         self._message_handlers: Dict[str, Callable] = {}
+        self._bus_tasks: set = set()  # 持有 fire-and-forget task 引用，防 GC
 
     async def _on_platform_event(self, event: PlatformEvent, adapter_id: str = None):
         """处理平台事件
@@ -70,6 +71,9 @@ class AdapterEventBridge:
             self._emit_to_bus("private_message", event_data)
         elif event.event_type == EventType.GROUP_MESSAGE:
             self._emit_to_bus("group_message", event_data)
+        elif event.event_type == EventType.NOTICE:
+            self._emit_to_bus("platform_notice", event_data)
+            return  # NOTICE 不需要再发平台特定事件
 
         # 发布平台特定事件
         self._emit_to_bus(f"{event.platform.value}_message", event_data)
@@ -84,7 +88,10 @@ class AdapterEventBridge:
         try:
             # EventBus 有 aemit 方法（异步，支持协程回调）
             if hasattr(self.event_bus, 'aemit'):
-                asyncio.create_task(self.event_bus.aemit(event_name, data))
+                task = asyncio.create_task(self.event_bus.aemit(event_name, data))
+                # 保存 task 引用防止被 GC，完成后自动清理
+                self._bus_tasks.add(task)
+                task.add_done_callback(self._bus_tasks.discard)
             else:
                 self.event_bus.emit(event_name, data)
         except Exception as e:
@@ -119,7 +126,11 @@ class AdapterEventBridge:
                 continue
 
             adapter_type = str(config.get("adapter_type", "")).lower()
-            if adapter_type not in ("qq", "telegram", "bilibili"):
+            if not self.manager or adapter_type not in AdapterManager.list_adapters():
+                logger.warning(
+                    "[AdapterBridge] Unknown adapter type '%s' for instance '%s', skipped",
+                    adapter_type, instance_name,
+                )
                 continue
 
             # 去除元数据字段，保留适配器自身需要的配置

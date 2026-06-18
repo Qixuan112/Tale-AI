@@ -752,8 +752,8 @@ class WeChatClient:
                 # 保障至少有一个非空文本
                 final_text = text_content or content
 
-                # 使用下标生成稳定 ID（element.Name 带时间戳使 ID 具有辨识度）
-                post_id = f"moments_{int(time.time()*1000)}_{idx}"
+                # 用内容稳定特征生成 ID（hash 而非时间戳，确保去重有效）
+                post_id = f"moments_{hash(f'{user_name or own_nickname}{final_text}{timestamp}')}"
 
                 post = {
                     "id": post_id,

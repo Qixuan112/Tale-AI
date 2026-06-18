@@ -280,16 +280,15 @@ class WeChatPCAdapter(BaseAdapter):
 
     @staticmethod
     def _name_matches(name: str, name_list: list[str]) -> bool:
-        """模糊昵称匹配（大小写不敏感 + 子串匹配）
+        """精确昵称匹配（大小写不敏感）
 
-        用于消息权限和朋友圈权限检查，避免代码重复。
+        用于消息权限和朋友圈权限检查。
+        注意：仅做精确匹配，子串不视为匹配以防止白名单绕过。
         """
-        name_lower = name.lower()
+        name_lower = name.strip().lower()
         for item in name_list:
             item_lower = item.lower()
-            if name == item or name_lower == item_lower:
-                return True
-            if item_lower in name_lower or name_lower in item_lower:
+            if name_lower == item_lower:
                 return True
         return False
 
@@ -303,22 +302,34 @@ class WeChatPCAdapter(BaseAdapter):
                     not self.group_allow_list
                     or self._name_matches(session_clean, self.group_allow_list)
                 )
-            else:  # deny_list
+            elif self.permission_mode == "deny_list":
                 return (
                     not self.group_deny_list
                     or not self._name_matches(session_clean, self.group_deny_list)
                 )
+            else:
+                logger.warning(
+                    "[WeChat] Unknown permission_mode '%s', default to deny",
+                    self.permission_mode
+                )
+                return False
         else:
             if self.permission_mode == "allow_list":
                 return (
                     not self.user_allow_list
                     or self._name_matches(session_clean, self.user_allow_list)
                 )
-            else:
+            elif self.permission_mode == "deny_list":
                 return (
                     not self.user_deny_list
                     or not self._name_matches(session_clean, self.user_deny_list)
                 )
+            else:
+                logger.warning(
+                    "[WeChat] Unknown permission_mode '%s', default to deny",
+                    self.permission_mode
+                )
+                return False
 
     def _build_event(
         self, session_name: str, msg: WeChatMessage, is_group: bool = False
