@@ -75,6 +75,8 @@
         _stepOrder: [],      // 步骤完成顺序
         _allowEmpty: false,  // 当前输入框是否允许空提交
         _v010: null,         // V0.1.0 流程状态对象
+        _blipAudio: null,    // 说话音效 Audio 对象
+        _blipMuted: false,   // 说话音效是否静音
 
         // ---- 初始化 ----
         init: function () {
@@ -207,6 +209,21 @@
             }
         },
 
+        // ---- 说话音效（Undertale 风格 blip） ----
+        playBlip: function () {
+            if (this._blipMuted) return;
+            if (localStorage.getItem('tale-sound') === 'off') return;
+            try {
+                if (!this._blipAudio) {
+                    this._blipAudio = new Audio('/static/audio/blip.wav');
+                    this._blipAudio.volume = 0.25;
+                }
+                this._blipAudio.currentTime = 0;
+                var p = this._blipAudio.play();
+                if (p && p.catch) p.catch(function () {});
+            } catch (e) {}
+        },
+
         // ---- 打字机效果 ----
         _startTyping: function (text) {
             var self = this;
@@ -224,15 +241,35 @@
                 return;
             }
 
-            this._typingTimer = setInterval(function () {
-                self._typingIndex++;
-                if (self._typingIndex >= self._fullText.length) {
-                    self._onTypingDone();
-                }
-                if (self.textContent) {
-                    self.textContent.textContent = self._fullText.substring(0, self._typingIndex);
-                }
-            }, this._typingSpeed);
+            this._typingTimer = setTimeout(function () { self._typeTick(); }, this._typingSpeed);
+        },
+
+        // ---- 打字机单步（可变延迟：标点后停顿） ----
+        _typeTick: function () {
+            var self = this;
+            this._typingTimer = null;
+            if (this._typingIndex >= this._fullText.length) {
+                this._onTypingDone();
+                return;
+            }
+            var ch = this._fullText.charAt(this._typingIndex);
+            this._typingIndex++;
+            if (ch && !/\s/.test(ch)) this.playBlip();
+            if (this.textContent) {
+                this.textContent.textContent = this._fullText.substring(0, this._typingIndex);
+            }
+            if (this._typingIndex >= this._fullText.length) {
+                this._onTypingDone();
+                return;
+            }
+            // 标点停顿：长标点（句末）多停，短标点（句中）少停
+            var delay = this._typingSpeed;
+            if (/[。！？!?\n…]/.test(ch)) {
+                delay = this._typingSpeed * 8;   // 长停顿
+            } else if (/[，、,；;：:]/.test(ch)) {
+                delay = this._typingSpeed * 4;   // 短停顿
+            }
+            this._typingTimer = setTimeout(function () { self._typeTick(); }, delay);
         },
 
         _completeTyping: function () {
@@ -258,7 +295,7 @@
 
         _clearTypingTimer: function () {
             if (this._typingTimer) {
-                clearInterval(this._typingTimer);
+                clearTimeout(this._typingTimer);
                 this._typingTimer = null;
             }
         },
