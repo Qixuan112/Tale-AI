@@ -587,6 +587,10 @@
 
             'field.routing.vlm': '多模态模型',
             'field.routing.vlmModel': '模型',
+            'field.routing.embedding': 'Embedding 模型',
+            'field.routing.embeddingModel': '模型',
+            'field.routing.rerank': 'Rerank 模型',
+            'field.routing.rerankModel': '模型',
             'card.routing.selectProviderFirst': '请先选择服务商',
             'field.service.fetchModels': '获取模型列表',
         },
@@ -1165,6 +1169,10 @@
 
             'field.routing.vlm': 'VLM Model',
             'field.routing.vlmModel': 'Model',
+            'field.routing.embedding': 'Embedding Model',
+            'field.routing.embeddingModel': 'Model',
+            'field.routing.rerank': 'Rerank Model',
+            'field.routing.rerankModel': 'Model',
             'field.routing.genericLLM': 'Generic LLM',
             'field.routing.genericLLMModel': 'Model',
             'card.routing.selectProviderFirst': 'Please select a provider first',

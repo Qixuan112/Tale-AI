@@ -228,6 +228,10 @@
                         { key: 'generic_llm.model', labelKey: 'field.routing.genericLLMModel', labelDefault: '模型', type: 'routing-model', providerField: 'generic_llm.provider' },
                         { key: 'vlm.provider', labelKey: 'field.routing.vlm', labelDefault: '多模态模型', type: 'select', placeholder: '支持图片识别的 VLM 模型' },
                         { key: 'vlm.model', labelKey: 'field.routing.vlmModel', labelDefault: '模型', type: 'routing-model', providerField: 'vlm.provider' },
+                        { key: 'embedding.provider', labelKey: 'field.routing.embedding', labelDefault: 'Embedding 模型', type: 'select', placeholder: '向量化（嵌入）模型，用于知识库' },
+                        { key: 'embedding.model', labelKey: 'field.routing.embeddingModel', labelDefault: '模型', type: 'routing-model', providerField: 'embedding.provider' },
+                        { key: 'rerank.provider', labelKey: 'field.routing.rerank', labelDefault: 'Rerank 模型', type: 'select', placeholder: '重排序模型，用于知识库结果精排' },
+                        { key: 'rerank.model', labelKey: 'field.routing.rerankModel', labelDefault: '模型', type: 'routing-model', providerField: 'rerank.provider' },
                     ]
                 },
             ]
