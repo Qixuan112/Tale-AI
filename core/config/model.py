@@ -58,6 +58,8 @@ class ModelsConfig:
     image: ModelMapping = field(default_factory=lambda: ModelMapping())
     tts: ModelMapping = field(default_factory=lambda: ModelMapping())
     stt: ModelMapping = field(default_factory=lambda: ModelMapping())
+    rerank: ModelMapping = field(default_factory=lambda: ModelMapping())
+    embedding: ModelMapping = field(default_factory=lambda: ModelMapping())
 
 
 @dataclass

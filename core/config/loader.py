@@ -105,11 +105,13 @@ _SCHEMAS = {
     },
     "routing.yaml": {
         "fields": {k: dict for k in ["main_llm", "plan_llm", "tool_llm", "generic_llm",
-                                      "vlm", "util_model", "image", "tts", "stt"]},
+                                      "vlm", "util_model", "image", "tts", "stt",
+                                      "rerank", "embedding"]},
         "required": [],
         "nested": {k: {"provider": str}
                    for k in ["main_llm", "plan_llm", "tool_llm", "generic_llm",
-                             "vlm", "util_model", "image", "tts", "stt"]},
+                             "vlm", "util_model", "image", "tts", "stt",
+                             "rerank", "embedding"]},
     },
     "platforms.yaml": {
         "fields": {},
@@ -395,6 +397,10 @@ class ConfigLoader:
                              model=data.get("tts", {}).get("model", "")),
             stt=ModelMapping(provider=data.get("stt", {}).get("provider", ""),
                              model=data.get("stt", {}).get("model", "")),
+            rerank=ModelMapping(provider=data.get("rerank", {}).get("provider", ""),
+                                model=data.get("rerank", {}).get("model", "")),
+            embedding=ModelMapping(provider=data.get("embedding", {}).get("provider", ""),
+                                   model=data.get("embedding", {}).get("model", "")),
         )
 
     def _parse_bot(self, data: dict) -> BotConfig:

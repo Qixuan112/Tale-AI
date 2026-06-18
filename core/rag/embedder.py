@@ -112,6 +112,21 @@ class BGEEmbedder(BaseEmbedder):
 
 def create_embedder(config) -> BaseEmbedder:
     """根据配置创建 Embedder"""
+    # 路由优先：如果 routing.yaml 中配置了 embeddding，优先使用
+    try:
+        from ..config.loader import config_loader
+        routing_emb = config_loader.models.embedding
+        if routing_emb and routing_emb.provider and routing_emb.model:
+            provider = config_loader.providers.get(routing_emb.provider)
+            if provider and provider.api_key:
+                return OpenAIEmbedder(
+                    api_key=provider.api_key,
+                    base_url=provider.base_url,
+                    model=routing_emb.model,
+                )
+    except Exception:
+        pass  # fall through to legacy path
+
     if config.default_embedder == "openai" and config.openai_embedding_api_key:
         return OpenAIEmbedder(
             api_key=config.openai_embedding_api_key,
