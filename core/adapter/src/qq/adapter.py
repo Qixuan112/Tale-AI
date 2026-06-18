@@ -152,7 +152,9 @@ class QQAdapter(BaseAdapter):
         # 异步获取引用消息原文（不阻塞后续流程）
         if event.content.reply_to:
             try:
-                msg_data = await self.get_msg(event.content.reply_to)
+                msg_data = await asyncio.wait_for(
+                    self.get_msg(event.content.reply_to), timeout=2.0
+                )
                 if msg_data and isinstance(msg_data, dict):
                     raw_msg = msg_data.get("message")
                     sender = msg_data.get("sender", {})
@@ -266,6 +268,7 @@ class QQAdapter(BaseAdapter):
         faces = []
         stickers = []
         videos = []
+        voices = []
         json_cards = []
 
         if isinstance(message, str):

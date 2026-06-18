@@ -1108,13 +1108,11 @@ class TaleCore:
                     ok = future.result(timeout=10)
                 except Exception as e:
                     return {"status": "failed", "error": f"撤回消息失败: {e}"}
-                return {"status": "ok", "message": f"消息 {msg_id} 已撤回" if ok else "撤回失败"}
+                if not ok:
+                    return {"status": "failed", "error": "撤回失败"}
+                return {"status": "ok", "message": f"消息 {msg_id} 已撤回"}
 
             register_plugin_handler("delete_msg", _run_delete_msg)
-
-            # 刷新 ToolLLM 的工具定义列表
-            if self.toolllm is not None:
-                self.toolllm.rebuild_tool_definitions()
 
             from .tools.registry import get_registry, ToolDefinition, ToolParameter
             get_registry().register(
@@ -1135,6 +1133,10 @@ class TaleCore:
                     ],
                 )
             )
+
+            # 刷新 ToolLLM 的工具定义列表（必须在所有工具注册之后）
+            if self.toolllm is not None:
+                self.toolllm.rebuild_tool_definitions()
 
             logger.info("[QQApi] 群成员查询、撤回消息工具已注册")
         except Exception as e:
