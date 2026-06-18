@@ -280,7 +280,12 @@
             }
             // 标点停顿：长标点（句末）多停，短标点（句中）少停
             var delay = this._typingSpeed;
-            if (/[。！？!?\n…]/.test(ch)) {
+            // 连续点号（... 省略号序列）触发长停顿：当前或下一个是 . 才算
+            var inDots = ch === '.' && (
+                this._fullText.charAt(this._typingIndex) === '.' ||
+                this._fullText.charAt(this._typingIndex - 2) === '.'
+            );
+            if (/[。！？!?\n…]/.test(ch) || inDots) {
                 delay = this._typingSpeed * 8;   // 长停顿
             } else if (/[，、,；;：:]/.test(ch)) {
                 delay = this._typingSpeed * 4;   // 短停顿
