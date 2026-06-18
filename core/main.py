@@ -173,6 +173,7 @@ class TaleCore:
         bus.on("private_message", self._handle_private_message)
         bus.on("group_message", self._handle_group_message)
         bus.on("qq_message", self._handle_qq_message)
+        bus.on("platform_notice", self._handle_platform_notice)
 
     def _init_plugin_manager(self):
         """初始化插件管理器 — 扫描 core/plugins/ + plugins/ (旧) + data/custom_plugins/"""
@@ -232,6 +233,25 @@ class TaleCore:
         """处理 QQ 特定消息"""
         # 可以在这里添加 QQ 特定的处理逻辑
         pass
+
+    async def _handle_platform_notice(self, event_data: dict):
+        """处理平台通知事件（戳一戳、入群、禁言等）"""
+        try:
+            raw = event_data.get("raw_event", {})
+            if not isinstance(raw, dict):
+                raw = {}
+            notice_type = raw.get("notice_type", "")
+            sub_type = raw.get("sub_type", "")
+            user_id = str(raw.get("user_id", ""))
+            target_id = str(raw.get("target_id", ""))
+            group_id = raw.get("group_id")
+
+            if notice_type == "notify" and sub_type == "poke":
+                target_str = target_id if target_id else "我"
+                sender_name = event_data.get("sender", {}).get("name", user_id)
+                logger.info("[通知] %s 戳了戳 %s", sender_name, target_str)
+        except Exception as e:
+            logger.debug("[通知] 处理通知事件时出错: %s", e)
 
     async def _handle_wechat_moments_message(self, event_data: dict):
         """处理微信朋友圈消息
@@ -350,9 +370,11 @@ class TaleCore:
                 images=content_data.get("images", []),
                 at_targets=content_data.get("at_targets", []),
                 reply_to=content_data.get("reply_to"),
+                reply_text=content_data.get("reply_text"),
                 faces=content_data.get("faces", []),
                 stickers=content_data.get("stickers", []),
                 videos=content_data.get("videos", []),
+                voices=content_data.get("voices", []),
                 json_cards=content_data.get("json_cards", []),
             )
 
@@ -504,7 +526,10 @@ class TaleCore:
             for at_id in processed.at_targets:
                 msg_parts.append(f"[At {at_id}]")
         if processed.reply_to:
-            msg_parts.append(f"[Reply {processed.reply_to}]")
+            if processed.reply_text:
+                msg_parts.append(f"[回复: {processed.reply_text}]")
+            else:
+                msg_parts.append(f"[Reply {processed.reply_to}]")
         msg_parts.append(processed.text or "")
         user_input = " ".join(msg_parts)
 
@@ -1071,6 +1096,22 @@ class TaleCore:
             from .function_caller import register_plugin_handler
             register_plugin_handler("query_group_members", _run_query)
 
+            # 注册撤回消息工具
+            def _run_delete_msg(parameters):
+                msg_id = parameters.get("message_id", "")
+                if not msg_id:
+                    return {"status": "failed", "error": "缺少 message_id 参数"}
+                future = asyncio.run_coroutine_threadsafe(
+                    QQApiClient.delete_msg(msg_id), _loop
+                )
+                try:
+                    ok = future.result(timeout=10)
+                except Exception as e:
+                    return {"status": "failed", "error": f"撤回消息失败: {e}"}
+                return {"status": "ok", "message": f"消息 {msg_id} 已撤回" if ok else "撤回失败"}
+
+            register_plugin_handler("delete_msg", _run_delete_msg)
+
             # 刷新 ToolLLM 的工具定义列表
             if self.toolllm is not None:
                 self.toolllm.rebuild_tool_definitions()
@@ -1085,8 +1126,17 @@ class TaleCore:
                     ],
                 )
             )
+            get_registry().register(
+                ToolDefinition(
+                    name="delete_msg",
+                    description="撤回指定消息，需要提供消息 ID。只能撤回机器人自己发送的消息。",
+                    parameters=[
+                        ToolParameter("message_id", "要撤回的消息 ID"),
+                    ],
+                )
+            )
 
-            logger.info("[QQApi] 群成员查询工具已注册")
+            logger.info("[QQApi] 群成员查询、撤回消息工具已注册")
         except Exception as e:
             logger.warning("[QQApi] 初始化失败（不影响核心运行）: %s", e)
 

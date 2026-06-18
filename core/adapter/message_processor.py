@@ -48,9 +48,11 @@ class ProcessedMessage:
     images: List[str] = field(default_factory=list)
     at_targets: List[str] = field(default_factory=list)
     reply_to: Optional[str] = None
+    reply_text: Optional[str] = None
     faces: List[Dict[str, Any]] = field(default_factory=list)
     stickers: List[Dict[str, Any]] = field(default_factory=list)
     videos: List[Dict[str, Any]] = field(default_factory=list)
+    voices: List[Dict[str, Any]] = field(default_factory=list)
     json_cards: List[Dict[str, Any]] = field(default_factory=list)
 
     # 群组信息（如果是群消息）
@@ -207,9 +209,11 @@ class MessageProcessor:
             images=event.content.images,
             at_targets=event.content.at_targets,
             reply_to=event.content.reply_to,
+            reply_text=event.content.reply_text,
             faces=event.content.faces,
             stickers=event.content.stickers,
             videos=event.content.videos,
+            voices=event.content.voices,
             json_cards=event.content.json_cards,
             group_id=event.group_id,
             group_name=event.group_name,

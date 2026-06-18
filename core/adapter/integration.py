@@ -70,6 +70,9 @@ class AdapterEventBridge:
             self._emit_to_bus("private_message", event_data)
         elif event.event_type == EventType.GROUP_MESSAGE:
             self._emit_to_bus("group_message", event_data)
+        elif event.event_type == EventType.NOTICE:
+            self._emit_to_bus("platform_notice", event_data)
+            return  # NOTICE 不需要再发平台特定事件
 
         # 发布平台特定事件
         self._emit_to_bus(f"{event.platform.value}_message", event_data)

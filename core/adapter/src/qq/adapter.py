@@ -113,7 +113,10 @@ class QQAdapter(BaseAdapter):
             return
 
         # 只关注消息事件
-        if post_type != "message":
+        if post_type == "notice":
+            await self._on_notice_event(data)
+            return
+        elif post_type != "message":
             return
 
         event = await self.parse_event(data)
@@ -145,6 +148,30 @@ class QQAdapter(BaseAdapter):
             self._seen_fingerprints = OrderedDict(
                 list(self._seen_fingerprints.items())[-_DEDUP_TRIM:]
             )
+
+        # 异步获取引用消息原文（不阻塞后续流程）
+        if event.content.reply_to:
+            try:
+                msg_data = await self.get_msg(event.content.reply_to)
+                if msg_data and isinstance(msg_data, dict):
+                    raw_msg = msg_data.get("message")
+                    sender = msg_data.get("sender", {})
+                    sender_name = sender.get("nickname", sender.get("user_id", "?"))
+                    if isinstance(raw_msg, list):
+                        texts = []
+                        for seg in raw_msg:
+                            if seg.get("type") == "text":
+                                texts.append(seg.get("data", {}).get("text", ""))
+                        original_text = " ".join(texts)
+                    elif isinstance(raw_msg, str):
+                        original_text = raw_msg
+                    else:
+                        original_text = str(raw_msg) if raw_msg else ""
+                    if original_text:
+                        event.content.reply_text = f"{sender_name}: {original_text}"
+                        logger.debug("[QQ] 已追溯引用原文: %s", event.content.reply_text)
+            except Exception as e:
+                logger.warning("[QQ] 获取引用原文失败: %s", e)
 
         # 异步触发事件（不阻塞消息接收）
         task = asyncio.create_task(self.emit_event(event))
@@ -264,6 +291,8 @@ class QQAdapter(BaseAdapter):
                     stickers.append(dict(data))
                 elif seg_type == "video":
                     videos.append(dict(data))
+                elif seg_type == "record":
+                    voices.append({"url": data.get("url", ""), "file": data.get("file", "")})
                 elif seg_type == "json":
                     card_info = self._extract_card_info(data.get("data", ""))
                     json_cards.append(card_info)
@@ -276,6 +305,7 @@ class QQAdapter(BaseAdapter):
             faces=faces,
             stickers=stickers,
             videos=videos,
+            voices=voices,
             json_cards=json_cards,
         )
 
@@ -354,6 +384,55 @@ class QQAdapter(BaseAdapter):
             logger.info(f"[QQ] Failed to send message: {e}")
             return False
 
+    # ── 追溯原文 ─────────────────────────────────────────────────────
+
+    async def get_msg(self, message_id: str) -> Optional[dict]:
+        """调用 OneBot get_msg API 获取消息原文
+
+        Args:
+            message_id: 消息 ID
+
+        Returns:
+            消息数据 dict（含 sender、message 等字段），失败返回 None
+        """
+        return await self.api_call("get_msg", {"message_id": int(message_id)})
+
+    # ── 通知事件 ─────────────────────────────────────────────────────
+
+    async def _on_notice_event(self, data: dict):
+        """处理 notice 事件（戳一戳、入群、禁言等）"""
+        notice_type = data.get("notice_type", "")
+        sub_type = data.get("sub_type", "")
+        user_id = str(data.get("user_id", ""))
+        target_id = str(data.get("target_id", ""))
+        group_id = data.get("group_id")
+        sender = SenderInfo(id=user_id, name=user_id, is_bot=False)
+
+        if notice_type == "notify" and sub_type == "poke":
+            content = MessageContent(text=f"[戳一戳] 用户 {user_id} 戳了 {target_id}")
+        else:
+            content = MessageContent(text=f"[通知] {notice_type}/{sub_type}")
+
+        event = PlatformEvent(
+            platform=PlatformType.QQ,
+            event_type=EventType.NOTICE,
+            sender=sender,
+            content=content,
+            raw_event=data,
+            timestamp=datetime.now(),
+            message_id=None,
+            group_id=str(group_id) if group_id else None,
+        )
+
+        task = asyncio.create_task(self.emit_event(event))
+        task.add_done_callback(
+            lambda t: logger.error(
+                "[QQ] emit_event(notice) 异常: %s", t.exception()
+            ) if t.exception() else None
+        )
+
+    # ── API 调用 ─────────────────────────────────────────────────────
+
     async def api_call(
         self, action: str, params: dict = None
     ) -> Optional[dict]:
@@ -409,3 +488,26 @@ class QQApiClient:
             }
             for m in members
         ]
+
+    @classmethod
+    async def delete_msg(cls, message_id: str) -> bool:
+        """撤回消息
+
+        Args:
+            message_id: 要撤回的消息 ID
+
+        Returns:
+            是否成功
+        """
+        if not cls._adapter or not cls._adapter.client.websocket:
+            logger.warning("[QQApi] QQAdapter not connected")
+            return False
+        try:
+            result = await cls._adapter.client.send_action(
+                "delete_msg", {"message_id": int(message_id)}
+            )
+            # delete_msg 成功时 OneBot 返回 {status: "ok", retcode: 0, data: null}
+            return result is not None and result.get("status") == "ok"
+        except Exception as e:
+            logger.warning("[QQApi] delete_msg 失败: %s", e)
+            return False
