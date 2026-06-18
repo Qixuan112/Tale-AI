@@ -149,7 +149,7 @@ class QQAdapter(BaseAdapter):
                 list(self._seen_fingerprints.items())[-_DEDUP_TRIM:]
             )
 
-        # 异步获取引用消息原文（不阻塞后续流程）
+        # 获取引用消息原文
         if event.content.reply_to:
             try:
                 msg_data = await asyncio.wait_for(
@@ -158,18 +158,9 @@ class QQAdapter(BaseAdapter):
                 if msg_data and isinstance(msg_data, dict):
                     raw_msg = msg_data.get("message")
                     sender = msg_data.get("sender", {})
-                    sender_name = sender.get("nickname", sender.get("user_id", "?"))
-                    if isinstance(raw_msg, list):
-                        texts = []
-                        for seg in raw_msg:
-                            if seg.get("type") == "text":
-                                texts.append(seg.get("data", {}).get("text", ""))
-                        original_text = " ".join(texts)
-                    elif isinstance(raw_msg, str):
-                        original_text = raw_msg
-                    else:
-                        original_text = str(raw_msg) if raw_msg else ""
-                    if original_text:
+                    sender_name = sender.get("nickname") or sender.get("user_id") or "?"
+                    original_text = self._parse_message_content(raw_msg).text or ""
+                    if original_text.strip():
                         event.content.reply_text = f"{sender_name}: {original_text}"
                         logger.debug("[QQ] 已追溯引用原文: %s", event.content.reply_text)
             except Exception as e:
@@ -295,7 +286,11 @@ class QQAdapter(BaseAdapter):
                 elif seg_type == "video":
                     videos.append(dict(data))
                 elif seg_type == "record":
-                    voices.append({"url": data.get("url", ""), "file": data.get("file", "")})
+                    voices.append({
+                        "url": data.get("url", ""),
+                        "file": data.get("file", ""),
+                        "path": data.get("path", ""),
+                    })
                 elif seg_type == "json":
                     card_info = self._extract_card_info(data.get("data", ""))
                     json_cards.append(card_info)
@@ -436,10 +431,15 @@ class QQAdapter(BaseAdapter):
 
     # ── API 调用 ─────────────────────────────────────────────────────
 
-    async def api_call(
-        self, action: str, params: dict = None
-    ) -> Optional[dict]:
-        """发送 OneBot API 请求并等待响应（委托给 Client）。
+    async def _call_action(self, action: str, params: dict = None) -> Optional[dict]:
+        """发送 OneBot API 请求，返回完整响应（含 status/retcode/data）。"""
+        if not self.client.websocket:
+            logger.warning("[QQ] WebSocket not connected for API call")
+            return None
+        return await self.client.send_action(action, params)
+
+    async def api_call(self, action: str, params: dict = None) -> Optional[dict]:
+        """发送 OneBot API 请求，仅返回 data 部分。
 
         Args:
             action: OneBot API 动作名，如 get_group_member_list
@@ -448,14 +448,20 @@ class QQAdapter(BaseAdapter):
         Returns:
             API 响应的 data 部分，失败返回 None
         """
-        if not self.client.websocket:
-            logger.warning("[QQ] WebSocket not connected for API call")
-            return None
-
-        result = await self.client.send_action(action, params)
+        result = await self._call_action(action, params)
         if result is None:
             return None
         return result.get("data")
+
+    async def get_msg(self, message_id: str) -> Optional[dict]:
+        """获取消息原文。
+
+        若 message_id 不合法（非纯数字），直接返回 None 避免 int() 异常。
+        """
+        if not message_id or not message_id.isdigit():
+            logger.warning("[QQ] get_msg 跳过非法 message_id: %s", message_id)
+            return None
+        return await self.api_call("get_msg", {"message_id": int(message_id)})
 
 
 class QQApiClient:
@@ -502,14 +508,13 @@ class QQApiClient:
         Returns:
             是否成功
         """
-        if not cls._adapter or not cls._adapter.client.websocket:
-            logger.warning("[QQApi] QQAdapter not connected")
+        if not message_id or not message_id.isdigit():
+            logger.warning("[QQApi] delete_msg 跳过非法 message_id: %s", message_id)
             return False
         try:
-            result = await cls._adapter.client.send_action(
+            result = await cls._adapter._call_action(
                 "delete_msg", {"message_id": int(message_id)}
             )
-            # delete_msg 成功时 OneBot 返回 {status: "ok", retcode: 0, data: null}
             return result is not None and result.get("status") == "ok"
         except Exception as e:
             logger.warning("[QQApi] delete_msg 失败: %s", e)

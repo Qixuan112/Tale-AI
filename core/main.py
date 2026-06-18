@@ -237,19 +237,9 @@ class TaleCore:
     async def _handle_platform_notice(self, event_data: dict):
         """处理平台通知事件（戳一戳、入群、禁言等）"""
         try:
-            raw = event_data.get("raw_event", {})
-            if not isinstance(raw, dict):
-                raw = {}
-            notice_type = raw.get("notice_type", "")
-            sub_type = raw.get("sub_type", "")
-            user_id = str(raw.get("user_id", ""))
-            target_id = str(raw.get("target_id", ""))
-            group_id = raw.get("group_id")
-
-            if notice_type == "notify" and sub_type == "poke":
-                target_str = target_id if target_id else "我"
-                sender_name = event_data.get("sender", {}).get("name", user_id)
-                logger.info("[通知] %s 戳了戳 %s", sender_name, target_str)
+            text = event_data.get("content", {}).get("text", "")
+            if text:
+                logger.info("[通知] %s", text)
         except Exception as e:
             logger.debug("[通知] 处理通知事件时出错: %s", e)
 
@@ -554,6 +544,19 @@ class TaleCore:
         env_lines.append(f"[环境] 平台={platform_name}，聊天类型={chat_type}")
 
         user_input += "，" .join(env_lines)
+
+        # 追加富媒体信息到 LLM 上下文
+        extra_media = []
+        if processed.voices:
+            extra_media.append(f"[收到 {len(processed.voices)} 条语音消息]")
+        if processed.faces:
+            extra_media.append(f"[收到 {len(processed.faces)} 个QQ表情]")
+        if processed.stickers:
+            extra_media.append(f"[收到 {len(processed.stickers)} 个动画表情]")
+        if processed.videos:
+            extra_media.append(f"[收到 {len(processed.videos)} 个视频]")
+        if extra_media:
+            user_input += "\n" + " ".join(extra_media)
 
         # 维护昵称→ID 映射表（按群分组，供发送时解析 @ 用）
         if processed.sender_name and processed.sender_id:

@@ -4,11 +4,12 @@
 
 ## P0 — 高优先级
 
-- [x] **`post_type: notice` 事件支持**
+- [ ] **`post_type: notice` 事件支持**
   - `poke`（戳一戳）— 最常见的轻交互
   - `group_increase`（新人入群）— 可做欢迎
   - `group_ban`（禁言通知）— 了解自己被禁言
   - 在 `_on_raw_message` 中增加 `notice` 分支，转为 `PlatformEvent` 上抛
+  - 当前仅 `poke` 有文案解析，其余 notice 需后续补充
 
 - [x] **引用消息追溯原文**
   - 收到 `reply` 段时，调用 `get_msg` API 获取被回复消息的原文内容
