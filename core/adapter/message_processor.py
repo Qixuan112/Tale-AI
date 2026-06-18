@@ -274,7 +274,7 @@ class MessageProcessor:
                     return True
                 return False
 
-        return True
+        return False  # 未识别的 mode fail-closed，拒绝放行
 
     def _make_decision(self, message: ProcessedMessage) -> tuple:
         """决策是否需要响应

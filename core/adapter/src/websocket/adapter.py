@@ -62,6 +62,13 @@ class WebSocketAdapter(BaseAdapter):
         self.mode = self.get_config("mode", "server")
         self._running = True
 
+        # 统一初始化所有实例属性，确保 server/client 模式均可安全 stop()
+        self._ws: Optional[WebSocketClientProtocol] = None
+        self._reconnect_task = None
+        self._receive_task = None
+        self._clients: Dict[str, WebSocketServerProtocol] = {}
+        self._server = None
+
         if self.mode == "server":
             await self._start_server()
         else:
@@ -73,7 +80,6 @@ class WebSocketAdapter(BaseAdapter):
         self.port = self.get_config("port", 8080)
         self.path = self.get_config("path", "/ws")
 
-        self._clients: Dict[str, WebSocketServerProtocol] = {}
         self._server = await websockets.serve(
             self._handle_client,
             self.host,
@@ -140,7 +146,7 @@ class WebSocketAdapter(BaseAdapter):
         except websockets.exceptions.ConnectionClosed:
             logger.info(f"[WebSocket] Client disconnected: {client_id}")
         finally:
-            del self._clients[client_id]
+            self._clients.pop(client_id, None)  # pop 安全处理已 clear 的情况
 
     async def _receive_loop(self):
         """客户端消息接收循环"""
