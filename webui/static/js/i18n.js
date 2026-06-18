@@ -1246,7 +1246,7 @@
         currentLang = lang;
         localStorage.setItem(STORAGE_KEY, lang);
         apply();
-        document.documentElement.setAttribute('lang', lang === 'zh' ? 'zh-CN' : 'en');
+        document.documentElement.setAttribute('lang', lang === 'zh' ? 'zh-CN' : (lang === 'ja' ? 'ja' : 'en'));
         // 触发自定义事件，供其他模块响应
         window.dispatchEvent(new CustomEvent('i18n:change', { detail: { lang } }));
     }
