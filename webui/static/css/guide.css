@@ -98,6 +98,7 @@
     height: auto;
     display: block;
     filter: drop-shadow(0 8px 32px var(--vn-shadow));
+    transition: opacity 0.3s ease;
 }
 @keyframes vnSpriteEnter {
     from {
@@ -513,4 +514,48 @@
 @keyframes bellPulse {
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.4; transform: scale(0.8); }
+}
+
+/* ---- 语言选择器（V0.1.0 步骤1） ---- */
+.vn-lang-selector {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    margin-top: 12px;
+}
+.vn-lang-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+.vn-lang-btn {
+    padding: 8px 20px;
+    border: 1px solid var(--vn-border-default);
+    border-radius: 4px;
+    background: var(--vn-bg-element);
+    color: var(--vn-text-primary);
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s, transform 0.2s;
+}
+.vn-lang-btn:hover {
+    background: var(--vn-accent-20);
+    border-color: var(--vn-accent-40);
+    transform: translateY(-1px);
+}
+.vn-lang-btn.active {
+    background: var(--vn-accent-70);
+    border-color: var(--vn-accent-90);
+    color: var(--vn-text-white);
+}
+.vn-lang-preview {
+    min-height: 24px;
+    font-size: 13px;
+    color: var(--vn-text-secondary);
+    line-height: 1.5;
+    text-align: center;
+    max-width: 600px;
 }

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Misty Rose Theme Preview</title>
+<link rel="stylesheet" href="/static/css/base.css">
+<link rel="stylesheet" href="/static/css/config-cards.css">
+<style>
+  body { background-image: url('/static/img/misty_rose_v2.png'); background-size: cover; background-attachment: fixed; padding: 0; }
+  .preview-container { max-width: 960px; margin: 40px auto; padding: 0 20px; }
+  .demo-card { background: var(--card-bg); backdrop-filter: blur(12px); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+  .demo-card h2 { font-size: 18px; font-weight: 600; color: var(--text-primary); margin: 0 0 16px; }
+  .color-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+  .color-swatch { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px; border-radius: 8px; border: 1px solid var(--border); }
+  .color-swatch .swatch { width: 48px; height: 48px; border-radius: 8px; }
+  .color-swatch .name { font-size: 11px; font-weight: 600; color: var(--text-secondary); }
+  .color-swatch .value { font-size: 10px; color: var(--text-muted); font-family: monospace; }
+  .badge-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 500; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .sidebar-mini { width: 200px; background: rgba(255,255,255,0.2); backdrop-filter: blur(16px); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .submenu-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+</style>
+</head>
+<body>
+<div class="preview-container">
+  <div class="demo-card">
+    <h2>🎨 Misty Rose 色板</h2>
+    <div class="color-grid">
+      <div class="color-swatch"><div class="swatch" style="background:#F0E6E6"></div><span class="name">bg-primary</span><span class="value">#F0E6E6</span></div>
+      <div class="color-swatch"><div class="swatch" style="background:#E8D8D8"></div><span class="name">bg-secondary</span><span class="value">#E8D8D8</span></div>
+      <div class="color-swatch"><div class="swatch" style="background:#DDD0D2"></div><span class="name">bg-tertiary</span><span class="value">#DDD0D2</span></div>
+      <div class="color-swatch"><div class="swatch" style="background:#F5EDED"></div><span class="name">bg-hover</span><span class="value">#F5EDED</span></div>
+      <div class="color-swatch"><div class="swatch" style="background:#E8D0D0"></div><span class="name">bg-active</span><span class="value">#E8D0D0</span></div>
+      <div class="color-swatch"><div class="swatch" style="background:#2D2D2D"></div><span class="name">text-primary</span><span class="value">#2D2D2D</span></div>
+      <div class="color-swatch"><div class="swatch" style="background:#6B5C5C"></div><span class="name">text-secondary</span><span class="value">#6B5C5C</span></div>
+      <div class="color-swatch"><div class="swatch" style="background:#E67E22"></div><span class="name">accent 暖橙</span><span class="value">#E67E22</span></div>
+      <div class="color-swatch"><div class="swatch" style="background:#7EB87E"></div><span class="name">success</span><span class="value">#7EB87E</span></div>
+      <div class="color-swatch"><div class="swatch" style="background:#D48989"></div><span class="name">danger</span><span class="value">#D48989</span></div>
+      <div class="color-swatch"><div class="swatch" style="background:#D4A84B"></div><span class="name">warning</span><span class="value">#D4A84B</span></div>
+      <div class="color-swatch"><div class="swatch" style="background:#D5C8C8"></div><span class="name">border</span><span class="value">#D5C8C8</span></div>
+    </div>
+  </div>
+
+  <div class="demo-card">
+    <h2>📦 毛玻璃效果 / Badge / 按钮</h2>
+    <p style="color:var(--text-primary);margin-bottom:12px;font-size:13px;">以下卡片使用 <code>rgba(255,255,255,0.35)</code> 背景 + <code>backdrop-filter: blur(12px)</code></p>
+    <div class="badge-row">
+      <span class="card-badge ok">已启用</span>
+      <span class="card-badge warn">已停用</span>
+      <span class="card-badge error">未设置</span>
+    </div>
+    <br>
+    <div class="btn-row">
+      <button class="btn">普通按钮</button>
+      <button class="btn btn-primary">暖橙按钮</button>
+      <button class="btn btn-danger">危险按钮</button>
+    </div>
+  </div>
+
+  <div class="demo-card">
+    <h2>📐 侧边栏子菜单色点（精简后）</h2>
+    <div class="sidebar-mini">
+      <div style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:6px;"><span class="submenu-dot" style="background:#A0A8D0"></span> <span style="font-size:13px;color:var(--text-secondary)">角色人设</span></div>
+      <div style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:6px;"><span class="submenu-dot" style="background:#7EB87E"></span> <span style="font-size:13px;color:var(--text-secondary)">行为参数</span></div>
+      <div style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:6px;"><span class="submenu-dot" style="background:#80B8C0"></span> <span style="font-size:13px;color:var(--text-secondary)">平台适配器</span></div>
+      <div style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:6px;"><span class="submenu-dot" style="background:#90A8D0"></span> <span style="font-size:13px;color:var(--text-secondary)">AI 服务</span></div>
+      <div style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:6px;"><span class="submenu-dot" style="background:#D4A84B"></span> <span style="font-size:13px;color:var(--text-secondary)">模型路由</span></div>
+    </div>
+  </div>
+</div>
+<script src="/static/js/i18n.js"></script>
+<script src="/static/js/main.js"></script>
+</body>
+</html>

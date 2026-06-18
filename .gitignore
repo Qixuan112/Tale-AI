@@ -115,3 +115,8 @@ TODO.md
 # Project Specific - Release Assets (built locally)
 # ──────────────────────────────────────────────
 release/
+# ──────────────────────────────────────────────
+# Claude Code / Local Secrets
+# ──────────────────────────────────────────────
+.claude/
+cookie.txt
