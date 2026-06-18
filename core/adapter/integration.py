@@ -35,6 +35,8 @@ class AdapterEventBridge:
         self._bus_tasks: set = set()  # 持有 fire-and-forget task 引用，防 GC
 
     async def _on_platform_event(self, event: PlatformEvent, adapter_id: str = None):
+
+    async def _on_platform_event(self, event: PlatformEvent, adapter_id: str = None):
         """处理平台事件
 
         将 PlatformEvent 转换为内部事件并发布到事件总线。
