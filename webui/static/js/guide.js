@@ -92,6 +92,8 @@
             this.actionsContainer = document.getElementById('guideActions');
             this.trigger = document.getElementById('guideTrigger');
             this.btnBack = document.getElementById('vnBtnBack');
+            this.btnPrev = document.getElementById('vnBtnPrev');
+            this.btnNext = document.getElementById('vnBtnNext');
             this.btnSkip = document.getElementById('vnBtnSkip');
             this.btnAuto = document.getElementById('vnBtnAuto');
             this.btnClose = document.getElementById('vnBtnClose');
@@ -154,6 +156,20 @@
             if (this.btnBack) {
                 this.btnBack.addEventListener('click', function () {
                     self._onBack();
+                });
+            }
+            // 上一步 / 下一步 导航按钮
+            if (this.btnPrev) {
+                this.btnPrev.addEventListener('click', function () {
+                    if (this.classList.contains('disabled')) return;
+                    self._onBack();
+                });
+            }
+            if (this.btnNext) {
+                this.btnNext.addEventListener('click', function (e) {
+                    if (this.classList.contains('disabled')) return;
+                    e.stopPropagation();
+                    self._onTextBoxClick();
                 });
             }
 
@@ -353,12 +369,16 @@
             // 打字机播放文本
             this._startTyping(text || '');
 
+            // 打字中：下一步可用（用户可点击补全+推进）；待选项/输入出现时再禁用
+            this._updateNavButtons({ nextDisabled: false });
+
             // 完成后执行回调
             this._onCompleteCallback = function () {
                 // 显示按钮
                 if (options.buttons && options.buttons.length) {
                     self._showButtons(options.buttons);
                 } else if (options.onComplete) {
+                    self._updateNavButtons({ nextDisabled: false });
                     options.onComplete();
                 } else {
                     // 没有按钮也没有回调 → 立即关闭对话框
@@ -373,6 +393,8 @@
             if (!this.actionsContainer) return;
 
             this.actionsContainer.innerHTML = '';
+            // 选项出现：禁用下一步（用户必须先选一个选项）
+            this._updateNavButtons({ nextDisabled: true });
 
             buttons.forEach(function (btn) {
                 var el = document.createElement('button');
@@ -400,6 +422,8 @@
                 this._pendingResolve = null;
             }
             if (this.actionsContainer) this.actionsContainer.innerHTML = '';
+            // 隐藏导航按钮
+            this._updateNavButtons();
 
             if (this._autoHideTimer) {
                 clearTimeout(this._autoHideTimer);
@@ -499,6 +523,8 @@
             }
             if (this.indicator) this.indicator.classList.add('hidden');
             if (this.actionsContainer) this.actionsContainer.innerHTML = '';
+            // 输入框出现：禁用下一步（用户必须先输入并提交）
+            this._updateNavButtons({ nextDisabled: true });
             if (this.inputArea) {
                 this.inputArea.style.display = 'flex';
                 if (this.textInput) {
@@ -568,6 +594,27 @@
             return output;
         },
 
+        // ---- 导航按钮显示/禁用控制 ----
+        // nextDisabled: true 时禁用下一步（选项/输入框出现时，用户必须先选/输入）
+        _updateNavButtons: function (opts) {
+            opts = opts || {};
+            if (!this._onboardingActive) {
+                if (this.btnPrev) this.btnPrev.style.display = 'none';
+                if (this.btnNext) this.btnNext.style.display = 'none';
+                return;
+            }
+            // 上一步：第一步（_stepOrder 空）时隐藏
+            var atFirst = this._stepOrder.length === 0;
+            if (this.btnPrev) {
+                this.btnPrev.style.display = atFirst ? 'none' : 'inline-block';
+                this.btnPrev.classList.toggle('disabled', !!opts.prevDisabled);
+            }
+            if (this.btnNext) {
+                this.btnNext.style.display = 'inline-block';
+                this.btnNext.classList.toggle('disabled', !!opts.nextDisabled);
+            }
+        },
+
         // ---- 保存配置到服务器 ----
         saveConfig: function (name, data) {
             var self = this;
@@ -632,6 +679,8 @@
             var preview = document.getElementById('vnLangPreview');
             if (!sel) return;
             sel.style.display = 'flex';
+            // 语言选择器出现：禁用下一步（用户必须先选语言）
+            this._updateNavButtons({ nextDisabled: true });
             var btns = sel.querySelectorAll('.vn-lang-btn');
             var handler = function (e) {
                 e.stopPropagation();

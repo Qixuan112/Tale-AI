@@ -235,6 +235,15 @@
     color: var(--vn-text-white);
     border-color: rgba(255,255,255,0.3);
 }
+.vn-btn.disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+.vn-btn-next {
+    color: var(--vn-accent-90, rgba(255,255,255,0.85));
+    border-color: var(--vn-accent-40, rgba(255,255,255,0.2));
+}
 
 /* ---- 选择支按钮 ---- */
 .vn-choices {
