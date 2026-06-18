@@ -519,7 +519,7 @@
             'guide.v010.persona_hint': '那么，请你把人格设定告诉我吧～（描述这个数字生命的性格、口吻、背景等）',
             'guide.v010.persona_placeholder': '比如：温柔可爱的少女，说话带点小傲娇，喜欢……',
             'guide.v010.persona_saved': '人格设定收好啦～',
-            'guide.v010.finished': '好啦～这网络完工啦。恭喜恭喜～一个数字生命诞生啦！',
+            'guide.v010.finished': '好啦～这配置终于完工啦。恭喜恭喜～一个数字生命诞生啦！',
             'guide.v010.skip_goodbye': '好吧，下次再见 QwQ，希望你游玩愉快♡',
             'guide.v010.back': '返回上一步',
 
