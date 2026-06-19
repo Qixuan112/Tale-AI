@@ -17,7 +17,8 @@ logger = get_logger(__name__)
 class ChatLLM:
     def __init__(self, api_key, model, url, max_context=MAX_CONTEXT,
                  context: Optional[AgentContext] = None,
-                 cache_strategy: str = "single_message"):
+                 cache_strategy: str = "single_message",
+                 session_manager=None):
         """
         初始化 ChatLLM
 
@@ -38,6 +39,10 @@ class ChatLLM:
         self.max_context = max_context
         self.cache_strategy = cache_strategy
         self._lock = threading.RLock()
+
+        # 会话管理器（可选），用于持久化会话上下文
+        self.session_manager = session_manager
+        self.current_sid: Optional[str] = None
 
         if context is not None:
             self.context = context
@@ -207,6 +212,9 @@ class ChatLLM:
                 self._remove_rag_message()
             self.messages.append({"role": "assistant", "content": assistant_reply})
 
+        # 持久化本轮对话到 SessionManager
+        self._save_session_memory()
+
         return assistant_reply
 
     def _remove_rag_message(self):
@@ -257,8 +265,11 @@ class ChatLLM:
             return self.messages.copy()
 
     def set_history(self, messages: list):
-        """设置对话历史（供外部如 WebUI 切换会话时使用）"""
+        """设置对话历史（供外部如 WebUI 切换会话时使用）
+        注意：与 set_session 互斥，调用此方法会清除 current_sid。
+        """
         with self._lock:
+            self.current_sid = None
             if not messages:
                 self.clear_history()
                 return
@@ -267,6 +278,44 @@ class ChatLLM:
             conv_msgs = [m for m in messages if m.get("role") != "system"]
             self.messages = system_head + conv_msgs
             self._trim_context()
+
+    def set_session(self, sid: str):
+        """绑定到指定会话，从 SessionManager 加载历史上下文"""
+        if not self.session_manager:
+            logger.warning("set_session 调用但 session_manager 未设置")
+            return
+        with self._lock:
+            self.current_sid = sid
+            session_memory = self.session_manager.get_memory(sid)
+            system_head = self.context.build_messages_head(self.cache_strategy)
+            self.messages = system_head + session_memory
+            self._trim_context()
+        logger.debug("已切换到会话 [%s] (%d 条历史消息)", sid, len(session_memory))
+
+    def _save_session_memory(self):
+        """持久化本轮 user+assistant 到 SessionManager（私有方法）
+
+        在 chat() 的 assistant_reply 追加到 self.messages 之后调用。
+        从 self.messages 中取最后一条 user 和最后一条 assistant，
+        两者都非空才写入，避免半条记录。
+        """
+        if not self.session_manager or not self.current_sid:
+            return
+        with self._lock:
+            # 取最后一条 user 和 assistant
+            last_user = None
+            last_assistant = None
+            for m in reversed(self.messages):
+                if m.get("role") == "assistant" and last_assistant is None:
+                    last_assistant = m
+                elif m.get("role") == "user" and last_user is None:
+                    last_user = m
+                if last_user and last_assistant:
+                    break
+            if last_user and last_assistant:
+                self.session_manager.append_memory(
+                    self.current_sid, last_user, last_assistant
+                )
 
 
 
