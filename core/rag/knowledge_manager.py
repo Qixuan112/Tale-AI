@@ -112,7 +112,7 @@ class KnowledgeManager:
 
     # ---- 文档管理 ----
 
-    def upload_document(self, kb_name: str, file_path: str, filename: str, doc_id: str = None):
+    def upload_document(self, kb_name: str, file_path: str, filename: str, doc_id: Optional[str] = None):
         """
         上传并索引文档
 
