@@ -574,6 +574,11 @@ def page_logs():
     return render_template("logs.html")
 
 
+@app.route("/sessions")
+def page_sessions():
+    return render_template("sessions.html")
+
+
 # ============ API：系统状态 ============
 
 def _detect_offline_reason() -> str:
@@ -1702,6 +1707,92 @@ def api_knowledge_delete_document(kb_name, doc_id):
         if not ok:
             return jsonify({"ok": False, "error": "文档未找到"}), 404
         return jsonify({"ok": True, "message": "文档已删除"})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ============ API：会话管理 ============
+
+@app.route("/api/sessions")
+def api_sessions_list():
+    """获取所有活跃会话列表"""
+    try:
+        core = get_core()
+        if not core.session_manager:
+            return jsonify({"ok": True, "sessions": [], "persistence_enabled": False})
+        session_list = core.session_manager.list_sessions()
+        data = []
+        for s in session_list:
+            mem_count = 0
+            try:
+                mem = core.session_manager.get_memory(s.sid)
+                mem_count = len(mem)
+            except Exception:
+                mem_count = 0
+            data.append({
+                "sid": s.sid,
+                "adapter": s.adapter_name,
+                "type": s.session_type,
+                "id": s.session_id,
+                "title": s.session_title or "",
+                "description": s.session_description or "",
+                "timestamp": s.timestamp,
+                "memory_count": mem_count,
+            })
+        return jsonify({"ok": True, "sessions": data, "persistence_enabled": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/sessions/<path:sid>")
+def api_session_get(sid):
+    """获取指定会话详情"""
+    try:
+        core = get_core()
+        if not core.session_manager:
+            return jsonify({"ok": False, "error": "会话管理器未启用"}), 400
+        s = core.session_manager.get_or_create(sid)
+        memory = core.session_manager.get_memory(sid)
+        return jsonify({
+            "ok": True,
+            "session": {
+                "sid": s.sid,
+                "adapter": s.adapter_name,
+                "type": s.session_type,
+                "id": s.session_id,
+                "title": s.session_title or "",
+                "description": s.session_description or "",
+                "timestamp": s.timestamp,
+                "memory_count": len(memory),
+            },
+            "memory": memory[-50:],
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/sessions/<path:sid>", methods=["DELETE"])
+def api_session_delete(sid):
+    """删除指定会话"""
+    try:
+        core = get_core()
+        if not core.session_manager:
+            return jsonify({"ok": False, "error": "会话管理器未启用"}), 400
+        core.session_manager.delete_session(sid)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/sessions/<path:sid>/clear", methods=["POST"])
+def api_session_clear(sid):
+    """清空指定会话的记忆"""
+    try:
+        core = get_core()
+        if not core.session_manager:
+            return jsonify({"ok": False, "error": "会话管理器未启用"}), 400
+        core.session_manager.clear_memory(sid)
+        return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 

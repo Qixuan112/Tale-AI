@@ -560,6 +560,7 @@
 
             // knowledge.html
             'nav.knowledge': '知识库',
+            'nav.sessions': '会话',
             'knowledge.title': '知识库管理',
             'knowledge.subtitle': '上传文档、管理索引、测试检索效果',
             'knowledge.loading': '加载中...',
@@ -1142,6 +1143,7 @@
 
             // knowledge.html
             'nav.knowledge': 'Knowledge',
+            'nav.sessions': 'Sessions',
             'knowledge.title': 'Knowledge Base',
             'knowledge.subtitle': 'Upload documents, manage indexes, test retrieval',
             'knowledge.loading': 'Loading...',
