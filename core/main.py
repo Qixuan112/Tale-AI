@@ -27,6 +27,7 @@ from .adapter import (
     ResponseDecision,
     PlatformConfigBuilder,
 )
+from .chat import SessionManager
 from .utils import get_logger
 
 logger = get_logger(__name__)
@@ -68,6 +69,7 @@ class TaleCore:
         self._llm_executor = None
         self._chat_context_buffer: Dict[str, list] = {}
         self._name_to_id: Dict[str, Dict[str, str]] = {}
+        self.session_manager: Optional[SessionManager] = None
 
     def initialize(self):
         """初始化核心组件（幂等，可多次调用）"""
@@ -78,6 +80,15 @@ class TaleCore:
         self._llm_executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=8, thread_name_prefix="llm"
         )
+
+        # 初始化会话管理器（持久化到 data/sessions/）
+        persistence = config_loader.bot.bot.persistence_enabled
+        if persistence:
+            self.session_manager = SessionManager(
+                data_dir=str(Path(__file__).parent.parent / "data" / "sessions")
+            )
+            # 启动时清理过期会话（7天以上）
+            self.session_manager.cleanup_expired(days=7)
 
         self.chat = self._init_chatllm()
         self.toolllm = self._init_toolllm()
@@ -103,8 +114,7 @@ class TaleCore:
 
         logger.info("核心组件初始化完成")
 
-    @staticmethod
-    def _init_chatllm():
+    def _init_chatllm(self):
         api_key = get_chat_api_key()
         model = get_chat_model()
         url = get_chat_url()
@@ -112,7 +122,10 @@ class TaleCore:
             logger.warning("ChatLLM 未配置 API Key，请通过 WebUI 配置服务商")
             return None
         try:
-            return ChatLLM(api_key=api_key, model=model, url=url)
+            return ChatLLM(
+                api_key=api_key, model=model, url=url,
+                session_manager=self.session_manager,
+            )
         except Exception as e:
             logger.warning("ChatLLM 初始化失败: %s", e)
             return None
@@ -388,6 +401,10 @@ class TaleCore:
 
     def _store_to_context_buffer(self, processed: ProcessedMessage):
         """将消息存入上下文缓冲区，用于滑动窗口上下文。"""
+        # persistence_enabled 时由 SessionManager 管理，不写入 buffer
+        persistence = config_loader.bot.bot.persistence_enabled
+        if persistence and self.session_manager:
+            return
         key = processed.group_id or processed.sender_id
         if not key or not processed.text:
             return
@@ -585,6 +602,15 @@ class TaleCore:
         is_group = processed.group_id is not None
         target_id = processed.group_id if processed.group_id else processed.sender_id
 
+        # 构造会话标识并绑定 ChatLLM 会话上下文
+        persistence = config_loader.bot.bot.persistence_enabled
+        sid = None
+        if persistence and self.session_manager and self.chat:
+            stype = "gm" if is_group else "dm"
+            sid = f"{processed.platform.value}:{stype}:{target_id}"
+            self.session_manager.get_or_create(sid)
+            self.chat.set_session(sid)
+
         try:
             # 条件图片识别：有图片 + 满足触发条件时先用 VLM 识别
             if processed.images and self._should_recognize_image(processed):
@@ -617,12 +643,27 @@ class TaleCore:
 
             # 追加滑动上下文窗口
             if processed.text:
-                ctx_window_cfg = config_loader.bot.context
-                if ctx_window_cfg.chat_context_enabled and ctx_window_cfg.chat_context_window > 0:
-                    ctx = await self._build_context_window(processed, ctx_window_cfg.chat_context_window)
-                    if ctx:
-                        logger.debug("追加上下文窗口 (%d 条)", ctx_window_cfg.chat_context_window)
+                if persistence and self.session_manager and sid:
+                    session_memory = self.session_manager.get_memory(sid)
+                    if session_memory:
+                        ctx_lines = []
+                        for msg in session_memory:
+                            role = msg.get("role", "")
+                            content = msg.get("content", "")
+                            if role == "user":
+                                ctx_lines.append(f"[user] {content[:200]}")
+                            elif role == "assistant":
+                                ctx_lines.append(f"[assistant] {content[:200]}")
+                        ctx = "\n".join(ctx_lines)
+                        logger.debug("从会话历史追加上下文 (%d 条消息)", len(session_memory))
                         user_input = f"以下是最近的聊天记录：\n{ctx}\n\n---\n{user_input}"
+                else:
+                    ctx_window_cfg = config_loader.bot.context
+                    if ctx_window_cfg.chat_context_enabled and ctx_window_cfg.chat_context_window > 0:
+                        ctx = await self._build_context_window(processed, ctx_window_cfg.chat_context_window)
+                        if ctx:
+                            logger.debug("追加上下文窗口 (%d 条)", ctx_window_cfg.chat_context_window)
+                            user_input = f"以下是最近的聊天记录：\n{ctx}\n\n---\n{user_input}"
 
             chatllm_reply = await self._call_chatllm(user_input)
             parsed = parse_xml_msg(chatllm_reply)
