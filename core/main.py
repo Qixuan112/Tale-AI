@@ -575,15 +575,25 @@ class TaleCore:
             if processed.images and self._should_recognize_image(processed):
                 try:
                     vlm_llm = get_vlm_llm()
-                    # VlmLLM 只吃本地路径，先把图片 URL 下载到 temp
+                    loop = asyncio.get_running_loop()
+                    # VlmLLM 只吃本地路径，先把图片 URL 下载到 temp；
+                    # 下载与 VLM 调用均为阻塞操作，offload 到线程池避免阻塞事件循环
+                    max_vlm_images = 4  # 与 VlmLLM.MAX_IMAGES 对齐
                     local_paths = []
-                    for img_url in processed.images:
-                        p = self._download_ctx_image(img_url)
+                    for img_url in (processed.images or [])[:max_vlm_images]:
+                        p = await loop.run_in_executor(
+                            self._llm_executor, self._download_ctx_image, img_url
+                        )
                         if p:
                             local_paths.append(p)
                     vlm_result = None
                     if local_paths:
-                        vlm_result = vlm_llm.chat_with_image(processed.text or "", local_paths)
+                        vlm_result = await loop.run_in_executor(
+                            self._llm_executor,
+                            vlm_llm.chat_with_image,
+                            processed.text or "",
+                            local_paths,
+                        )
                     if vlm_result:
                         logger.info("VLM 图片识别结果: %s", vlm_result[:200])
                         user_input = f"{user_input}\n\n[图片识别结果]\n{vlm_result}"

@@ -168,7 +168,12 @@ def _fallback_extract(data: str, error_msg: str) -> dict:
     image_pattern = re.compile(r'<image>\s*(.*?)\s*</image>', re.DOTALL)
     image_urls = [u.strip() for u in image_pattern.findall(data) if u.strip()]
     if image_urls and result["messages"]:
-        result["messages"][-1].images.extend(image_urls)
+        # 数量可对齐时逐条绑定，避免全部落到最后一条消息
+        if len(image_urls) == len(result["messages"]):
+            for msg, img in zip(result["messages"], image_urls):
+                msg.images.append(img)
+        else:
+            result["messages"][-1].images.extend(image_urls)
 
     # 尝试提取 <act>
     act_pattern = re.compile(r'<act>\s*(.*?)\s*</act>', re.DOTALL)

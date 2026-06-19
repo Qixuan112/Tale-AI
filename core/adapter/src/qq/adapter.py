@@ -316,6 +316,24 @@ class QQAdapter(BaseAdapter):
 
     # ── 消息发送 ──────────────────────────────────────────────────────
 
+    @staticmethod
+    def _normalize_image_file(img: str) -> str:
+        """归一化图片字段供 OneBot/NapCat 的 file 字段使用。
+
+        URL / base64 / file:// 原样透传；本地路径转绝对 file:/// URI，
+        避免 NapCat 无法解析相对路径。
+        """
+        if not img:
+            return img
+        low = img.lower()
+        if low.startswith(("http://", "https://", "base64://", "file://")):
+            return img
+        import os
+        if os.path.isfile(img):
+            abs_path = os.path.abspath(img).replace("\\", "/")
+            return f"file:///{abs_path}"
+        return img
+
     async def send_message(
         self, target_id: str, content: MessageContent, **kwargs
     ) -> bool:
@@ -343,8 +361,9 @@ class QQAdapter(BaseAdapter):
                 )
 
             for img_url in content.images:
+                file_field = self._normalize_image_file(img_url)
                 message_segments.append(
-                    {"type": "image", "data": {"file": img_url}}
+                    {"type": "image", "data": {"file": file_field}}
                 )
 
             # 从 kwargs 获取 is_group 参数
