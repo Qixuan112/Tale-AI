@@ -119,7 +119,7 @@ vlm:
 # 图片生成模型 — 文生图，AI 可调用 generate_image 工具生成图片
 # 需在 services.yaml 配 type: image_gen 的 provider（如 SiliconFlow）
 # ============================================
-image_gen:
+image:
   provider: ""
 """
 

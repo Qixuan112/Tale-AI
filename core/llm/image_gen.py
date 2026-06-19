@@ -22,7 +22,7 @@ class ImageGenerator:
         bus.on("config_reloaded", self._on_config_reloaded)
 
     def _on_config_reloaded(self):
-        provider, model = provider_manager.resolve("image_gen")
+        provider, model = provider_manager.resolve("image")
         self._provider = provider if isinstance(provider, ImageGenProvider) else None
         self._model = model or (provider.default_model if isinstance(provider, ImageGenProvider) else "")
         if self._provider is None:
