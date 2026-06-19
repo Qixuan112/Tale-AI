@@ -163,8 +163,10 @@ class NapCatWebSocketClient:
         self._access_token = access_token or ""
 
         # 创建 run_done Future 供 adapter.start() 等待
-        loop = asyncio.get_running_loop()
-        self._run_done = loop.create_future()
+        # （adapter.start() 可能已预创建，避免覆盖其持有的引用）
+        if self._run_done is None:
+            loop = asyncio.get_running_loop()
+            self._run_done = loop.create_future()
 
         conn_resp = await self.connect()
         if conn_resp.get("status") != "ok":
