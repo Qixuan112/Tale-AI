@@ -107,11 +107,22 @@ class ToolRegistry:
         )
         self.register(
             ToolDefinition(
-                name="generate_image",
-                description="根据文字描述生成图片（文生图），返回图片 URL",
+                name="take_photo",
+                description="拍照/摄影——拍一张真实感的照片，所见即所得",
                 parameters=[
-                    ToolParameter("prompt", "图片内容描述，越具体越好，如：一只橘猫趴在窗台上看夕阳"),
+                    ToolParameter("prompt", "想拍的内容，越具体越好，如：一只橘猫趴在窗台上"),
                     ToolParameter("size", "图片尺寸，默认 1024x1024", required=False, default="1024x1024"),
+                ],
+            )
+        )
+        self.register(
+            ToolDefinition(
+                name="draw_picture",
+                description="画画/创作——画一张插画或艺术作品，富有创意与风格",
+                parameters=[
+                    ToolParameter("prompt", "想画的内容，越具体越好，如：一只橘猫趴在窗台上"),
+                    ToolParameter("size", "图片尺寸，默认 1024x1024", required=False, default="1024x1024"),
+                    ToolParameter("style", "画风偏好（水彩/日系/厚涂/水墨/赛璐珞等），可选", required=False, default=""),
                 ],
             )
         )

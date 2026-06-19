@@ -136,6 +136,40 @@ def execute_function(func_name: str, parameters: dict) -> dict:
                     "message": f"已生成图片，URL: {image_url}。请在回复中用 <image>{image_url}</image> 把这张图发给用户。",
                 }
             return {"status": "failed", "error": "图片生成失败（可能未配置 image_gen provider）"}
+
+        elif func_name == "take_photo":
+            from .llm.image_gen import get_image_generator
+            raw = parameters.get("prompt", "")
+            size = parameters.get("size", "1024x1024") or "1024x1024"
+            if not raw:
+                return {"status": "failed", "error": "缺少 prompt 参数"}
+            enriched = f"写实摄影风格，超清照片质感，电影级光影与细节，颜色真实自然，4K画质，景深效果，{raw}"
+            image_url = get_image_generator().generate(enriched, size)
+            if image_url:
+                return {
+                    "status": "success",
+                    "image_url": image_url,
+                    "message": f"已拍照成功，URL: {image_url}。请在回复中用 <image>{image_url}</image> 把这张照片发给用户。",
+                }
+            return {"status": "failed", "error": "拍照失败（可能未配置 image_gen provider）"}
+
+        elif func_name == "draw_picture":
+            from .llm.image_gen import get_image_generator
+            raw = parameters.get("prompt", "")
+            size = parameters.get("size", "1024x1024") or "1024x1024"
+            style = parameters.get("style", "") or ""
+            if not raw:
+                return {"status": "failed", "error": "缺少 prompt 参数"}
+            style_tag = f"{style}风格，" if style else ""
+            enriched = f"插画创作，{style_tag}富有艺术感与表现力，色彩丰富协调，画面生动有故事性，{raw}"
+            image_url = get_image_generator().generate(enriched, size)
+            if image_url:
+                return {
+                    "status": "success",
+                    "image_url": image_url,
+                    "message": f"已画好，URL: {image_url}。请在回复中用 <image>{image_url}</image> 把这张画发给用户。",
+                }
+            return {"status": "failed", "error": "画画失败（可能未配置 image_gen provider）"}
         
         # Plugin dispatch
         elif func_name in _plugin_dispatch:
@@ -199,7 +233,8 @@ _FUNCTION_CALLING_PROMPT_TEMPLATE = """
 - 搜索信息 → browser_search
 - 查询天气 → weather_query
 - 数学计算 → calculator
-- 生成图片/画图 → generate_image
+- 拍照/拍一张真实照片 → take_photo
+- 画画/绘制插画/创作艺术图 → draw_picture
 
 ## 输出格式
 
@@ -249,9 +284,10 @@ _FUNCTION_CALLING_PROMPT_TEMPLATE = """
 用户："画一只橘猫趴在窗台上看夕阳"
 回复：
 <function_calls>
-<invoke name="generate_image">
-<parameter name="prompt">一只橘猫趴在窗台上看夕阳，暖色调，写实风格</parameter>
+<invoke name="draw_picture">
+<parameter name="prompt">一只橘猫趴在窗台上看夕阳，暖色调</parameter>
 <parameter name="size">1024x1024</parameter>
+<parameter name="style">水彩</parameter>
 </invoke>
 </function_calls>
 
