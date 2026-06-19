@@ -27,6 +27,7 @@ import uuid
 import yaml
 import asyncio
 import logging
+import logging.handlers
 import queue
 import threading
 from datetime import datetime
@@ -463,10 +464,20 @@ LOG_FILE = Path(PROJECT_ROOT) / "data" / "logs" / "webui.log"
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 _log_lock = threading.Lock()
 
+# RotatingFileHandler 用于自动轮转（但实际写入走 emit）
+_log_rotator = logging.handlers.RotatingFileHandler(
+    filename=str(LOG_FILE),
+    maxBytes=5 * 1024 * 1024,
+    backupCount=3,
+    encoding="utf-8",
+)
+# 关闭 RotatingFileHandler 自带的日志流（我们手动管理写入）
+_log_rotator.close()
+
 
 def _put_log(record_dict):
-    """写入日志：文件持久化 + 内存队列"""
-    # 文件持久化（带缓冲写入）
+    """写入日志：文件持久化（自动轮转）+ 内存队列"""
+    # 文件持久化（手动轮转检查 + 写入）
     try:
         ts = record_dict.get("time", "")
         lvl = record_dict.get("level", "INFO")
@@ -474,7 +485,13 @@ def _put_log(record_dict):
         msg = record_dict.get("message", "")
         line = f"[{ts}] [{lvl}] [{mod}] {msg}\n"
         with _log_lock:
-            with open(LOG_FILE, "a", encoding="utf-8", buffering=1) as f:
+            # 检查是否需要轮转
+            try:
+                if LOG_FILE.stat().st_size > _log_rotator.maxBytes:
+                    _log_rotator.doRollover()
+            except OSError:
+                pass
+            with open(LOG_FILE, "a", encoding="utf-8") as f:
                 f.write(line)
     except Exception:
         pass
