@@ -144,10 +144,17 @@ class ImageGenProvider(BaseProvider):
             logger.warning("[%s] 未配置 image_gen 模型", self._name)
             return None
         url = f"{self.base_url}/images/generations"
-        # SiliconFlow 与 OpenAI 字段互斥，按 base_url 分流，避免严格 OpenAI 端点 400
-        is_siliconflow = "siliconflow" in self.base_url.lower()
-        if is_siliconflow:
+        # 按 base_url 分流：三家字段互斥，混塞会 400
+        low_url = self.base_url.lower()
+        if "siliconflow" in low_url:
             payload = {"model": model, "prompt": prompt, "image_size": size, "batch_size": 1}
+        elif "volces.com" in low_url:
+            # 火山方舟 Seedream：size 用档位（2K/4K），不认 WxH；最少 ~3686400 像素
+            payload = {
+                "model": model, "prompt": prompt, "size": "2K",
+                "response_format": "url", "watermark": True,
+                "stream": False, "sequential_image_generation": "disabled",
+            }
         else:
             payload = {"model": model, "prompt": prompt, "size": size, "n": 1}
         headers = {"Authorization": f"Bearer {self.api_key}"}
