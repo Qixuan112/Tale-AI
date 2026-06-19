@@ -174,14 +174,15 @@ def handle_function_call(response_text: str) -> tuple:
 # 给 ChatLLM 的 Function Calling 提示词模板
 # 工具列表从 registry 动态生成，避免与 ToolDefinition 重复维护漂移。
 def _render_tools_xml() -> str:
+    from xml.sax.saxutils import quoteattr
     blocks = []
     for tool in _registry.list_tools():
         params = "".join(
-            f'\n<parameter name="{p.name}" description="{p.description}"/>'
+            f"\n<parameter name={quoteattr(p.name)} description={quoteattr(p.description)}/>"
             for p in tool.parameters
         )
         blocks.append(
-            f'<tool name="{tool.name}" description="{tool.description}">{params}\n</tool>'
+            f"<tool name={quoteattr(tool.name)} description={quoteattr(tool.description)}>{params}\n</tool>"
         )
     return "<tools>\n" + "\n\n".join(blocks) + "\n</tools>"
 

@@ -234,17 +234,8 @@ class ProviderManager:
         for name, cfg in providers_config.items():
             fmt = (getattr(cfg, "format", "") or "").lower()
             tp = (getattr(cfg, "type", "") or "").lower()
-            if fmt == "openai" or tp == "llm":
-                provider = OpenAICompatibleProvider(
-                    name=name,
-                    api_key=getattr(cfg, "api_key", ""),
-                    base_url=getattr(cfg, "base_url", ""),
-                    default_model=getattr(cfg, "model", ""),
-                    timeout=getattr(cfg, "timeout", 120) or 120,
-                )
-                new_providers[name] = provider
-                logger.debug("ProviderManager: 注册供应商 '%s' (%s)", name, provider.base_url)
-            elif tp == "image_gen":
+            # type 优先于 format：format: openai + type: image_gen 应注册为 ImageGenProvider
+            if tp == "image_gen":
                 provider = ImageGenProvider(
                     name=name,
                     api_key=getattr(cfg, "api_key", ""),
@@ -254,6 +245,16 @@ class ProviderManager:
                 )
                 new_providers[name] = provider
                 logger.debug("ProviderManager: 注册图片生成供应商 '%s' (%s)", name, provider.base_url)
+            elif fmt == "openai" or tp == "llm":
+                provider = OpenAICompatibleProvider(
+                    name=name,
+                    api_key=getattr(cfg, "api_key", ""),
+                    base_url=getattr(cfg, "base_url", ""),
+                    default_model=getattr(cfg, "model", ""),
+                    timeout=getattr(cfg, "timeout", 120) or 120,
+                )
+                new_providers[name] = provider
+                logger.debug("ProviderManager: 注册供应商 '%s' (%s)", name, provider.base_url)
 
         self._providers = new_providers
         logger.info("ProviderManager: 已注册 %d 个供应商", len(new_providers))

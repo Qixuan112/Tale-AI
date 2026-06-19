@@ -465,7 +465,7 @@ class TaleCore:
         if not key or not self._chat_context_buffer.get(key):
             return ""
         # 末条是当前消息，直连路径已识别其图片，这里只看历史
-        recent = self._chat_context_buffer[key][-window:-1]
+        recent = self._chat_context_buffer[key][-(window + 1):-1]
         if not recent:
             return ""
 

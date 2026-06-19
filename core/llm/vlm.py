@@ -144,24 +144,25 @@ class VlmLLM:
 
         cache_key = hashlib.md5(b"\x00".join(hash_parts)).hexdigest()
 
-        # 加锁 read-modify-write，避免并发丢更新
+        # 两阶段：锁内查缓存命中；锁外调慢 API；锁内回写。避免持锁调 VLM 串行化所有 miss。
         with _cache_lock:
-            cache = _load_desc_cache()
-            if cache_key in cache:
+            if cache_key in _load_desc_cache():
                 logger.debug("VLM 缓存命中: %s", cache_key)
-                return cache[cache_key]
-            # 释放锁调 API（慢）会损害并发；改为先占位再调，但为简化此处持锁调用。
-            # VLM 调用慢，持锁会串行化所有识别请求——可接受（识别本就重）。
-            messages = [{"role": "user", "content": content_parts}]
-            try:
-                desc = self._provider.chat(messages=messages, model=self.model, max_tokens=1024)
-            except Exception as e:
-                logger.error("VlmLLM API 调用失败: %s", e)
-                return None
-            if desc:
+                return _load_desc_cache()[cache_key]
+
+        messages = [{"role": "user", "content": content_parts}]
+        try:
+            desc = self._provider.chat(messages=messages, model=self.model, max_tokens=1024)
+        except Exception as e:
+            logger.error("VlmLLM API 调用失败: %s", e)
+            return None
+
+        if desc:
+            with _cache_lock:
+                cache = _load_desc_cache()
                 cache[cache_key] = desc
                 _save_desc_cache(cache)
-                return desc
+            return desc
         return None
 
 
