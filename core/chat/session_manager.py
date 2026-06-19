@@ -138,6 +138,13 @@ class SessionManager:
                     messages.append(msg)
             return messages
 
+    def get_memory_count(self, sid: str) -> int:
+        """获取会话记忆轮数（无需展平，性能优于 get_memory + len）"""
+        lock = self._get_lock(sid)
+        with lock:
+            d = self._ensure_session(sid)
+            return len(d.get("memory", []))
+
     def append_memory(self, sid: str, user_msg: dict, asst_msg: dict) -> bool:
         """追加一轮对话（user + assistant）
 

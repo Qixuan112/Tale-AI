@@ -1723,12 +1723,7 @@ def api_sessions_list():
         session_list = core.session_manager.list_sessions()
         data = []
         for s in session_list:
-            mem_count = 0
-            try:
-                mem = core.session_manager.get_memory(s.sid)
-                mem_count = len(mem)
-            except Exception:
-                mem_count = 0
+            mem_count = core.session_manager.get_memory_count(s.sid)
             data.append({
                 "sid": s.sid,
                 "adapter": s.adapter_name,
@@ -1740,18 +1735,22 @@ def api_sessions_list():
                 "memory_count": mem_count,
             })
         return jsonify({"ok": True, "sessions": data, "persistence_enabled": True})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+    except Exception:
+        logger.exception("获取会话列表失败")
+        return jsonify({"ok": False, "error": "Internal server error"}), 500
 
 
 @app.route("/api/sessions/<path:sid>")
 def api_session_get(sid):
-    """获取指定会话详情"""
+    """获取指定会话详情（只读，不会创建新会话）"""
     try:
         core = get_core()
         if not core.session_manager:
             return jsonify({"ok": False, "error": "会话管理器未启用"}), 400
-        s = core.session_manager.get_or_create(sid)
+        sessions = {item.sid: item for item in core.session_manager.list_sessions()}
+        s = sessions.get(sid)
+        if not s:
+            return jsonify({"ok": False, "error": "会话不存在"}), 404
         memory = core.session_manager.get_memory(sid)
         return jsonify({
             "ok": True,
@@ -1767,8 +1766,9 @@ def api_session_get(sid):
             },
             "memory": memory[-50:],
         })
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+    except Exception:
+        logger.exception("获取会话详情失败")
+        return jsonify({"ok": False, "error": "Internal server error"}), 500
 
 
 @app.route("/api/sessions/<path:sid>", methods=["DELETE"])
@@ -1780,8 +1780,9 @@ def api_session_delete(sid):
             return jsonify({"ok": False, "error": "会话管理器未启用"}), 400
         core.session_manager.delete_session(sid)
         return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+    except Exception:
+        logger.exception("删除会话失败")
+        return jsonify({"ok": False, "error": "Internal server error"}), 500
 
 
 @app.route("/api/sessions/<path:sid>/clear", methods=["POST"])
@@ -1793,8 +1794,9 @@ def api_session_clear(sid):
             return jsonify({"ok": False, "error": "会话管理器未启用"}), 400
         core.session_manager.clear_memory(sid)
         return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+    except Exception:
+        logger.exception("清空会话记忆失败")
+        return jsonify({"ok": False, "error": "Internal server error"}), 500
 
 
 # ============ 日志拦截（捕获 logging 与 print 输出到 LOG_QUEUE） ============

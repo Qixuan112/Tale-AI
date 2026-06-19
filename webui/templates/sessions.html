@@ -152,7 +152,7 @@
             const res = await fetch('/api/sessions');
             const data = await res.json();
             if (!data.ok) {
-                container.innerHTML = '<div class="empty-tip">' + (window.t ? window.t('sessions.loadFailed') : '加载失败') + ': ' + (data.error || '') + '</div>';
+                container.innerHTML = '<div class="empty-tip">' + (window.t ? window.t('sessions.loadFailed') : '加载失败') + ': ' + escapeHtml(data.error || '') + '</div>';
                 return;
             }
             if (!data.persistence_enabled) {
@@ -180,7 +180,7 @@
                         '</div>' +
                     '</div>' +
                     '<div class="session-actions">' +
-                        '<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();deleteSession(\'' + escapeHtml(s.sid) + '\')">' + (window.t ? window.t('common.delete') : '删除') + '</button>' +
+                        '<button class="btn btn-sm btn-danger js-delete-session" data-sid="' + escapeHtml(s.sid) + '">' + (window.t ? window.t('common.delete') : '删除') + '</button>' +
                     '</div>' +
                 '</div>';
             }).join('');
@@ -189,6 +189,14 @@
                 card.addEventListener('click', function() {
                     openSession(this.dataset.sid);
                 });
+            });
+            // 事件委托：删除按钮
+            container.addEventListener('click', function(e) {
+                var btn = e.target.closest('.js-delete-session');
+                if (btn) {
+                    e.stopPropagation();
+                    deleteSession(btn.dataset.sid);
+                }
             });
         } catch (e) {
             container.innerHTML = '<div class="empty-tip">' + (window.t ? window.t('sessions.loadFailed') : '加载失败') + '</div>';
