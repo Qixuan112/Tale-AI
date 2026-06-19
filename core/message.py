@@ -32,13 +32,14 @@ class Act(MessageElement):
 
 class Message:
     """完整消息，包含多个元素"""
-    def __init__(self, elements=None, at_targets=None, reply_to=None):
+    def __init__(self, elements=None, at_targets=None, reply_to=None, images=None):
         self.elements = elements or []
         self.at_targets = at_targets or []
         self.reply_to = reply_to
+        self.images = images or []
 
     def add_element(self, element):
         self.elements.append(element)
 
     def __repr__(self):
-        return f"Message(elements={self.elements}, at_targets={self.at_targets}, reply_to={self.reply_to})"
+        return f"Message(elements={self.elements}, at_targets={self.at_targets}, reply_to={self.reply_to}, images={self.images})"

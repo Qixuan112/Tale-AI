@@ -121,6 +121,21 @@ def execute_function(func_name: str, parameters: dict) -> dict:
             if expression:
                 return safe_calculate(expression)
             return {"status": "failed", "error": "缺少 expression 参数"}
+
+        elif func_name == "generate_image":
+            from .llm.image_gen import get_image_generator
+            prompt = parameters.get("prompt", "")
+            size = parameters.get("size", "1024x1024") or "1024x1024"
+            if not prompt:
+                return {"status": "failed", "error": "缺少 prompt 参数"}
+            image_url = get_image_generator().generate(prompt, size)
+            if image_url:
+                return {
+                    "status": "success",
+                    "image_url": image_url,
+                    "message": f"已生成图片，URL: {image_url}。请在回复中用 <image>{image_url}</image> 把这张图发给用户。",
+                }
+            return {"status": "failed", "error": "图片生成失败（可能未配置 image_gen provider）"}
         
         # Plugin dispatch
         elif func_name in _plugin_dispatch:
@@ -157,27 +172,25 @@ def handle_function_call(response_text: str) -> tuple:
 
 
 # 给 ChatLLM 的 Function Calling 提示词模板
-FUNCTION_CALLING_PROMPT = """
+# 工具列表从 registry 动态生成，避免与 ToolDefinition 重复维护漂移。
+def _render_tools_xml() -> str:
+    from xml.sax.saxutils import quoteattr
+    blocks = []
+    for tool in _registry.list_tools():
+        params = "".join(
+            f"\n<parameter name={quoteattr(p.name)} description={quoteattr(p.description)}/>"
+            for p in tool.parameters
+        )
+        blocks.append(
+            f"<tool name={quoteattr(tool.name)} description={quoteattr(tool.description)}>{params}\n</tool>"
+        )
+    return "<tools>\n" + "\n\n".join(blocks) + "\n</tools>"
+
+
+_FUNCTION_CALLING_PROMPT_TEMPLATE = """
 你可以使用以下工具来帮助用户：
 
-<tools>
-<tool name="browser_open" description="打开指定网页">
-<parameter name="url" description="网页地址，如 https://www.baidu.com"/>
-</tool>
-
-<tool name="browser_search" description="使用搜索引擎搜索">
-<parameter name="query" description="搜索关键词"/>
-<parameter name="engine" description="搜索引擎：默认 duckduckgo"/>
-</tool>
-
-<tool name="weather_query" description="查询城市天气">
-<parameter name="city" description="城市名称，如 北京、上海"/>
-</tool>
-
-<tool name="calculator" description="执行数学计算">
-<parameter name="expression" description="数学表达式，如 1+2*3"/>
-</tool>
-</tools>
+{tools}
 
 ## 使用规则
 
@@ -186,6 +199,7 @@ FUNCTION_CALLING_PROMPT = """
 - 搜索信息 → browser_search
 - 查询天气 → weather_query
 - 数学计算 → calculator
+- 生成图片/画图 → generate_image
 
 ## 输出格式
 
@@ -232,8 +246,26 @@ FUNCTION_CALLING_PROMPT = """
 </invoke>
 </function_calls>
 
+用户："画一只橘猫趴在窗台上看夕阳"
+回复：
+<function_calls>
+<invoke name="generate_image">
+<parameter name="prompt">一只橘猫趴在窗台上看夕阳，暖色调，写实风格</parameter>
+<parameter name="size">1024x1024</parameter>
+</invoke>
+</function_calls>
+
 ## 注意事项
 - 一次只能调用一个工具
 - 参数值要准确完整
 - 如果不需要工具，直接回复用户即可
 """
+
+
+def get_function_calling_prompt() -> str:
+    """构建 ChatLLM 的 Function Calling 提示词（工具列表从 registry 动态注入）。"""
+    return _FUNCTION_CALLING_PROMPT_TEMPLATE.format(tools=_render_tools_xml())
+
+
+# 向后兼容：保留模块级常量供旧引用（在导入时生成一次）
+FUNCTION_CALLING_PROMPT = get_function_calling_prompt()

@@ -113,6 +113,83 @@ class OpenAICompatibleProvider(BaseProvider):
             return []
 
 
+class ImageGenProvider(BaseProvider):
+    """文生图供应商（OpenAI / SiliconFlow 兼容的 /images/generations 接口）。"""
+
+    def __init__(
+        self,
+        name: str,
+        api_key: str,
+        base_url: str,
+        default_model: str = "",
+        timeout: int = 120,
+    ):
+        self._name = name
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+        self.default_model = default_model
+        self._timeout = timeout
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def chat(self, messages, model, temperature=0.7, max_tokens=2048, **kwargs):
+        logger.warning("[%s] ImageGenProvider 不支持 chat 调用", self._name)
+        return None
+
+    def generate_image(self, prompt: str, model: str, size: str = "1024x1024") -> Optional[str]:
+        """文生图，返回图片 URL 或本地路径（provider 返回 base64 时落盘）。"""
+        if not model:
+            logger.warning("[%s] 未配置 image_gen 模型", self._name)
+            return None
+        url = f"{self.base_url}/images/generations"
+        # SiliconFlow 与 OpenAI 字段互斥，按 base_url 分流，避免严格 OpenAI 端点 400
+        is_siliconflow = "siliconflow" in self.base_url.lower()
+        if is_siliconflow:
+            payload = {"model": model, "prompt": prompt, "image_size": size, "batch_size": 1}
+        else:
+            payload = {"model": model, "prompt": prompt, "size": size, "n": 1}
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        try:
+            with httpx.Client(timeout=httpx.Timeout(self._timeout, connect=10.0)) as client:
+                resp = client.post(url, json=payload, headers=headers)
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception as e:
+            logger.error("[%s] 图片生成 API 调用失败: %s", self._name, e)
+            return None
+
+        # 兼容 OpenAI ({data:[{url}]}) 与 SiliconFlow ({images:[{url}]}) 两种响应
+        items = data.get("data") or data.get("images") or []
+        if not items:
+            logger.warning("[%s] 图片生成响应无 data/images 字段: %s", self._name, data)
+            return None
+        first = items[0]
+        if first.get("url"):
+            return first["url"]
+        # base64 落盘（走 TempFileManager 带自动清理）
+        b64 = first.get("b64_json")
+        if b64:
+            return self._save_b64(b64)
+        logger.warning("[%s] 图片生成响应项无 url/b64_json: %s", self._name, first)
+        return None
+
+    @staticmethod
+    def _save_b64(b64: str) -> Optional[str]:
+        """base64 图片落盘到 temp 目录（带自动清理），返回路径。"""
+        import base64
+        import time
+        from ..utils.temp_manager import temp_manager
+        try:
+            img_bytes = base64.b64decode(b64)
+            filename = f"imggen_{int(time.time() * 1000)}.png"
+            return temp_manager.save_image(img_bytes, filename)
+        except Exception as e:
+            logger.warning("base64 图片落盘失败: %s", e)
+            return None
+
+
 class ProviderManager:
     """多供应商 LLM 管理器（单例）。
 
@@ -157,7 +234,18 @@ class ProviderManager:
         for name, cfg in providers_config.items():
             fmt = (getattr(cfg, "format", "") or "").lower()
             tp = (getattr(cfg, "type", "") or "").lower()
-            if fmt == "openai" or tp == "llm":
+            # type 优先于 format：format: openai + type: image_gen 应注册为 ImageGenProvider
+            if tp == "image_gen":
+                provider = ImageGenProvider(
+                    name=name,
+                    api_key=getattr(cfg, "api_key", ""),
+                    base_url=getattr(cfg, "base_url", ""),
+                    default_model=getattr(cfg, "model", ""),
+                    timeout=getattr(cfg, "timeout", 120) or 120,
+                )
+                new_providers[name] = provider
+                logger.debug("ProviderManager: 注册图片生成供应商 '%s' (%s)", name, provider.base_url)
+            elif fmt == "openai" or tp == "llm":
                 provider = OpenAICompatibleProvider(
                     name=name,
                     api_key=getattr(cfg, "api_key", ""),

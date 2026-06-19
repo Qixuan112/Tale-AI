@@ -455,22 +455,30 @@ class TaleCore:
             logger.warning("下载上下文图片失败 %s: %s", url_or_path, e)
             return None
 
-    def _build_context_window(self, processed: ProcessedMessage, window: int) -> str:
-        """从缓冲区获取最近 N 条消息作为上下文，图片自动 VLM 识别。"""
+    async def _build_context_window(self, processed: ProcessedMessage, window: int) -> str:
+        """从缓冲区获取最近 N 条消息作为上下文，图片自动 VLM 识别。
+
+        排除缓冲区末条（即当前消息）以避免与直连 VLM 路径重复识别同一张图。
+        下载与 VLM 调用均为阻塞操作，offload 到 _llm_executor 避免阻塞事件循环。
+        """
         key = processed.group_id or processed.sender_id
         if not key or not self._chat_context_buffer.get(key):
             return ""
-        recent = self._chat_context_buffer[key][-window:]
+        # 末条是当前消息，直连路径已识别其图片，这里只看历史
+        recent = self._chat_context_buffer[key][-(window + 1):-1]
+        if not recent:
+            return ""
 
         # 检查 VLM 是否可用
         vlm = None
         vlm_available = False
         try:
             vlm = get_vlm_llm()
-            vlm_available = vlm._ensure_client()
+            vlm_available = vlm._ensure_provider()
         except Exception:
             pass
 
+        loop = asyncio.get_running_loop()
         lines = []
         img_count = 0
         max_ctx_images = 2
@@ -483,10 +491,17 @@ class TaleCore:
                 for img_url in msg['images']:
                     if img_count >= max_ctx_images:
                         break
-                    local_path = self._download_ctx_image(img_url)
+                    local_path = await loop.run_in_executor(
+                        self._llm_executor, self._download_ctx_image, img_url
+                    )
                     if local_path:
                         try:
-                            desc = vlm.chat_with_image("描述这张图片的内容", [local_path])
+                            desc = await loop.run_in_executor(
+                                self._llm_executor,
+                                vlm.chat_with_image,
+                                "描述这张图片的内容",
+                                [local_path],
+                            )
                             if desc:
                                 line += f"\n  [图片: {desc[:200]}]"
                                 img_count += 1
@@ -575,7 +590,25 @@ class TaleCore:
             if processed.images and self._should_recognize_image(processed):
                 try:
                     vlm_llm = get_vlm_llm()
-                    vlm_result = vlm_llm.chat_with_image(processed.text or "", processed.images)
+                    loop = asyncio.get_running_loop()
+                    # VlmLLM 只吃本地路径，先把图片 URL 下载到 temp；
+                    # 下载与 VLM 调用均为阻塞操作，offload 到线程池避免阻塞事件循环
+                    max_vlm_images = 4  # 与 VlmLLM.MAX_IMAGES 对齐
+                    local_paths = []
+                    for img_url in (processed.images or [])[:max_vlm_images]:
+                        p = await loop.run_in_executor(
+                            self._llm_executor, self._download_ctx_image, img_url
+                        )
+                        if p:
+                            local_paths.append(p)
+                    vlm_result = None
+                    if local_paths:
+                        vlm_result = await loop.run_in_executor(
+                            self._llm_executor,
+                            vlm_llm.chat_with_image,
+                            processed.text or "",
+                            local_paths,
+                        )
                     if vlm_result:
                         logger.info("VLM 图片识别结果: %s", vlm_result[:200])
                         user_input = f"{user_input}\n\n[图片识别结果]\n{vlm_result}"
@@ -586,7 +619,7 @@ class TaleCore:
             if processed.text:
                 ctx_window_cfg = config_loader.bot.context
                 if ctx_window_cfg.chat_context_enabled and ctx_window_cfg.chat_context_window > 0:
-                    ctx = self._build_context_window(processed, ctx_window_cfg.chat_context_window)
+                    ctx = await self._build_context_window(processed, ctx_window_cfg.chat_context_window)
                     if ctx:
                         logger.debug("追加上下文窗口 (%d 条)", ctx_window_cfg.chat_context_window)
                         user_input = f"以下是最近的聊天记录：\n{ctx}\n\n---\n{user_input}"
@@ -661,9 +694,11 @@ class TaleCore:
         inter_delay = getattr(config_loader.bot.bot, 'typing_inter_delay', 2.0)
         for idx, msg in enumerate(messages):
             reply_text = self._extract_message_text(msg)
-            if reply_text:
+            if reply_text or msg.images:
                 # 打字延迟：每条消息发送前等待，模拟真人逐条打字
-                await asyncio.sleep(calculate_split_interval(len(reply_text)))
+                # 纯图片消息（reply_text 为空）给一个基础延迟，避免瞬发像机器人
+                text_len = len(reply_text) if reply_text else 20
+                await asyncio.sleep(calculate_split_interval(text_len))
                 # AI 可主动通过 <at_targets> 指定 @ 谁（用昵称）；不写就不 @
                 raw_at = msg.at_targets or []
                 at_targets = None
@@ -687,6 +722,7 @@ class TaleCore:
                     reply_to=reply_to,
                     is_group=is_group,
                     at_targets=at_targets,
+                    images=msg.images or None,
                 )
                 # 句与句之间的额外停顿（最后一条不等待）
                 if idx < len(messages) - 1:
@@ -1000,6 +1036,7 @@ class TaleCore:
         reply_to: Optional[str] = None,
         is_group: bool = False,
         at_targets: Optional[list] = None,
+        images: Optional[list] = None,
     ):
         """发送回复消息
 
@@ -1010,8 +1047,9 @@ class TaleCore:
             reply_to: 回复的消息 ID（可选）
             is_group: 是否为群消息
             at_targets: @目标列表（群聊时传入发送者ID以触发真实提醒）
+            images: 图片 URL/路径列表（可选）
         """
-        if not self.adapter_bridge or not reply:
+        if not self.adapter_bridge or (not reply and not images):
             return
 
         try:
@@ -1019,6 +1057,7 @@ class TaleCore:
                 adapter_id=platform,
                 target_id=target_id,
                 text=reply,
+                images=images,
                 reply_to=reply_to,
                 is_group=is_group,
                 at_targets=at_targets,

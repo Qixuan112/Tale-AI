@@ -76,6 +76,7 @@ CHAT_BASE_TEMPLATE = """
   <at_targets>用户昵称1,用户昵称2</at_targets>
   <text>消息内容</text>
   <emoji>😊</emoji>
+  <image>https://example.com/cat.png</image>
   <reply>要回复的消息ID</reply>
 </msg>
 
@@ -102,6 +103,7 @@ CHAT_BASE_TEMPLATE = """
   - **@用户**：在群聊中回复某人时，必须在 <msg> 内使用 <at_targets>发送者昵称</at_targets> @ 对方，不然对方收不到提醒。昵称从「消息元数据」中获取，直接用即可，不要编造。除了 @ 当前说话的人，你也可以主动 @ 群里的其他人
   - **引用回复**：使用 <reply>消息ID</reply> 引用要回复的消息，这样对方才知道你在回复什么。消息 ID 从「消息元数据」或聊天记录中获取。可以引用当前消息，也可以引用历史消息，也可以不引用——由你根据对话场景自由决定
   - <reply> 是可选标签，不写即不引用；写了就会引用指定消息
+  - **发送图片**：在 <msg> 内用 <image>图片URL或本地路径</image> 发送图片，可多个，可与文本混用。仅在确有真实图片可发时使用，不要编造不存在的 URL 或路径
   - **结束对话**：使用 <msg></msg> 表示不发送任何消息，适用于：用户道别、用户主动结束对话、或你不想继续回复时。不能和其他 <msg> 混用
   - 群聊场景下每条 <msg> 都应同时包含 <at_targets> 和 <reply>，用逗号分隔多人 @
   - 私聊场景下只需要 <text>，不需要 @ 和引用
@@ -515,7 +517,7 @@ XML_REPAIR_SYSTEM_PROMPT = """\
 请修复这段 XML，使其可被标准 XML 解析器解析。
 
 ## 有效的 XML 标签
-- <msg> 对话消息，包含子标签 <text>、<emoji>、<at_targets>、<reply>
+- <msg> 对话消息，包含子标签 <text>、<emoji>、<at_targets>、<reply>、<image>
 - <act> 动作指令（可多个）
 - <plan> 计划请求（最多一个）
 - <tool> 工具查询（最多一个）

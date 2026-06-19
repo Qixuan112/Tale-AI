@@ -316,6 +316,37 @@ class QQAdapter(BaseAdapter):
 
     # ── 消息发送 ──────────────────────────────────────────────────────
 
+    @staticmethod
+    def _normalize_image_file(img: str) -> str:
+        """归一化图片字段供 OneBot/NapCat 的 file 字段使用。
+
+        URL / base64:// / file:// 原样透传（http(s) URL 先过 SSRF 校验）；
+        本地路径读字节转 base64://（OneBot 原生），与 NapCat 是否同机/同文件系统解耦。
+        返回空串表示该图应跳过（不安全或读取失败）。
+        """
+        if not img:
+            return img
+        low = img.lower()
+        if low.startswith(("http://", "https://")):
+            from core.tools.network_safety import validate_url
+            err = validate_url(img)
+            if err:
+                logger.warning("[QQ] 拒绝不安全图片 URL: %s", err)
+                return ""
+            return img
+        if low.startswith(("base64://", "file://")):
+            return img
+        import base64
+        import os
+        if os.path.isfile(img):
+            try:
+                with open(img, "rb") as f:
+                    b64 = base64.b64encode(f.read()).decode("utf-8")
+                return f"base64://{b64}"
+            except Exception:
+                return ""
+        return img
+
     async def send_message(
         self, target_id: str, content: MessageContent, **kwargs
     ) -> bool:
@@ -343,8 +374,11 @@ class QQAdapter(BaseAdapter):
                 )
 
             for img_url in content.images:
+                file_field = self._normalize_image_file(img_url)
+                if not file_field:
+                    continue
                 message_segments.append(
-                    {"type": "image", "data": {"file": img_url}}
+                    {"type": "image", "data": {"file": file_field}}
                 )
 
             # 从 kwargs 获取 is_group 参数
