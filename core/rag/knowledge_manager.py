@@ -137,6 +137,14 @@ class KnowledgeManager:
         chunks = chunker.chunk(raw_text)
 
         doc_id = doc_id or str(uuid.uuid4())
+
+        # 唯一性检查：调用方传入的 doc_id 可能冲突，重复 id 会让 delete_document
+        # 歧义、rebuild 产生重复 chunk_id，故在索引前拒绝
+        with self._lock:
+            existing_ids = {r.id for r in self._documents.get(kb_name, [])}
+        if doc_id in existing_ids:
+            raise ValueError(f"文档 ID 已存在: {doc_id}")
+
         store = self._stores.get(kb_name)
         if store is None:
             raise ValueError(f"知识库 '{kb_name}' 未找到或已禁用")
