@@ -261,7 +261,26 @@ class AdapterManager:
             self._platform_index[platform_key].append(adapter_id)
 
         # 启动适配器
-        await adapter.start()
+        try:
+            await adapter.start()
+        except Exception:
+            # 启动失败必须回滚登记，否则留下"僵尸"实例：
+            # 路由会静默失败、list_running_adapters 谎报、重试触发 already running
+            self._adapters.pop(adapter_id, None)
+            if adapter_id in self._enabled_adapters:
+                self._enabled_adapters.remove(adapter_id)
+            platform_key = adapter.platform.value
+            if platform_key in self._platform_index:
+                if adapter_id in self._platform_index[platform_key]:
+                    self._platform_index[platform_key].remove(adapter_id)
+                if not self._platform_index[platform_key]:
+                    del self._platform_index[platform_key]
+            # 尽力清理半启动的资源（__init__ 已初始化属性，stop() 不会 AttributeError）
+            try:
+                await adapter.stop()
+            except Exception as stop_err:
+                logger.info(f"Error cleaning up failed adapter {adapter_id}: {stop_err}")
+            raise
 
         logger.info(f"Started adapter: {adapter_id} (platform={platform_key})")
         return True

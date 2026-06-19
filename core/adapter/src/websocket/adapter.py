@@ -5,12 +5,8 @@ from datetime import datetime
 
 try:
     import websockets
-    from websockets.server import WebSocketServerProtocol
-    from websockets.client import WebSocketClientProtocol
 except ImportError:
     websockets = None
-    WebSocketServerProtocol = None
-    WebSocketClientProtocol = None
 
 from core.adapter.base import BaseAdapter
 from core.adapter.event import (
@@ -50,6 +46,16 @@ class WebSocketAdapter(BaseAdapter):
         }
     """
 
+    def __init__(self, config, event_callback=None):
+        super().__init__(config, event_callback)
+        # 统一初始化所有实例属性，确保即便 start() 早期失败，stop() 也能安全调用
+        self.mode = None
+        self._ws: Optional[Any] = None
+        self._reconnect_task = None
+        self._receive_task = None
+        self._clients: Dict[str, Any] = {}
+        self._server = None
+
     @property
     def platform(self) -> PlatformType:
         return PlatformType.WEBSOCKET
@@ -61,13 +67,6 @@ class WebSocketAdapter(BaseAdapter):
 
         self.mode = self.get_config("mode", "server")
         self._running = True
-
-        # 统一初始化所有实例属性，确保 server/client 模式均可安全 stop()
-        self._ws: Optional[WebSocketClientProtocol] = None
-        self._reconnect_task = None
-        self._receive_task = None
-        self._clients: Dict[str, WebSocketServerProtocol] = {}
-        self._server = None
 
         if self.mode == "server":
             await self._start_server()
@@ -95,10 +94,6 @@ class WebSocketAdapter(BaseAdapter):
         self.auto_reconnect = self.get_config("auto_reconnect", True)
         self.reconnect_interval = self.get_config("reconnect_interval", 5)
 
-        self._ws: Optional[WebSocketClientProtocol] = None
-        self._reconnect_task = None
-        self._receive_task = None
-
         await self._connect()
 
         # 启动消息接收循环（保存引用以便正确清理）
@@ -119,15 +114,27 @@ class WebSocketAdapter(BaseAdapter):
         if not self._running:
             return
 
+        # 去重：若已有重连任务在排队，先取消，避免快速断连时堆叠多个重连任务
+        if self._reconnect_task and not self._reconnect_task.done():
+            self._reconnect_task.cancel()
+
         async def reconnect():
             await asyncio.sleep(self.reconnect_interval)
-            if self._running:
-                await self._connect()
+            if not self._running:
+                return
+            # 先清空旧连接引用，避免并发 send/recv 触碰半关闭的 socket
+            self._ws = None
+            await self._connect()
+            # 重连成功后必须重建接收任务，否则再没人调用 recv()，入站消息全部丢失
+            if self._ws:
+                if self._receive_task and not self._receive_task.done():
+                    self._receive_task.cancel()
+                self._receive_task = asyncio.create_task(self._receive_loop())
 
         self._reconnect_task = asyncio.create_task(reconnect())
 
-    async def _handle_client(self, websocket: WebSocketServerProtocol, path: str):
-        """处理服务端客户端连接"""
+    async def _handle_client(self, websocket):
+        """处理服务端客户端连接（单参 handler，兼容 websockets 11+，≥14 必需）"""
         client_id = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
         self._clients[client_id] = websocket
         logger.info(f"[WebSocket] Client connected: {client_id}")
@@ -279,7 +286,7 @@ class WebSocketAdapter(BaseAdapter):
         """停止 WebSocket 适配器"""
         self._running = False
 
-        # 取消并等待重连任务
+        # 先取消并等待重连任务，避免它在关闭过程中又派生出新的接收任务
         if self._reconnect_task and not self._reconnect_task.done():
             self._reconnect_task.cancel()
             try:
@@ -288,13 +295,16 @@ class WebSocketAdapter(BaseAdapter):
                 pass
         self._reconnect_task = None
 
-        # 取消并等待接收循环任务
+        # 再取消接收循环任务（reconnect 任务已结束，不会再产生新的接收任务）
         if self._receive_task and not self._receive_task.done():
             self._receive_task.cancel()
             try:
                 await self._receive_task
             except asyncio.CancelledError:
                 pass
+        # 二次确认：防止 reconnect 任务在取消前最后一刻刚创建的接收任务残留
+        if self._receive_task and not self._receive_task.done():
+            self._receive_task.cancel()
         self._receive_task = None
 
         if self.mode == "server":
