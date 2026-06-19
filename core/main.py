@@ -661,7 +661,7 @@ class TaleCore:
         inter_delay = getattr(config_loader.bot.bot, 'typing_inter_delay', 2.0)
         for idx, msg in enumerate(messages):
             reply_text = self._extract_message_text(msg)
-            if reply_text:
+            if reply_text or msg.images:
                 # 打字延迟：每条消息发送前等待，模拟真人逐条打字
                 await asyncio.sleep(calculate_split_interval(len(reply_text)))
                 # AI 可主动通过 <at_targets> 指定 @ 谁（用昵称）；不写就不 @
@@ -687,6 +687,7 @@ class TaleCore:
                     reply_to=reply_to,
                     is_group=is_group,
                     at_targets=at_targets,
+                    images=msg.images or None,
                 )
                 # 句与句之间的额外停顿（最后一条不等待）
                 if idx < len(messages) - 1:
@@ -1000,6 +1001,7 @@ class TaleCore:
         reply_to: Optional[str] = None,
         is_group: bool = False,
         at_targets: Optional[list] = None,
+        images: Optional[list] = None,
     ):
         """发送回复消息
 
@@ -1010,8 +1012,9 @@ class TaleCore:
             reply_to: 回复的消息 ID（可选）
             is_group: 是否为群消息
             at_targets: @目标列表（群聊时传入发送者ID以触发真实提醒）
+            images: 图片 URL/路径列表（可选）
         """
-        if not self.adapter_bridge or not reply:
+        if not self.adapter_bridge or (not reply and not images):
             return
 
         try:
@@ -1019,6 +1022,7 @@ class TaleCore:
                 adapter_id=platform,
                 target_id=target_id,
                 text=reply,
+                images=images,
                 reply_to=reply_to,
                 is_group=is_group,
                 at_targets=at_targets,
