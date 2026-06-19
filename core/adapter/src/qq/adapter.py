@@ -320,8 +320,8 @@ class QQAdapter(BaseAdapter):
     def _normalize_image_file(img: str) -> str:
         """归一化图片字段供 OneBot/NapCat 的 file 字段使用。
 
-        URL / base64 / file:// 原样透传；本地路径转绝对 file:/// URI，
-        避免 NapCat 无法解析相对路径。
+        URL / base64:// / file:// 原样透传；本地路径读字节转 base64://
+        （OneBot 原生），与 NapCat 是否同机/同文件系统解耦。
         """
         if not img:
             return img
@@ -329,9 +329,14 @@ class QQAdapter(BaseAdapter):
         if low.startswith(("http://", "https://", "base64://", "file://")):
             return img
         import os
+        import base64
         if os.path.isfile(img):
-            abs_path = os.path.abspath(img).replace("\\", "/")
-            return f"file:///{abs_path}"
+            try:
+                with open(img, "rb") as f:
+                    b64 = base64.b64encode(f.read()).decode("utf-8")
+                return f"base64://{b64}"
+            except Exception:
+                return img
         return img
 
     async def send_message(
