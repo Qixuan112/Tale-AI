@@ -455,12 +455,19 @@ class TaleCore:
             logger.warning("下载上下文图片失败 %s: %s", url_or_path, e)
             return None
 
-    def _build_context_window(self, processed: ProcessedMessage, window: int) -> str:
-        """从缓冲区获取最近 N 条消息作为上下文，图片自动 VLM 识别。"""
+    async def _build_context_window(self, processed: ProcessedMessage, window: int) -> str:
+        """从缓冲区获取最近 N 条消息作为上下文，图片自动 VLM 识别。
+
+        排除缓冲区末条（即当前消息）以避免与直连 VLM 路径重复识别同一张图。
+        下载与 VLM 调用均为阻塞操作，offload 到 _llm_executor 避免阻塞事件循环。
+        """
         key = processed.group_id or processed.sender_id
         if not key or not self._chat_context_buffer.get(key):
             return ""
-        recent = self._chat_context_buffer[key][-window:]
+        # 末条是当前消息，直连路径已识别其图片，这里只看历史
+        recent = self._chat_context_buffer[key][-window:-1]
+        if not recent:
+            return ""
 
         # 检查 VLM 是否可用
         vlm = None
@@ -471,6 +478,7 @@ class TaleCore:
         except Exception:
             pass
 
+        loop = asyncio.get_running_loop()
         lines = []
         img_count = 0
         max_ctx_images = 2
@@ -483,10 +491,17 @@ class TaleCore:
                 for img_url in msg['images']:
                     if img_count >= max_ctx_images:
                         break
-                    local_path = self._download_ctx_image(img_url)
+                    local_path = await loop.run_in_executor(
+                        self._llm_executor, self._download_ctx_image, img_url
+                    )
                     if local_path:
                         try:
-                            desc = vlm.chat_with_image("描述这张图片的内容", [local_path])
+                            desc = await loop.run_in_executor(
+                                self._llm_executor,
+                                vlm.chat_with_image,
+                                "描述这张图片的内容",
+                                [local_path],
+                            )
                             if desc:
                                 line += f"\n  [图片: {desc[:200]}]"
                                 img_count += 1
@@ -604,7 +619,7 @@ class TaleCore:
             if processed.text:
                 ctx_window_cfg = config_loader.bot.context
                 if ctx_window_cfg.chat_context_enabled and ctx_window_cfg.chat_context_window > 0:
-                    ctx = self._build_context_window(processed, ctx_window_cfg.chat_context_window)
+                    ctx = await self._build_context_window(processed, ctx_window_cfg.chat_context_window)
                     if ctx:
                         logger.debug("追加上下文窗口 (%d 条)", ctx_window_cfg.chat_context_window)
                         user_input = f"以下是最近的聊天记录：\n{ctx}\n\n---\n{user_input}"
