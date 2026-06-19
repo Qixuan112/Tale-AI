@@ -144,13 +144,12 @@ class ImageGenProvider(BaseProvider):
             logger.warning("[%s] 未配置 image_gen 模型", self._name)
             return None
         url = f"{self.base_url}/images/generations"
-        payload = {
-            "model": model,
-            "prompt": prompt,
-            "image_size": size,  # SiliconFlow 字段
-            "size": size,        # OpenAI 字段
-            "batch_size": 1,
-        }
+        # SiliconFlow 与 OpenAI 字段互斥，按 base_url 分流，避免严格 OpenAI 端点 400
+        is_siliconflow = "siliconflow" in self.base_url.lower()
+        if is_siliconflow:
+            payload = {"model": model, "prompt": prompt, "image_size": size, "batch_size": 1}
+        else:
+            payload = {"model": model, "prompt": prompt, "size": size, "n": 1}
         headers = {"Authorization": f"Bearer {self.api_key}"}
         try:
             with httpx.Client(timeout=httpx.Timeout(self._timeout, connect=10.0)) as client:
@@ -169,7 +168,7 @@ class ImageGenProvider(BaseProvider):
         first = items[0]
         if first.get("url"):
             return first["url"]
-        # base64 落盘
+        # base64 落盘（走 TempFileManager 带自动清理）
         b64 = first.get("b64_json")
         if b64:
             return self._save_b64(b64)
@@ -178,17 +177,14 @@ class ImageGenProvider(BaseProvider):
 
     @staticmethod
     def _save_b64(b64: str) -> Optional[str]:
+        """base64 图片落盘到 temp 目录（带自动清理），返回路径。"""
         import base64
-        from pathlib import Path
-        cache_dir = Path("data/cache/image_gen")
-        cache_dir.mkdir(parents=True, exist_ok=True)
+        import time
+        from ..utils.temp_manager import temp_manager
         try:
-            # 用 b64 的前缀哈希命名，避免 Math.random 不可用；这里用摘要
-            import hashlib
-            name = hashlib.md5(b64[:1024].encode("utf-8")).hexdigest()[:16] + ".png"
-            dest = cache_dir / name
-            dest.write_bytes(base64.b64decode(b64))
-            return str(dest)
+            img_bytes = base64.b64decode(b64)
+            filename = f"imggen_{int(time.time() * 1000)}.png"
+            return temp_manager.save_image(img_bytes, filename)
         except Exception as e:
             logger.warning("base64 图片落盘失败: %s", e)
             return None
