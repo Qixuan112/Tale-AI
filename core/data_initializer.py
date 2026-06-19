@@ -114,6 +114,13 @@ generic_llm:
 # ============================================
 vlm:
   provider: ""
+
+# ============================================
+# 图片生成模型 — 文生图，AI 可调用 generate_image 工具生成图片
+# 需在 services.yaml 配 type: image_gen 的 provider（如 SiliconFlow）
+# ============================================
+image_gen:
+  provider: ""
 """
 
 DEFAULT_SERVICES_YAML = """\
@@ -129,6 +136,13 @@ DEFAULT_SERVICES_YAML = """\
 #   api_key: "your-api-key"
 #   base_url: https://api.siliconflow.cn/v1
 #   model: deepseek-ai/DeepSeek-V3
+
+# 示例：SiliconFlow 文生图（type: image_gen）
+# SiliconFlow-ImageGen:
+#   type: image_gen
+#   api_key: "your-api-key"
+#   base_url: https://api.siliconflow.cn/v1
+#   model: Kwai-Kolors/Kolors
 """
 
 DEFAULT_PLUGINS_YAML = """\
