@@ -61,6 +61,13 @@ class QQAdapter(BaseAdapter):
         self.client = NapCatWebSocketClient()
         self.client.set_message_callback(self._on_raw_message)
 
+        # 预先创建 _run_done Future：run() 内部会 await connect() 等异步操作，
+        # 若不预创建，start() 在 create_task 后立即读 self.client._run_done 时
+        # run() 协程可能尚未执行到创建 future 那行，_run_done 仍为 None，
+        # 导致 asyncio.wait_for(None) 抛 TypeError，适配器启动失败。
+        loop = asyncio.get_running_loop()
+        self.client._run_done = loop.create_future()
+
         # 在后台运行 client（通过 _run_done 观察结果）
         self._client_task = asyncio.create_task(
             self.client.run(
