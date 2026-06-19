@@ -1635,7 +1635,9 @@ def api_knowledge_upload(kb_name):
 
         file.save(str(dest_path))
 
-        record = knowledge_manager.upload_document(kb_name, str(dest_path), file.filename)
+        record = knowledge_manager.upload_document(
+            kb_name, str(dest_path), safe_filename, doc_id=upload_id
+        )
         return jsonify({
             "ok": True,
             "document": {

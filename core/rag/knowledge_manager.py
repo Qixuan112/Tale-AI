@@ -112,7 +112,7 @@ class KnowledgeManager:
 
     # ---- 文档管理 ----
 
-    def upload_document(self, kb_name: str, file_path: str, filename: str):
+    def upload_document(self, kb_name: str, file_path: str, filename: str, doc_id: str = None):
         """
         上传并索引文档
 
@@ -120,6 +120,7 @@ class KnowledgeManager:
             kb_name: 目标知识库名称
             file_path: 文件实际路径
             filename: 原始文件名
+            doc_id: 文档 ID（须与落盘目录名一致，供 rebuild_index 定位）；未传则内部生成
         Returns:
             DocumentRecord
         """
@@ -135,7 +136,7 @@ class KnowledgeManager:
         )
         chunks = chunker.chunk(raw_text)
 
-        doc_id = str(uuid.uuid4())
+        doc_id = doc_id or str(uuid.uuid4())
         store = self._stores.get(kb_name)
         if store is None:
             raise ValueError(f"知识库 '{kb_name}' 未找到或已禁用")
