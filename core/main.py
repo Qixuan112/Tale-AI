@@ -696,7 +696,9 @@ class TaleCore:
             reply_text = self._extract_message_text(msg)
             if reply_text or msg.images:
                 # 打字延迟：每条消息发送前等待，模拟真人逐条打字
-                await asyncio.sleep(calculate_split_interval(len(reply_text)))
+                # 纯图片消息（reply_text 为空）给一个基础延迟，避免瞬发像机器人
+                text_len = len(reply_text) if reply_text else 20
+                await asyncio.sleep(calculate_split_interval(text_len))
                 # AI 可主动通过 <at_targets> 指定 @ 谁（用昵称）；不写就不 @
                 raw_at = msg.at_targets or []
                 at_targets = None
