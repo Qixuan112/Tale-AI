@@ -121,6 +121,21 @@ def execute_function(func_name: str, parameters: dict) -> dict:
             if expression:
                 return safe_calculate(expression)
             return {"status": "failed", "error": "缺少 expression 参数"}
+
+        elif func_name == "generate_image":
+            from .llm.image_gen import get_image_generator
+            prompt = parameters.get("prompt", "")
+            size = parameters.get("size", "1024x1024") or "1024x1024"
+            if not prompt:
+                return {"status": "failed", "error": "缺少 prompt 参数"}
+            image_url = get_image_generator().generate(prompt, size)
+            if image_url:
+                return {
+                    "status": "success",
+                    "image_url": image_url,
+                    "message": f"已生成图片，URL: {image_url}。请在回复中用 <image>{image_url}</image> 把这张图发给用户。",
+                }
+            return {"status": "failed", "error": "图片生成失败（可能未配置 image_gen provider）"}
         
         # Plugin dispatch
         elif func_name in _plugin_dispatch:
@@ -177,6 +192,11 @@ FUNCTION_CALLING_PROMPT = """
 <tool name="calculator" description="执行数学计算">
 <parameter name="expression" description="数学表达式，如 1+2*3"/>
 </tool>
+
+<tool name="generate_image" description="根据文字描述生成图片，返回图片 URL">
+<parameter name="prompt" description="图片内容描述，越具体越好"/>
+<parameter name="size" description="图片尺寸，默认 1024x1024"/>
+</tool>
 </tools>
 
 ## 使用规则
@@ -186,6 +206,7 @@ FUNCTION_CALLING_PROMPT = """
 - 搜索信息 → browser_search
 - 查询天气 → weather_query
 - 数学计算 → calculator
+- 生成图片/画图 → generate_image
 
 ## 输出格式
 
@@ -229,6 +250,15 @@ FUNCTION_CALLING_PROMPT = """
 <function_calls>
 <invoke name="calculator">
 <parameter name="expression">15*23</parameter>
+</invoke>
+</function_calls>
+
+用户："画一只橘猫趴在窗台上看夕阳"
+回复：
+<function_calls>
+<invoke name="generate_image">
+<parameter name="prompt">一只橘猫趴在窗台上看夕阳，暖色调，写实风格</parameter>
+<parameter name="size">1024x1024</parameter>
 </invoke>
 </function_calls>
 

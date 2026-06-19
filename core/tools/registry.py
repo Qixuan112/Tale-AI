@@ -105,6 +105,16 @@ class ToolRegistry:
                 ],
             )
         )
+        self.register(
+            ToolDefinition(
+                name="generate_image",
+                description="根据文字描述生成图片（文生图），返回图片 URL",
+                parameters=[
+                    ToolParameter("prompt", "图片内容描述，越具体越好，如：一只橘猫趴在窗台上看夕阳"),
+                    ToolParameter("size", "图片尺寸，默认 1024x1024", required=False, default="1024x1024"),
+                ],
+            )
+        )
 
     def register(self, tool: ToolDefinition) -> None:
         """注册一个工具"""
