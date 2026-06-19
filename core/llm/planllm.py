@@ -829,23 +829,41 @@ class PlanLLM:
             return []
     
     def _extract_json(self, text: str) -> str:
-        """从文本中提取 JSON"""
+        """从文本中提取 JSON
+
+        容错策略：先尝试代码块/花括号-方括号定位，再用
+        json.JSONDecoder().raw_decode 取第一个合法 JSON 值，
+        忽略 LLM 在 JSON 前后输出的多余文本（避免 'Extra data' 错误）。
+        """
+        candidate = text
         # 尝试找到 JSON 代码块
         if "```json" in text:
             start = text.find("```json") + 7
             end = text.find("```", start)
-            return text[start:end].strip()
+            candidate = text[start:end].strip()
         elif "```" in text:
             start = text.find("```") + 3
             end = text.find("```", start)
-            return text[start:end].strip()
+            candidate = text[start:end].strip()
         else:
-            # 尝试找到花括号包裹的内容
-            start = text.find("{")
-            end = text.rfind("}") + 1
-            if start >= 0 and end > start:
-                return text[start:end]
-        return text
+            # 尝试找到花括号或方括号包裹的内容
+            brace_start = text.find("{")
+            bracket_start = text.find("[")
+            starts = [s for s in (brace_start, bracket_start) if s >= 0]
+            if starts:
+                start = min(starts)
+                # 用 raw_decode 从首个 { 或 [ 开始解析第一个合法 JSON 值
+                try:
+                    _, end_idx = json.JSONDecoder().raw_decode(text[start:])
+                    return text[start:start + end_idx].strip()
+                except json.JSONDecodeError:
+                    pass
+        # 对代码块提取结果也做 raw_decode 容错，去掉尾部多余字符
+        try:
+            _, end_idx = json.JSONDecoder().raw_decode(candidate)
+            return candidate[:end_idx].strip()
+        except json.JSONDecodeError:
+            return candidate
     
     def clear_history(self):
         """清空对话历史（已废弃，PlanLLM 使用无状态调用）"""
