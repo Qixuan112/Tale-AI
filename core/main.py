@@ -467,7 +467,7 @@ class TaleCore:
         vlm_available = False
         try:
             vlm = get_vlm_llm()
-            vlm_available = vlm._ensure_client()
+            vlm_available = vlm._ensure_provider()
         except Exception:
             pass
 
@@ -575,7 +575,15 @@ class TaleCore:
             if processed.images and self._should_recognize_image(processed):
                 try:
                     vlm_llm = get_vlm_llm()
-                    vlm_result = vlm_llm.chat_with_image(processed.text or "", processed.images)
+                    # VlmLLM 只吃本地路径，先把图片 URL 下载到 temp
+                    local_paths = []
+                    for img_url in processed.images:
+                        p = self._download_ctx_image(img_url)
+                        if p:
+                            local_paths.append(p)
+                    vlm_result = None
+                    if local_paths:
+                        vlm_result = vlm_llm.chat_with_image(processed.text or "", local_paths)
                     if vlm_result:
                         logger.info("VLM 图片识别结果: %s", vlm_result[:200])
                         user_input = f"{user_input}\n\n[图片识别结果]\n{vlm_result}"
