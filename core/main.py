@@ -626,6 +626,13 @@ class TaleCore:
             self.chat.set_session(sid, load_history=session_enabled)
 
         try:
+            # per-session 锁：确保同一会话的消息串行处理（B2 并发安全）
+            session_lock = None
+            if sid:
+                session_lock = self._get_session_lock(sid)
+            if session_lock:
+                await session_lock.acquire()
+
             # ── 跨会话消息注入（consume inbox） ──
             inbox_msgs = []
             if sid and self.bridge:
@@ -743,6 +750,10 @@ class TaleCore:
                 reply_to=processed.message_id,
                 is_group=is_group
             )
+        finally:
+            # 释放 per-session 锁
+            if session_lock and session_lock.locked():
+                session_lock.release()
 
     async def _send_message_batch(self, processed: ProcessedMessage, messages: list, adapter_instance: str = None):
         """批量发送消息，每条消息前模拟打字延迟（包括第一条），句间额外停顿"""
