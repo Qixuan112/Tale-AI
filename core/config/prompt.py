@@ -114,6 +114,7 @@ CHAT_BASE_TEMPLATE = """
   - 添加行程：`<plan>添加行程：下午15:00去茶园会见张三</plan>`
 - <tool>: 当需要查询当前可用工具列表时填写，ToolLLM 会返回可用工具列表
   - 查询工具：`<tool>有什么工具</tool>`
+- <session_send>: 向其他会话发送消息。格式：`<session_send>目标会话sid|要发送的消息</session_send>`。目标 sid 形如 qq:gm:群号 或 qq:dm:用户号。仅在需要与另一个会话通信时使用。
 - 四个标签可以同时使用，也可以只用其中一部分
 
 ## 用户消息格式说明
