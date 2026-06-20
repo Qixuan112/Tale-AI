@@ -28,6 +28,7 @@ from .adapter import (
     PlatformConfigBuilder,
 )
 from .chat import SessionManager
+from .bridge import BridgeState
 from .utils import get_logger
 
 logger = get_logger(__name__)
@@ -70,6 +71,8 @@ class TaleCore:
         self._chat_context_buffer: Dict[str, list] = {}
         self._name_to_id: Dict[str, Dict[str, str]] = {}
         self.session_manager: Optional[SessionManager] = None
+        self.bridge: Optional[BridgeState] = None
+        self._session_locks: Dict[str, asyncio.Lock] = {}
 
     def initialize(self):
         """初始化核心组件（幂等，可多次调用）"""
@@ -89,6 +92,9 @@ class TaleCore:
             )
             # 启动时清理过期会话（7天以上）
             self.session_manager.cleanup_expired(days=7)
+
+        # 初始化跨会话消息桥接
+        self.bridge = BridgeState()
 
         self.chat = self._init_chatllm()
         self.toolllm = self._init_toolllm()
@@ -421,6 +427,11 @@ class TaleCore:
         if len(self._chat_context_buffer[key]) > 100:
             self._chat_context_buffer[key] = self._chat_context_buffer[key][-100:]
 
+    def _get_session_lock(self, sid: str) -> asyncio.Lock:
+        if sid not in self._session_locks:
+            self._session_locks[sid] = asyncio.Lock()
+        return self._session_locks[sid]
+
     def _download_ctx_image(self, url_or_path: str) -> Optional[str]:
         """下载上下文窗口中的图片到本地临时目录。
 
@@ -615,6 +626,17 @@ class TaleCore:
             self.chat.set_session(sid, load_history=session_enabled)
 
         try:
+            # ── 跨会话消息注入（consume inbox） ──
+            inbox_msgs = []
+            if sid and self.bridge:
+                inbox_msgs = await self.bridge.consume(sid)
+                if inbox_msgs:
+                    inbox_text = "\n".join(
+                        f"[来自 {m['from_sid']} 的跨会话消息] {m['content'][:200]}"
+                        for m in inbox_msgs
+                    )
+                    user_input = f"{inbox_text}\n\n---\n\n{user_input}"
+
             # 条件图片识别：有图片 + 满足触发条件时先用 VLM 识别
             if processed.images and self._should_recognize_image(processed):
                 try:
@@ -645,22 +667,19 @@ class TaleCore:
                     logger.warning("VLM 图片识别失败: %s", e)
 
             # 追加滑动上下文窗口
-            # persist_content = 拼接历史前的 user_input（纯净用户消息，用于落库，避免历史套历史）
+            # persist_content = 拼接历史前的 user_input（纯净用户消息，用于落库）
             persist_content = user_input
-            if processed.text:
-                if persistence and self.session_manager and sid and session_enabled:
-                    # set_session 已通过 self.messages 结构化加载历史，
-                    # 无需重复拼接文本块。
-                    pass
-                else:
-                    ctx_window_cfg = config_loader.bot.context
-                    if ctx_window_cfg.chat_context_enabled and ctx_window_cfg.chat_context_window > 0:
-                        ctx = await self._build_context_window(processed, ctx_window_cfg.chat_context_window)
-                        if ctx:
-                            logger.debug("追加上下文窗口 (%d 条)", ctx_window_cfg.chat_context_window)
-                            user_input = f"以下是最近的聊天记录：\n{ctx}\n\n---\n{user_input}"
-            else:
-                persist_content = user_input
+            use_ctx = bool(processed.text and not (
+                persistence and self.session_manager and sid and session_enabled
+            ))
+            if use_ctx:
+                ctx_window_cfg = config_loader.bot.context
+                if ctx_window_cfg.chat_context_enabled and ctx_window_cfg.chat_context_window > 0:
+                    ctx = await self._build_context_window(processed, ctx_window_cfg.chat_context_window)
+                    if ctx:
+                        logger.debug("追加上下文窗口 (%d 条)", ctx_window_cfg.chat_context_window)
+                        user_input = f"以下是最近的聊天记录：\n{ctx}\n\n---\n{user_input}"
+            # set_session 已通过 self.messages 结构化加载历史，无需额外拼接
 
             chatllm_reply = await self._call_chatllm(user_input, persist_content)
             parsed = parse_xml_msg(chatllm_reply)
