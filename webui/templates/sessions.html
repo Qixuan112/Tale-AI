@@ -243,25 +243,25 @@
                 const enabledBadge = s.enabled
                     ? '<span class="badge badge-on">启用</span>'
                     : '<span class="badge badge-off">已禁用</span>';
-                return '<div class="session-card" data-sid="' + escapeHtml(s.sid) + '">' +
+                return '<div class="session-card" data-sid="' + escapeAttr(s.sid) + '">' +
                     '<div class="session-info">' +
                         '<div class="session-title">' + escapeHtml(title) + '</div>' +
                         '<div class="session-meta">' +
                             '<span class="badge ' + typeBadge + '">' + typeLabel + '</span>' +
                             enabledBadge +
                             '<span>' + escapeHtml(s.adapter) + '</span>' +
-                            '<span>' + (window.t ? window.t('sessions.messages') : '消息') + ': ' + s.memory_count + '</span>' +
+                            '<span>' + (window.t ? window.t('sessions.rounds') : '轮次') + ': ' + s.memory_count + '</span>' +
                             '<span>' + timeStr + '</span>' +
                         '</div>' +
                     '</div>' +
                     '<div class="session-actions">' +
-                        '<button class="btn btn-sm js-toggle-enabled" data-sid="' + escapeHtml(s.sid) + '" data-enabled="' + (s.enabled ? '1' : '0') + '">' +
+                        '<button class="btn btn-sm js-toggle-enabled" data-sid="' + escapeAttr(s.sid) + '" data-enabled="' + (s.enabled ? '1' : '0') + '">' +
                             (s.enabled ? (window.t ? window.t('sessions.disable') : '禁用') : (window.t ? window.t('sessions.enable') : '启用')) +
                         '</button>' +
-                        '<button class="btn btn-sm js-edit-meta" data-sid="' + escapeHtml(s.sid) + '" data-title="' + escapeHtml(s.title || '') + '" data-desc="' + escapeHtml(s.description || '') + '" data-enabled="' + (s.enabled ? '1' : '0') + '">' +
+                        '<button class="btn btn-sm js-edit-meta" data-sid="' + escapeAttr(s.sid) + '" data-title="' + escapeAttr(s.title || '') + '" data-desc="' + escapeAttr(s.description || '') + '" data-enabled="' + (s.enabled ? '1' : '0') + '">' +
                             (window.t ? window.t('sessions.editMeta') : '编辑') +
                         '</button>' +
-                        '<button class="btn btn-sm btn-danger js-delete-session" data-sid="' + escapeHtml(s.sid) + '">' + (window.t ? window.t('common.delete') : '删除') + '</button>' +
+                        '<button class="btn btn-sm btn-danger js-delete-session" data-sid="' + escapeAttr(s.sid) + '">' + (window.t ? window.t('common.delete') : '删除') + '</button>' +
                     '</div>' +
                 '</div>';
             }).join('');
@@ -364,13 +364,13 @@
                 memoryHtml = '<div class="memory-empty">' + (window.t ? window.t('sessions.noMemory') : '暂无记忆') + '</div>';
             } else {
                 memory.forEach(function(m) {
-                    var idx = m.index;
-                    memoryHtml += '<div class="memory-chunk" data-index="' + idx + '" data-user="' + escapeHtml(m.user || '') + '" data-assistant="' + escapeHtml(m.assistant || '') + '">' +
+                    var cid = m.id;
+                    memoryHtml += '<div class="memory-chunk" data-id="' + escapeAttr(String(cid)) + '" data-user="' + escapeAttr(m.user || '') + '" data-assistant="' + escapeAttr(m.assistant || '') + '">' +
                         '<div class="memory-msg user"><div class="msg-role">' + (window.t ? window.t('sessions.user') : '用户') + '</div>' + escapeHtml(m.user || '') + '</div>' +
                         '<div class="memory-msg assistant"><div class="msg-role">' + (window.t ? window.t('sessions.assistant') : 'AI') + '</div>' + escapeHtml(m.assistant || '') + '</div>' +
                         '<div class="chunk-actions">' +
-                            '<button class="btn btn-sm js-edit-memory" data-index="' + idx + '">' + (window.t ? window.t('sessions.editMemory') : '编辑') + '</button>' +
-                            '<button class="btn btn-sm btn-danger js-del-memory" data-index="' + idx + '">' + (window.t ? window.t('common.delete') : '删除') + '</button>' +
+                            '<button class="btn btn-sm js-edit-memory" data-id="' + escapeAttr(String(cid)) + '">' + (window.t ? window.t('sessions.editMemory') : '编辑') + '</button>' +
+                            '<button class="btn btn-sm btn-danger js-del-memory" data-id="' + escapeAttr(String(cid)) + '">' + (window.t ? window.t('common.delete') : '删除') + '</button>' +
                         '</div>' +
                     '</div>';
                 });
@@ -380,9 +380,9 @@
             memBox.innerHTML = memoryHtml;
             memBox.onclick = function(e) {
                 var editBtn = e.target.closest('.js-edit-memory');
-                if (editBtn) { openMemoryModal(parseInt(editBtn.dataset.index, 10)); return; }
+                if (editBtn) { openMemoryModal(editBtn.dataset.id); return; }
                 var delBtn = e.target.closest('.js-del-memory');
-                if (delBtn) { deleteMemoryChunk(parseInt(delBtn.dataset.index, 10)); return; }
+                if (delBtn) { deleteMemoryChunk(delBtn.dataset.id); return; }
                 var addBtn = e.target.closest('.js-add-memory');
                 if (addBtn) { openMemoryModal(null); return; }
             };
@@ -400,15 +400,15 @@
         }
     }
 
-    function openMemoryModal(index) {
-        editingMemoryIndex = index;
-        if (index === null) {
+    function openMemoryModal(chunkId) {
+        editingMemoryIndex = chunkId;
+        if (chunkId === null) {
             document.getElementById('memoryModalTitle').textContent = (window.t ? window.t('sessions.addMemory') : '添加记忆');
             document.getElementById('memUser').value = '';
             document.getElementById('memAssistant').value = '';
         } else {
             document.getElementById('memoryModalTitle').textContent = (window.t ? window.t('sessions.editMemory') : '编辑记忆');
-            var chunk = document.querySelector('.memory-chunk[data-index="' + index + '"]');
+            var chunk = document.querySelector('.memory-chunk[data-id="' + chunkId + '"]');
             if (chunk) {
                 document.getElementById('memUser').value = chunk.dataset.user || '';
                 document.getElementById('memAssistant').value = chunk.dataset.assistant || '';
@@ -433,18 +433,18 @@
             }).then(function(r) { return r.json(); })
               .then(function(d) { if (d.ok) { closeMemoryModal(); openSession(currentSid); loadSessions(); } else { alert(d.error || 'Failed'); } });
         } else {
-            // 编辑
-            fetch('/api/sessions/' + encodeURIComponent(currentSid) + '/memory/' + editingMemoryIndex, {
+            // 编辑（按 chunk id）
+            fetch('/api/sessions/' + encodeURIComponent(currentSid) + '/memory/' + encodeURIComponent(editingMemoryIndex), {
                 method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: body
             }).then(function(r) { return r.json(); })
               .then(function(d) { if (d.ok) { closeMemoryModal(); openSession(currentSid); loadSessions(); } else { alert(d.error || 'Failed'); } });
         }
     };
 
-    function deleteMemoryChunk(index) {
+    function deleteMemoryChunk(chunkId) {
         if (!currentSid) return;
         if (!confirm(window.t ? window.t('sessions.confirmDeleteMemory') : '确定删除这轮记忆？')) return;
-        fetch('/api/sessions/' + encodeURIComponent(currentSid) + '/memory/' + index, { method: 'DELETE' })
+        fetch('/api/sessions/' + encodeURIComponent(currentSid) + '/memory/' + encodeURIComponent(chunkId), { method: 'DELETE' })
             .then(function(r) { return r.json(); })
             .then(function(d) { if (d.ok) { openSession(currentSid); loadSessions(); } else { alert(d.error || 'Failed'); } });
     }
@@ -456,7 +456,18 @@
 
     document.getElementById('cleanupBtn').onclick = async function() {
         if (!confirm(window.t ? window.t('sessions.confirmCleanup') : '确定要清理所有过期（7天未活跃）的会话吗？')) return;
-        alert(window.t ? window.t('sessions.cleanupHint') : '过期会话在系统启动时自动清理。如需手动清理，请重启系统。');
+        try {
+            var r = await fetch('/api/sessions/cleanup', { method: 'POST' });
+            var d = await r.json();
+            if (d.ok) {
+                alert((window.t ? window.t('sessions.cleanupDone') : '已清理') + ' ' + (d.deleted || 0) + ' ' + (window.t ? window.t('sessions.rounds') : '个'));
+                loadSessions();
+            } else {
+                alert(d.error || 'Failed');
+            }
+        } catch (e) {
+            alert(window.t ? window.t('sessions.loadFailed') : '失败');
+        }
     };
 
     loadSessions();

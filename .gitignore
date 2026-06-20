@@ -120,3 +120,7 @@ release/
 # ──────────────────────────────────────────────
 .claude/
 cookie.txt
+
+# KiraAI reference (not part of project)
+KiraAI-2.22.0/
+KiraAI-2.22.0.zip

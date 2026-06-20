@@ -155,7 +155,18 @@
 
     window.escapeHtml = function (str) {
         const div = document.createElement('div');
-        div.textContent = str;
+        div.textContent = str == null ? '' : String(str);
         return div.innerHTML;
+    };
+
+    // 用于 HTML 属性上下文（data-*="..."），必须额外转义双引号和单引号，
+    // escapeHtml 只转义 < > &，不足以防止属性注入型 XSS。
+    window.escapeAttr = function (str) {
+        const s = str == null ? '' : String(str);
+        return s.replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
     };
 })();
