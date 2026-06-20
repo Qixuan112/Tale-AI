@@ -780,6 +780,26 @@ class TaleCore:
             )
         # _chat_lock 由 async with 自动释放
 
+    async def _send_cross_session(self, from_sid: str, to_sid: str, text: str):
+        """异步投递跨会话消息到目标会话
+
+        通过 bridge.send 写入目标 inbox，目标会话下次响应时自动消费。
+        异常捕获防止后台任务静默失败。
+        """
+        try:
+            result = await asyncio.wait_for(
+                self.bridge.send(from_sid, to_sid, text),
+                timeout=30,
+            )
+            if result.startswith("error:"):
+                logger.warning("跨会话发送失败: %s → %s: %s", from_sid, to_sid, result)
+            else:
+                logger.info("跨会话发送成功: %s → %s (id=%s)", from_sid, to_sid, result)
+        except asyncio.TimeoutError:
+            logger.warning("跨会话发送超时: %s → %s", from_sid, to_sid)
+        except Exception as e:
+            logger.error("跨会话发送异常: %s → %s: %s", from_sid, to_sid, e, exc_info=True)
+
     async def _send_message_batch(self, processed: ProcessedMessage, messages: list, adapter_instance: str = None):
         """批量发送消息，每条消息前模拟打字延迟（包括第一条），句间额外停顿"""
         is_group = processed.group_id is not None
