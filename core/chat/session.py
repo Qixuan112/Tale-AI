@@ -32,6 +32,9 @@ class Session:
     timestamp: int = 0
     """最后活跃时间戳"""
 
+    enabled: bool = True
+    """是否启用。禁用的会话不加载其历史作为 AI 上下文"""
+
     @property
     def sid(self) -> str:
         return f"{self.adapter_name}:{self.session_type}:{self.session_id}"

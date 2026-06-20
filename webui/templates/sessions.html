@@ -1,0 +1,476 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('会话管理') }} - Tale WebUI{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;">
+    <div>
+        <h1 data-i18n="sessions.title">会话管理</h1>
+        <p class="subtitle" data-i18n="sessions.subtitle">查看和管理 AI 的会话历史与记忆</p>
+    </div>
+    <button class="btn btn-danger" id="cleanupBtn" data-i18n="sessions.cleanup">清理过期会话</button>
+</div>
+
+<!-- 会话列表 -->
+<div class="sessions-container" id="sessionsContainer">
+    <div class="empty-tip" data-i18n="sessions.loading">加载中...</div>
+</div>
+
+<!-- 会话详情弹窗 -->
+<div class="modal-backdrop" id="sessionModal" style="display:none;">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-header">
+            <h3 id="sessionModalTitle">会话详情</h3>
+            <button class="modal-close" id="closeSessionModal">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="session-info-bar" id="sessionInfoBar"></div>
+            <div class="session-memory" id="sessionMemory">
+                <div class="empty-tip" data-i18n="sessions.noMemory">暂无记忆</div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-danger" id="clearMemoryBtn" data-i18n="sessions.clearMemory">清空记忆</button>
+            <button class="btn" id="closeSessionBtn" data-i18n="common.cancel">关闭</button>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑元数据弹窗 -->
+<div class="modal-backdrop" id="metaModal" style="display:none;">
+    <div class="modal-dialog">
+        <div class="modal-header">
+            <h3 data-i18n="sessions.editMeta">编辑会话信息</h3>
+            <button class="modal-close" id="closeMetaModal">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-row" style="margin-bottom:14px;">
+                <label for="metaTitle" data-i18n="sessions.metaTitle">标题</label>
+                <input type="text" id="metaTitle" style="width:100%;">
+            </div>
+            <div class="form-row" style="margin-bottom:14px;">
+                <label for="metaDesc" data-i18n="sessions.description">描述</label>
+                <textarea id="metaDesc" rows="3" style="width:100%;"></textarea>
+            </div>
+            <div class="form-row" style="display:flex;align-items:center;gap:8px;">
+                <input type="checkbox" id="metaEnabled">
+                <label for="metaEnabled" data-i18n="sessions.enableHint">启用（取消则 AI 不加载此会话的历史上下文）</label>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" id="cancelMetaBtn" data-i18n="common.cancel">取消</button>
+            <button class="btn btn-primary" id="saveMetaBtn" data-i18n="common.confirm">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑/添加记忆弹窗 -->
+<div class="modal-backdrop" id="memoryModal" style="display:none;">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-header">
+            <h3 id="memoryModalTitle" data-i18n="sessions.editMemory">编辑记忆</h3>
+            <button class="modal-close" id="closeMemoryModal">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-row" style="margin-bottom:14px;">
+                <label for="memUser" data-i18n="sessions.user">用户</label>
+                <textarea id="memUser" rows="3" style="width:100%;"></textarea>
+            </div>
+            <div class="form-row">
+                <label for="memAssistant" data-i18n="sessions.assistant">AI</label>
+                <textarea id="memAssistant" rows="4" style="width:100%;"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" id="cancelMemoryBtn" data-i18n="common.cancel">取消</button>
+            <button class="btn btn-primary" id="saveMemoryBtn" data-i18n="common.confirm">保存</button>
+        </div>
+    </div>
+</div>
+
+<style>
+.sessions-container {
+    padding: 0 28px 28px;
+}
+
+.session-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: all 0.15s;
+    cursor: pointer;
+}
+.session-card:hover {
+    border-color: var(--accent);
+}
+
+.session-info {
+    flex: 1;
+    min-width: 0;
+}
+.session-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+.session-meta {
+    font-size: 12px;
+    color: var(--text-secondary);
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.session-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.badge {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 8px;
+    background: var(--bg-tertiary);
+    font-weight: 500;
+}
+.badge-gm { background: rgba(99, 102, 241, 0.15); color: #818cf8; }
+.badge-dm { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+.badge-off { background: rgba(239, 68, 68, 0.1); color: #f87171; }
+.badge-on { background: rgba(52, 211, 153, 0.15); color: #34d399; }
+
+.memory-chunk {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px;
+    margin-bottom: 12px;
+}
+.chunk-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+    justify-content: flex-end;
+}
+
+.session-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+    margin-left: 16px;
+}
+
+/* 详情弹窗 */
+.modal-lg { width: 720px; }
+.session-info-bar {
+    padding: 0 0 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.8;
+}
+.session-memory {
+    max-height: 400px;
+    overflow-y: auto;
+}
+.memory-msg {
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.memory-msg.user {
+    background: var(--bg-tertiary);
+    border-left: 3px solid var(--accent);
+}
+.memory-msg.assistant {
+    background: var(--bg-secondary);
+    border-left: 3px solid #818cf8;
+}
+.memory-msg .msg-role {
+    font-size: 11px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--text-secondary);
+}
+.memory-empty {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-secondary);
+}
+</style>
+
+<script>
+(function() {
+    const container = document.getElementById('sessionsContainer');
+    const modal = document.getElementById('sessionModal');
+    const modalTitle = document.getElementById('sessionModalTitle');
+    const metaModal = document.getElementById('metaModal');
+    const memoryModal = document.getElementById('memoryModal');
+
+    let currentSid = null;
+    let editingMemoryIndex = null;  // null=添加模式, number=编辑模式
+
+    async function loadSessions() {
+        try {
+            const res = await fetch('/api/sessions');
+            const data = await res.json();
+            if (!data.ok) {
+                container.innerHTML = '<div class="empty-tip">' + (window.t ? window.t('sessions.loadFailed') : '加载失败') + ': ' + escapeHtml(data.error || '') + '</div>';
+                return;
+            }
+            if (!data.persistence_enabled) {
+                container.innerHTML = '<div class="empty-tip">' + (window.t ? window.t('sessions.disabled') : '会话持久化未启用（persistence_enabled = false）') + '</div>';
+                return;
+            }
+            const sessions = data.sessions || [];
+            if (!sessions.length) {
+                container.innerHTML = '<div class="empty-tip">' + (window.t ? window.t('sessions.empty') : '暂无会话，AI 接收消息后会自动创建') + '</div>';
+                return;
+            }
+            container.innerHTML = sessions.map(s => {
+                const typeLabel = s.type === 'gm' ? '群聊' : '私聊';
+                const typeBadge = s.type === 'gm' ? 'badge-gm' : 'badge-dm';
+                const timeStr = s.timestamp ? new Date(s.timestamp * 1000).toLocaleString() : '-';
+                const title = s.title || s.sid;
+                const enabledBadge = s.enabled
+                    ? '<span class="badge badge-on">启用</span>'
+                    : '<span class="badge badge-off">已禁用</span>';
+                return '<div class="session-card" data-sid="' + escapeAttr(s.sid) + '">' +
+                    '<div class="session-info">' +
+                        '<div class="session-title">' + escapeHtml(title) + '</div>' +
+                        '<div class="session-meta">' +
+                            '<span class="badge ' + typeBadge + '">' + typeLabel + '</span>' +
+                            enabledBadge +
+                            '<span>' + escapeHtml(s.adapter) + '</span>' +
+                            '<span>' + (window.t ? window.t('sessions.rounds') : '轮次') + ': ' + s.memory_count + '</span>' +
+                            '<span>' + timeStr + '</span>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="session-actions">' +
+                        '<button class="btn btn-sm js-toggle-enabled" data-sid="' + escapeAttr(s.sid) + '" data-enabled="' + (s.enabled ? '1' : '0') + '">' +
+                            (s.enabled ? (window.t ? window.t('sessions.disable') : '禁用') : (window.t ? window.t('sessions.enable') : '启用')) +
+                        '</button>' +
+                        '<button class="btn btn-sm js-edit-meta" data-sid="' + escapeAttr(s.sid) + '" data-title="' + escapeAttr(s.title || '') + '" data-desc="' + escapeAttr(s.description || '') + '" data-enabled="' + (s.enabled ? '1' : '0') + '">' +
+                            (window.t ? window.t('sessions.editMeta') : '编辑') +
+                        '</button>' +
+                        '<button class="btn btn-sm btn-danger js-delete-session" data-sid="' + escapeAttr(s.sid) + '">' + (window.t ? window.t('common.delete') : '删除') + '</button>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
+            // 点击卡片查看详情（排除按钮区域）
+            container.querySelectorAll('.session-card').forEach(card => {
+                card.addEventListener('click', function(e) {
+                    if (e.target.closest('.session-actions')) return;
+                    openSession(this.dataset.sid);
+                });
+            });
+            // 事件委托
+            container.onclick = function(e) {
+                var toggleBtn = e.target.closest('.js-toggle-enabled');
+                if (toggleBtn) { e.stopPropagation(); toggleEnabled(toggleBtn.dataset.sid, toggleBtn.dataset.enabled === '1'); return; }
+                var editBtn = e.target.closest('.js-edit-meta');
+                if (editBtn) { e.stopPropagation(); openMetaModal(editBtn); return; }
+                var delBtn = e.target.closest('.js-delete-session');
+                if (delBtn) { e.stopPropagation(); deleteSession(delBtn.dataset.sid); return; }
+            };
+        } catch (e) {
+            container.innerHTML = '<div class="empty-tip">' + (window.t ? window.t('sessions.loadFailed') : '加载失败') + '</div>';
+        }
+    }
+
+    window.deleteSession = function(sid) {
+        var msg = (window.t ? window.t('sessions.confirmDelete') : '确定要删除此会话吗？');
+        if (!confirm(msg)) return;
+        fetch('/api/sessions/' + encodeURIComponent(sid), { method: 'DELETE' })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.ok) { loadSessions(); }
+                else { alert(d.error || 'Failed'); }
+            });
+    };
+
+    function toggleEnabled(sid, currentlyEnabled) {
+        fetch('/api/sessions/' + encodeURIComponent(sid) + '/meta', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: !currentlyEnabled })
+        }).then(function(r) { return r.json(); })
+          .then(function(d) { if (d.ok) loadSessions(); else alert(d.error || 'Failed'); });
+    }
+
+    function openMetaModal(btn) {
+        document.getElementById('metaTitle').value = btn.dataset.title || '';
+        document.getElementById('metaDesc').value = btn.dataset.desc || '';
+        document.getElementById('metaEnabled').checked = btn.dataset.enabled === '1';
+        metaModal.dataset.sid = btn.dataset.sid;
+        metaModal.style.display = 'flex';
+    }
+    function closeMetaModal() { metaModal.style.display = 'none'; }
+    document.getElementById('closeMetaModal').onclick = closeMetaModal;
+    document.getElementById('cancelMetaBtn').onclick = closeMetaModal;
+    metaModal.addEventListener('click', function(e) { if (e.target === metaModal) closeMetaModal(); });
+    document.getElementById('saveMetaBtn').onclick = function() {
+        var sid = metaModal.dataset.sid;
+        fetch('/api/sessions/' + encodeURIComponent(sid) + '/meta', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                title: document.getElementById('metaTitle').value,
+                description: document.getElementById('metaDesc').value,
+                enabled: document.getElementById('metaEnabled').checked
+            })
+        }).then(function(r) { return r.json(); })
+          .then(function(d) {
+              if (d.ok) { closeMetaModal(); loadSessions(); }
+              else { alert(d.error || 'Failed'); }
+          });
+    };
+
+    async function openSession(sid) {
+        currentSid = sid;
+        try {
+            modalTitle.textContent = sid;
+            document.getElementById('sessionInfoBar').textContent = (window.t ? window.t('sessions.loading') : '加载中...');
+            document.getElementById('sessionMemory').innerHTML = '';
+            modal.style.display = 'flex';
+
+            const res = await fetch('/api/sessions/' + encodeURIComponent(sid));
+            const data = await res.json();
+            if (!data.ok) {
+                document.getElementById('sessionInfoBar').textContent = 'Error: ' + (data.error || '');
+                return;
+            }
+            var s = data.session;
+            var typeLabel = s.type === 'gm' ? '群聊' : '私聊';
+            var timeStr = s.timestamp ? new Date(s.timestamp * 1000).toLocaleString() : '-';
+            document.getElementById('sessionInfoBar').innerHTML =
+                '<strong>' + escapeHtml(s.title || s.sid) + '</strong> &middot; ' + typeLabel +
+                ' &middot; ' + escapeHtml(s.adapter) +
+                ' &middot; ' + (window.t ? window.t('sessions.messages') : '消息') + ': ' + s.memory_count +
+                ' &middot; ' + timeStr +
+                (s.enabled ? '' : ' &middot; <span style="color:#f87171;">已禁用</span>');
+
+            var memoryHtml = '';
+            var memory = data.memory || [];
+            if (!memory.length) {
+                memoryHtml = '<div class="memory-empty">' + (window.t ? window.t('sessions.noMemory') : '暂无记忆') + '</div>';
+            } else {
+                memory.forEach(function(m) {
+                    var cid = m.id;
+                    memoryHtml += '<div class="memory-chunk" data-id="' + escapeAttr(String(cid)) + '" data-user="' + escapeAttr(m.user || '') + '" data-assistant="' + escapeAttr(m.assistant || '') + '">' +
+                        '<div class="memory-msg user"><div class="msg-role">' + (window.t ? window.t('sessions.user') : '用户') + '</div>' + escapeHtml(m.user || '') + '</div>' +
+                        '<div class="memory-msg assistant"><div class="msg-role">' + (window.t ? window.t('sessions.assistant') : 'AI') + '</div>' + escapeHtml(m.assistant || '') + '</div>' +
+                        '<div class="chunk-actions">' +
+                            '<button class="btn btn-sm js-edit-memory" data-id="' + escapeAttr(String(cid)) + '">' + (window.t ? window.t('sessions.editMemory') : '编辑') + '</button>' +
+                            '<button class="btn btn-sm btn-danger js-del-memory" data-id="' + escapeAttr(String(cid)) + '">' + (window.t ? window.t('common.delete') : '删除') + '</button>' +
+                        '</div>' +
+                    '</div>';
+                });
+            }
+            memoryHtml += '<button class="btn btn-primary js-add-memory" style="margin-top:12px;width:100%;">+ ' + (window.t ? window.t('sessions.addMemory') : '添加记忆') + '</button>';
+            var memBox = document.getElementById('sessionMemory');
+            memBox.innerHTML = memoryHtml;
+            memBox.onclick = function(e) {
+                var editBtn = e.target.closest('.js-edit-memory');
+                if (editBtn) { openMemoryModal(editBtn.dataset.id); return; }
+                var delBtn = e.target.closest('.js-del-memory');
+                if (delBtn) { deleteMemoryChunk(delBtn.dataset.id); return; }
+                var addBtn = e.target.closest('.js-add-memory');
+                if (addBtn) { openMemoryModal(null); return; }
+            };
+            document.getElementById('clearMemoryBtn').onclick = function() {
+                if (!confirm(window.t ? window.t('sessions.confirmClear') : '确定要清空此会话的记忆吗？')) return;
+                fetch('/api/sessions/' + encodeURIComponent(sid) + '/clear', { method: 'POST' })
+                    .then(function(r) { return r.json(); })
+                    .then(function(d) {
+                        if (d.ok) { openSession(sid); loadSessions(); }
+                        else { alert(d.error || 'Failed'); }
+                    });
+            };
+        } catch (e) {
+            document.getElementById('sessionInfoBar').textContent = 'Error: ' + e.message;
+        }
+    }
+
+    function openMemoryModal(chunkId) {
+        editingMemoryIndex = chunkId;
+        if (chunkId === null) {
+            document.getElementById('memoryModalTitle').textContent = (window.t ? window.t('sessions.addMemory') : '添加记忆');
+            document.getElementById('memUser').value = '';
+            document.getElementById('memAssistant').value = '';
+        } else {
+            document.getElementById('memoryModalTitle').textContent = (window.t ? window.t('sessions.editMemory') : '编辑记忆');
+            var chunk = document.querySelector('.memory-chunk[data-id="' + chunkId + '"]');
+            if (chunk) {
+                document.getElementById('memUser').value = chunk.dataset.user || '';
+                document.getElementById('memAssistant').value = chunk.dataset.assistant || '';
+            }
+        }
+        memoryModal.style.display = 'flex';
+    }
+    function closeMemoryModal() { memoryModal.style.display = 'none'; editingMemoryIndex = null; }
+    document.getElementById('closeMemoryModal').onclick = closeMemoryModal;
+    document.getElementById('cancelMemoryBtn').onclick = closeMemoryModal;
+    memoryModal.addEventListener('click', function(e) { if (e.target === memoryModal) closeMemoryModal(); });
+    document.getElementById('saveMemoryBtn').onclick = function() {
+        if (!currentSid) return;
+        var userText = document.getElementById('memUser').value.trim();
+        var asstText = document.getElementById('memAssistant').value.trim();
+        if (!userText || !asstText) { alert(window.t ? window.t('sessions.bothRequired') : '用户和 AI 内容均不能为空'); return; }
+        var body = JSON.stringify({ user: userText, assistant: asstText });
+        if (editingMemoryIndex === null) {
+            // 添加
+            fetch('/api/sessions/' + encodeURIComponent(currentSid) + '/memory', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body
+            }).then(function(r) { return r.json(); })
+              .then(function(d) { if (d.ok) { closeMemoryModal(); openSession(currentSid); loadSessions(); } else { alert(d.error || 'Failed'); } });
+        } else {
+            // 编辑（按 chunk id）
+            fetch('/api/sessions/' + encodeURIComponent(currentSid) + '/memory/' + encodeURIComponent(editingMemoryIndex), {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: body
+            }).then(function(r) { return r.json(); })
+              .then(function(d) { if (d.ok) { closeMemoryModal(); openSession(currentSid); loadSessions(); } else { alert(d.error || 'Failed'); } });
+        }
+    };
+
+    function deleteMemoryChunk(chunkId) {
+        if (!currentSid) return;
+        if (!confirm(window.t ? window.t('sessions.confirmDeleteMemory') : '确定删除这轮记忆？')) return;
+        fetch('/api/sessions/' + encodeURIComponent(currentSid) + '/memory/' + encodeURIComponent(chunkId), { method: 'DELETE' })
+            .then(function(r) { return r.json(); })
+            .then(function(d) { if (d.ok) { openSession(currentSid); loadSessions(); } else { alert(d.error || 'Failed'); } });
+    }
+
+    function closeModal() { modal.style.display = 'none'; currentSid = null; }
+    document.getElementById('closeSessionModal').onclick = closeModal;
+    document.getElementById('closeSessionBtn').onclick = closeModal;
+    modal.addEventListener('click', function(e) { if (e.target === modal) closeModal(); });
+
+    document.getElementById('cleanupBtn').onclick = async function() {
+        if (!confirm(window.t ? window.t('sessions.confirmCleanup') : '确定要清理所有过期（7天未活跃）的会话吗？')) return;
+        try {
+            var r = await fetch('/api/sessions/cleanup', { method: 'POST' });
+            var d = await r.json();
+            if (d.ok) {
+                alert((window.t ? window.t('sessions.cleanupDone') : '已清理') + ' ' + (d.deleted || 0) + ' ' + (window.t ? window.t('sessions.rounds') : '个'));
+                loadSessions();
+            } else {
+                alert(d.error || 'Failed');
+            }
+        } catch (e) {
+            alert(window.t ? window.t('sessions.loadFailed') : '失败');
+        }
+    };
+
+    loadSessions();
+})();
+</script>
+{% endblock %}

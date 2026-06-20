@@ -574,6 +574,11 @@ def page_logs():
     return render_template("logs.html")
 
 
+@app.route("/sessions")
+def page_sessions():
+    return render_template("sessions.html")
+
+
 # ============ API：系统状态 ============
 
 def _detect_offline_reason() -> str:
@@ -1704,6 +1709,211 @@ def api_knowledge_delete_document(kb_name, doc_id):
         return jsonify({"ok": True, "message": "文档已删除"})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ============ API：会话管理 ============
+
+@app.route("/api/sessions")
+def api_sessions_list():
+    """获取所有活跃会话列表"""
+    try:
+        core = get_core()
+        if not core.session_manager:
+            return jsonify({"ok": True, "sessions": [], "persistence_enabled": False})
+        session_list = core.session_manager.list_sessions()
+        data = []
+        for s in session_list:
+            mem_count = core.session_manager.get_memory_count(s.sid)
+            data.append({
+                "sid": s.sid,
+                "adapter": s.adapter_name,
+                "type": s.session_type,
+                "id": s.session_id,
+                "title": s.session_title or "",
+                "description": s.session_description or "",
+                "timestamp": s.timestamp,
+                "memory_count": mem_count,
+                "enabled": s.enabled,
+            })
+        return jsonify({"ok": True, "sessions": data, "persistence_enabled": True})
+    except Exception:
+        logger.exception("获取会话列表失败")
+        return jsonify({"ok": False, "error": "Internal server error"}), 500
+
+
+@app.route("/api/sessions/cleanup", methods=["POST"])
+def api_sessions_cleanup():
+    """清理过期会话"""
+    try:
+        core = get_core()
+        if not core.session_manager:
+            return jsonify({"ok": False, "error": "会话管理器未启用"}), 400
+        deleted = core.session_manager.cleanup_expired(days=7)
+        return jsonify({"ok": True, "deleted": deleted})
+    except Exception:
+        logger.exception("清理过期会话失败")
+        return jsonify({"ok": False, "error": "Internal server error"}), 500
+
+
+@app.route("/api/sessions/<path:sid>")
+def api_session_get(sid):
+    """获取指定会话详情（只读，不会创建新会话）"""
+    try:
+        core = get_core()
+        if not core.session_manager:
+            return jsonify({"ok": False, "error": "会话管理器未启用"}), 400
+        s = core.session_manager.get_session(sid)
+        if not s:
+            return jsonify({"ok": False, "error": "会话不存在"}), 404
+        chunks = core.session_manager.get_memory_chunks(sid)
+        memory = [
+            {"id": c.get("id"), "user": c.get("user", ""), "assistant": c.get("assistant", "")}
+            for c in chunks
+        ]
+        return jsonify({
+            "ok": True,
+            "session": {
+                "sid": s.sid,
+                "adapter": s.adapter_name,
+                "type": s.session_type,
+                "id": s.session_id,
+                "title": s.session_title or "",
+                "description": s.session_description or "",
+                "timestamp": s.timestamp,
+                "memory_count": len(memory),
+                "enabled": s.enabled,
+            },
+            "memory": memory,
+        })
+    except Exception:
+        logger.exception("获取会话详情失败")
+        return jsonify({"ok": False, "error": "Internal server error"}), 500
+
+
+@app.route("/api/sessions/<path:sid>", methods=["DELETE"])
+def api_session_delete(sid):
+    """删除指定会话"""
+    try:
+        core = get_core()
+        if not core.session_manager:
+            return jsonify({"ok": False, "error": "会话管理器未启用"}), 400
+        core.session_manager.delete_session(sid)
+        return jsonify({"ok": True})
+    except Exception:
+        logger.exception("删除会话失败")
+        return jsonify({"ok": False, "error": "Internal server error"}), 500
+
+
+@app.route("/api/sessions/<path:sid>/clear", methods=["POST"])
+def api_session_clear(sid):
+    """清空指定会话的记忆"""
+    try:
+        core = get_core()
+        if not core.session_manager:
+            return jsonify({"ok": False, "error": "会话管理器未启用"}), 400
+        if not core.session_manager.get_session(sid):
+            return jsonify({"ok": False, "error": "会话不存在"}), 404
+        core.session_manager.clear_memory(sid)
+        return jsonify({"ok": True})
+    except Exception:
+        logger.exception("清空会话记忆失败")
+        return jsonify({"ok": False, "error": "Internal server error"}), 500
+
+
+@app.route("/api/sessions/<path:sid>/meta", methods=["POST"])
+def api_session_meta(sid):
+    """编辑会话元数据（title/description/enabled）
+
+    类型不符返回 400，避免静默丢弃却回 ok。
+    """
+    try:
+        core = get_core()
+        if not core.session_manager:
+            return jsonify({"ok": False, "error": "会话管理器未启用"}), 400
+        if not core.session_manager.get_session(sid):
+            return jsonify({"ok": False, "error": "会话不存在"}), 404
+        data = request.get_json(silent=True) or {}
+        title = data.get("title")
+        description = data.get("description")
+        enabled = data.get("enabled")
+
+        # 字段存在则必须类型正确，否则 400
+        if title is not None and not isinstance(title, str):
+            return jsonify({"ok": False, "error": "title 必须是字符串"}), 400
+        if description is not None and not isinstance(description, str):
+            return jsonify({"ok": False, "error": "description 必须是字符串"}), 400
+        if enabled is not None and not isinstance(enabled, bool):
+            return jsonify({"ok": False, "error": "enabled 必须是布尔值"}), 400
+
+        core.session_manager.update_session(
+            sid, title=title, description=description, enabled=enabled,
+        )
+        return jsonify({"ok": True})
+    except Exception:
+        logger.exception("更新会话元数据失败")
+        return jsonify({"ok": False, "error": "Internal server error"}), 500
+
+
+@app.route("/api/sessions/<path:sid>/memory", methods=["POST"])
+def api_session_memory_add(sid):
+    """手动添加一轮记忆"""
+    try:
+        core = get_core()
+        if not core.session_manager:
+            return jsonify({"ok": False, "error": "会话管理器未启用"}), 400
+        if not core.session_manager.get_session(sid):
+            return jsonify({"ok": False, "error": "会话不存在"}), 404
+        data = request.get_json(silent=True) or {}
+        user_text = (data.get("user") or "").strip()
+        asst_text = (data.get("assistant") or "").strip()
+        if not user_text or not asst_text:
+            return jsonify({"ok": False, "error": "用户消息和 AI 回复均不能为空"}), 400
+        ok = core.session_manager.append_memory(
+            sid,
+            {"role": "user", "content": user_text},
+            {"role": "assistant", "content": asst_text},
+        )
+        return jsonify({"ok": ok})
+    except Exception:
+        logger.exception("添加会话记忆失败")
+        return jsonify({"ok": False, "error": "Internal server error"}), 500
+
+
+@app.route("/api/sessions/<path:sid>/memory/<int:chunk_id>", methods=["PUT"])
+def api_session_memory_update(sid, chunk_id):
+    """按 chunk id 编辑一轮记忆"""
+    try:
+        core = get_core()
+        if not core.session_manager:
+            return jsonify({"ok": False, "error": "会话管理器未启用"}), 400
+        data = request.get_json(silent=True) or {}
+        user_text = (data.get("user") or "").strip()
+        asst_text = (data.get("assistant") or "").strip()
+        if not user_text or not asst_text:
+            return jsonify({"ok": False, "error": "用户消息和 AI 回复均不能为空"}), 400
+        ok = core.session_manager.update_memory_chunk(sid, chunk_id, user_text, asst_text)
+        if not ok:
+            return jsonify({"ok": False, "error": "记忆不存在或已删除"}), 404
+        return jsonify({"ok": True})
+    except Exception:
+        logger.exception("编辑会话记忆失败")
+        return jsonify({"ok": False, "error": "Internal server error"}), 500
+
+
+@app.route("/api/sessions/<path:sid>/memory/<int:chunk_id>", methods=["DELETE"])
+def api_session_memory_delete(sid, chunk_id):
+    """按 chunk id 删除一轮记忆"""
+    try:
+        core = get_core()
+        if not core.session_manager:
+            return jsonify({"ok": False, "error": "会话管理器未启用"}), 400
+        ok = core.session_manager.delete_memory_chunk(sid, chunk_id)
+        if not ok:
+            return jsonify({"ok": False, "error": "记忆不存在或已删除"}), 404
+        return jsonify({"ok": True})
+    except Exception:
+        logger.exception("删除会话记忆失败")
+        return jsonify({"ok": False, "error": "Internal server error"}), 500
 
 
 # ============ 日志拦截（捕获 logging 与 print 输出到 LOG_QUEUE） ============

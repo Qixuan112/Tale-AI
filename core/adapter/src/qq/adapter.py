@@ -367,8 +367,16 @@ class QQAdapter(BaseAdapter):
                     message_segments.append(
                         {"type": "at", "data": {"qq": at_qq}}
                     )
-
-            if content.text:
+                # @ 后的空格并入文本段，避免产生孤立空格段（如纯图片+@ 时多余空格）
+                if content.text:
+                    message_segments.append(
+                        {"type": "text", "data": {"text": " " + content.text}}
+                    )
+                else:
+                    message_segments.append(
+                        {"type": "text", "data": {"text": " "}}
+                    )
+            elif content.text:
                 message_segments.append(
                     {"type": "text", "data": {"text": content.text}}
                 )

@@ -155,9 +155,13 @@ class ChatLLM:
             self.refresh_context()
             logger.info("ChatLLM: 配置已热更新")
 
-    def chat(self, user_input):
-        """
-        发送消息并获取回复，自动维护上下文
+    def chat(self, user_input, persist_content: str = None):
+        """发送消息并获取回复，自动维护上下文
+
+        Args:
+            user_input: 发给 LLM 的用户输入（可能已拼接历史/元数据等富上下文）
+            persist_content: 落库时存入会话记忆的纯净用户原文。
+                为 None 时用 user_input。避免富上下文污染持久化记忆。
         """
         # RAG 检索：在 system 消息之后、conversation 之前注入知识库上下文
         rag_system_msg = None
@@ -212,8 +216,8 @@ class ChatLLM:
                 self._remove_rag_message()
             self.messages.append({"role": "assistant", "content": assistant_reply})
 
-        # 持久化本轮对话到 SessionManager
-        self._save_session_memory()
+        # 持久化本轮对话到 SessionManager（落库存纯净原文，避免富上下文污染）
+        self._save_session_memory(persist_content)
 
         return assistant_reply
 
@@ -279,42 +283,62 @@ class ChatLLM:
             self.messages = system_head + conv_msgs
             self._trim_context()
 
-    def set_session(self, sid: str):
-        """绑定到指定会话，从 SessionManager 加载历史上下文"""
+    def set_session(self, sid: str, load_history: bool = True):
+        """绑定到指定会话。
+
+        Args:
+            sid: 会话标识
+            load_history: 是否从 SessionManager 加载历史上下文。
+                禁用的会话应传 False，避免历史被载入并发给 LLM。
+        """
         if not self.session_manager:
             logger.warning("set_session 调用但 session_manager 未设置")
             return
         with self._lock:
             self.current_sid = sid
-            session_memory = self.session_manager.get_memory(sid)
+            session_memory = []
+            if load_history:
+                session_memory = self.session_manager.get_memory(sid)
             system_head = self.context.build_messages_head(self.cache_strategy)
             self.messages = system_head + session_memory
             self._trim_context()
-        logger.debug("已切换到会话 [%s] (%d 条历史消息)", sid, len(session_memory))
+        logger.debug("已切换到会话 [%s] (load_history=%s, %d 条历史)",
+                     sid, load_history, len(session_memory))
 
-    def _save_session_memory(self):
+    def _save_session_memory(self, persist_content: str = None):
         """持久化本轮 user+assistant 到 SessionManager（私有方法）
 
         在 chat() 的 assistant_reply 追加到 self.messages 之后调用。
-        从 self.messages 中取最后一条 user 和最后一条 assistant，
-        两者都非空才写入，避免半条记录。
+        禁用的会话不写入（避免越攒越多）。
+        落库时 user 用 persist_content（纯净原文），assistant 取 messages 最后一条，
+        两者都非空才写入，避免半条记录与富上下文污染。
         """
         if not self.session_manager or not self.current_sid:
             return
+        # 禁用的会话不持久化新记忆
+        session = self.session_manager.get_session(self.current_sid)
+        if session is not None and not session.enabled:
+            return
         with self._lock:
-            # 取最后一条 user 和 assistant
-            last_user = None
+            # 取最后一条 assistant
             last_assistant = None
             for m in reversed(self.messages):
-                if m.get("role") == "assistant" and last_assistant is None:
+                if m.get("role") == "assistant":
                     last_assistant = m
-                elif m.get("role") == "user" and last_user is None:
-                    last_user = m
-                if last_user and last_assistant:
                     break
-            if last_user and last_assistant:
+            # user 优先用纯净原文，回退到 messages 最后一条 user
+            user_content = persist_content
+            if not user_content:
+                for m in reversed(self.messages):
+                    if m.get("role") == "user":
+                        user_content = m.get("content", "")
+                        break
+            asst_content = last_assistant.get("content", "") if last_assistant else ""
+            if user_content and asst_content:
                 self.session_manager.append_memory(
-                    self.current_sid, last_user, last_assistant
+                    self.current_sid,
+                    {"role": "user", "content": user_content},
+                    {"role": "assistant", "content": asst_content},
                 )
 
 

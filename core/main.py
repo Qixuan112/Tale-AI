@@ -605,11 +605,14 @@ class TaleCore:
         # 构造会话标识并绑定 ChatLLM 会话上下文
         persistence = config_loader.bot.bot.persistence_enabled
         sid = None
+        session_enabled = True
         if persistence and self.session_manager and self.chat:
             stype = "gm" if is_group else "dm"
             sid = f"{processed.platform.value}:{stype}:{target_id}"
-            self.session_manager.get_or_create(sid)
-            self.chat.set_session(sid)
+            session_obj = self.session_manager.get_or_create(sid)
+            session_enabled = session_obj.enabled
+            # 禁用的会话不加载历史上下文（读侧门控）
+            self.chat.set_session(sid, load_history=session_enabled)
 
         try:
             # 条件图片识别：有图片 + 满足触发条件时先用 VLM 识别
@@ -642,8 +645,10 @@ class TaleCore:
                     logger.warning("VLM 图片识别失败: %s", e)
 
             # 追加滑动上下文窗口
+            # persist_content = 拼接历史前的 user_input（纯净用户消息，用于落库，避免历史套历史）
+            persist_content = user_input
             if processed.text:
-                if persistence and self.session_manager and sid:
+                if persistence and self.session_manager and sid and session_enabled:
                     session_memory = self.session_manager.get_memory(sid)
                     if session_memory:
                         ctx_lines = []
@@ -651,21 +656,26 @@ class TaleCore:
                             role = msg.get("role", "")
                             content = msg.get("content", "")
                             if role == "user":
-                                ctx_lines.append(f"[user] {content[:200]}")
+                                ctx_lines.append(f"[user] {content[:300]}")
                             elif role == "assistant":
-                                ctx_lines.append(f"[assistant] {content[:200]}")
+                                ctx_lines.append(f"[assistant] {content[:300]}")
                         ctx = "\n".join(ctx_lines)
                         logger.debug("从会话历史追加上下文 (%d 条消息)", len(session_memory))
                         user_input = f"以下是最近的聊天记录：\n{ctx}\n\n---\n{user_input}"
+                    else:
+                        persist_content = user_input
                 else:
+                    persist_content = user_input
                     ctx_window_cfg = config_loader.bot.context
                     if ctx_window_cfg.chat_context_enabled and ctx_window_cfg.chat_context_window > 0:
                         ctx = await self._build_context_window(processed, ctx_window_cfg.chat_context_window)
                         if ctx:
                             logger.debug("追加上下文窗口 (%d 条)", ctx_window_cfg.chat_context_window)
                             user_input = f"以下是最近的聊天记录：\n{ctx}\n\n---\n{user_input}"
+            else:
+                persist_content = user_input
 
-            chatllm_reply = await self._call_chatllm(user_input)
+            chatllm_reply = await self._call_chatllm(user_input, persist_content)
             parsed = parse_xml_msg(chatllm_reply)
 
             # AI 使用 <msg></msg> 主动结束对话，不发送任何消息
@@ -992,11 +1002,12 @@ class TaleCore:
                     return True
         return False
 
-    async def _call_chatllm(self, user_input: str) -> str:
+    async def _call_chatllm(self, user_input: str, persist_content: str = None) -> str:
         """调用 ChatLLM 生成回复（非阻塞，使用线程池执行同步 API 调用）
 
         Args:
-            user_input: 用户输入
+            user_input: 发给 LLM 的用户输入（可能已拼接历史/元数据）
+            persist_content: 落库时存入会话记忆的纯净用户原文，None 则用 user_input
 
         Returns:
             AI 回复文本
@@ -1019,7 +1030,7 @@ class TaleCore:
             # 在专用线程池中执行同步 API 调用，避免阻塞事件循环
             loop = asyncio.get_running_loop()
             chatllm_reply = await loop.run_in_executor(
-                self._llm_executor, self.chat.chat, user_input
+                self._llm_executor, self.chat.chat, user_input, persist_content
             )
         finally:
             # 停止动画（daemon 线程无需 join，进程退出时自动终止）
