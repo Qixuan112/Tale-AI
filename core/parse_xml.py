@@ -204,6 +204,7 @@ def _parse_root(root: ET.Element) -> dict:
         "plan": None,
         "tool": None,
         "skip_reply": False,  # AI 使用 <msg></msg> 表示不发送消息
+        "session_sends": [],  # 跨会话消息 <session_send>
     }
 
     # 解析 <msg> 标签
@@ -255,6 +256,17 @@ def _parse_root(root: ET.Element) -> dict:
     if tool_elem is not None:
         tool_text = tool_elem.text.strip() if tool_elem.text else ""
         result["tool"] = tool_text.replace("<!--", "").replace("-->", "").strip()
+
+    # 解析 <session_send> 跨会话消息标签（支持多个）
+    for ss_elem in root.findall("session_send"):
+        ss_text = ss_elem.text.strip() if ss_elem.text else ""
+        if ss_text:
+            # 格式：目标sid|消息内容
+            parts = ss_text.split("|", 1)
+            target = parts[0].strip()
+            text = parts[1].strip() if len(parts) > 1 else ""
+            if target and text:
+                result["session_sends"].append({"target": target, "text": text})
 
     # 处理插件注册的自定义标签
     for tag_name, handler in _plugin_tag_handlers.items():

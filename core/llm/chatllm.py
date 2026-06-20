@@ -155,13 +155,14 @@ class ChatLLM:
             self.refresh_context()
             logger.info("ChatLLM: 配置已热更新")
 
-    def chat(self, user_input, persist_content: str = None):
+    def chat(self, user_input, persist_content: str = None, save_to_session: bool = True):
         """发送消息并获取回复，自动维护上下文
 
         Args:
             user_input: 发给 LLM 的用户输入（可能已拼接历史/元数据等富上下文）
             persist_content: 落库时存入会话记忆的纯净用户原文。
                 为 None 时用 user_input。避免富上下文污染持久化记忆。
+            save_to_session: 是否写入会话记忆。Agent 内部步骤传 False。
         """
         # RAG 检索：在 system 消息之后、conversation 之前注入知识库上下文
         rag_system_msg = None
@@ -217,7 +218,9 @@ class ChatLLM:
             self.messages.append({"role": "assistant", "content": assistant_reply})
 
         # 持久化本轮对话到 SessionManager（落库存纯净原文，避免富上下文污染）
-        self._save_session_memory(persist_content)
+        # Agent 内部步骤不写入，避免工具调用轮次污染会话记忆
+        if save_to_session:
+            self._save_session_memory(persist_content)
 
         return assistant_reply
 

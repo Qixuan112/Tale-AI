@@ -28,6 +28,7 @@ from .adapter import (
     PlatformConfigBuilder,
 )
 from .chat import SessionManager
+from .bridge import BridgeState
 from .utils import get_logger
 
 logger = get_logger(__name__)
@@ -70,6 +71,10 @@ class TaleCore:
         self._chat_context_buffer: Dict[str, list] = {}
         self._name_to_id: Dict[str, Dict[str, str]] = {}
         self.session_manager: Optional[SessionManager] = None
+        self.bridge: Optional[BridgeState] = None
+        # 全局 ChatLLM 锁：保护单例 self.chat 的 self.messages/current_sid
+        # 所有会话共享此锁，确保 set_session + chat 原子化，防跨会话串味
+        self._chat_lock = asyncio.Lock()
 
     def initialize(self):
         """初始化核心组件（幂等，可多次调用）"""
@@ -89,6 +94,9 @@ class TaleCore:
             )
             # 启动时清理过期会话（7天以上）
             self.session_manager.cleanup_expired(days=7)
+
+        # 初始化跨会话消息桥接
+        self.bridge = BridgeState()
 
         self.chat = self._init_chatllm()
         self.toolllm = self._init_toolllm()
@@ -308,7 +316,7 @@ class TaleCore:
                 extra_info += f" [媒体: {media_type}]"
             user_input = f"[朋友圈动态] {sender_name}: {text}{extra_info}"
 
-            chatllm_reply = await self._call_chatllm(user_input)
+            chatllm_reply = await self._call_chatllm(user_input, persist_content=user_input, save_to_session=False)
             # 朋友圈动态不需要发送回复（仅让 LLM 记录到记忆中）
             logger.info("[朋友圈] LLM 已处理 %s 的动态", sender_name)
         except Exception as e:
@@ -420,6 +428,9 @@ class TaleCore:
         # 限制缓冲区大小，防止内存泄漏
         if len(self._chat_context_buffer[key]) > 100:
             self._chat_context_buffer[key] = self._chat_context_buffer[key][-100:]
+
+    def _get_chat_lock(self) -> asyncio.Lock:
+        return self._chat_lock
 
     def _download_ctx_image(self, url_or_path: str) -> Optional[str]:
         """下载上下文窗口中的图片到本地临时目录。
@@ -602,7 +613,7 @@ class TaleCore:
         is_group = processed.group_id is not None
         target_id = processed.group_id if processed.group_id else processed.sender_id
 
-        # 构造会话标识并绑定 ChatLLM 会话上下文
+        # 构造会话标识（set_session 移入锁内，防跨会话串味）
         persistence = config_loader.bot.bot.persistence_enabled
         sid = None
         session_enabled = True
@@ -611,71 +622,78 @@ class TaleCore:
             sid = f"{processed.platform.value}:{stype}:{target_id}"
             session_obj = self.session_manager.get_or_create(sid)
             session_enabled = session_obj.enabled
-            # 禁用的会话不加载历史上下文（读侧门控）
-            self.chat.set_session(sid, load_history=session_enabled)
 
         try:
-            # 条件图片识别：有图片 + 满足触发条件时先用 VLM 识别
-            if processed.images and self._should_recognize_image(processed):
-                try:
-                    vlm_llm = get_vlm_llm()
-                    loop = asyncio.get_running_loop()
-                    # VlmLLM 只吃本地路径，先把图片 URL 下载到 temp；
-                    # 下载与 VLM 调用均为阻塞操作，offload 到线程池避免阻塞事件循环
-                    max_vlm_images = 4  # 与 VlmLLM.MAX_IMAGES 对齐
-                    local_paths = []
-                    for img_url in (processed.images or [])[:max_vlm_images]:
-                        p = await loop.run_in_executor(
-                            self._llm_executor, self._download_ctx_image, img_url
+            # 全局 ChatLLM 锁：保护单例 self.chat，防跨会话串味
+            # set_session 到 chat() 完成之间其他会话不得修改 self.messages/current_sid
+            async with self._get_chat_lock():
+                # set_session 在锁内执行，确保 self.messages/current_sid 原子化
+                if sid:
+                    self.chat.set_session(sid, load_history=session_enabled)
+                # ── 跨会话消息注入（consume inbox） ──
+                inbox_msgs = []
+                if sid and self.bridge:
+                    inbox_msgs = await self.bridge.consume(sid)
+                    inbox_text_parts = []
+                    for m in inbox_msgs:
+                        inbox_text_parts.append(
+                            f"[来自 {m['from_sid']} 的跨会话消息] {m['content'][:200]}"
                         )
-                        if p:
-                            local_paths.append(p)
-                    vlm_result = None
-                    if local_paths:
-                        vlm_result = await loop.run_in_executor(
-                            self._llm_executor,
-                            vlm_llm.chat_with_image,
-                            processed.text or "",
-                            local_paths,
-                        )
-                    if vlm_result:
-                        logger.info("VLM 图片识别结果: %s", vlm_result[:200])
-                        user_input = f"{user_input}\n\n[图片识别结果]\n{vlm_result}"
-                except Exception as e:
-                    logger.warning("VLM 图片识别失败: %s", e)
+                    if inbox_msgs:
+                        user_input = "\n".join(inbox_text_parts) + "\n\n---\n\n" + user_input
+                    # 注入可通信会话列表（最多 5 个）
+                    accessible = self.bridge.list_accessible(sid)
+                    if accessible:
+                        sess_list = "、".join(accessible)
+                        user_input += f"\n[可通信会话] {sess_list}"
+
+                # 条件图片识别：有图片 + 满足触发条件时先用 VLM 识别
+                if processed.images and self._should_recognize_image(processed):
+                    try:
+                        vlm_llm = get_vlm_llm()
+                        loop = asyncio.get_running_loop()
+                        # VlmLLM 只吃本地路径，先把图片 URL 下载到 temp；
+                        # 下载与 VLM 调用均为阻塞操作，offload 到线程池避免阻塞事件循环
+                        max_vlm_images = 4  # 与 VlmLLM.MAX_IMAGES 对齐
+                        local_paths = []
+                        for img_url in (processed.images or [])[:max_vlm_images]:
+                            p = await loop.run_in_executor(
+                                self._llm_executor, self._download_ctx_image, img_url
+                            )
+                            if p:
+                                local_paths.append(p)
+                        vlm_result = None
+                        if local_paths:
+                            vlm_result = await loop.run_in_executor(
+                                self._llm_executor,
+                                vlm_llm.chat_with_image,
+                                processed.text or "",
+                                local_paths,
+                            )
+                        if vlm_result:
+                            logger.info("VLM 图片识别结果: %s", vlm_result[:200])
+                            user_input = f"{user_input}\n\n[图片识别结果]\n{vlm_result}"
+                    except Exception as e:
+                        logger.warning("VLM 图片识别失败: %s", e)
 
             # 追加滑动上下文窗口
-            # persist_content = 拼接历史前的 user_input（纯净用户消息，用于落库，避免历史套历史）
+            # persist_content = 拼接历史前的 user_input（纯净用户消息，用于落库）
             persist_content = user_input
-            if processed.text:
-                if persistence and self.session_manager and sid and session_enabled:
-                    session_memory = self.session_manager.get_memory(sid)
-                    if session_memory:
-                        ctx_lines = []
-                        for msg in session_memory:
-                            role = msg.get("role", "")
-                            content = msg.get("content", "")
-                            if role == "user":
-                                ctx_lines.append(f"[user] {content[:300]}")
-                            elif role == "assistant":
-                                ctx_lines.append(f"[assistant] {content[:300]}")
-                        ctx = "\n".join(ctx_lines)
-                        logger.debug("从会话历史追加上下文 (%d 条消息)", len(session_memory))
+            use_ctx = bool(processed.text and not (
+                persistence and self.session_manager and sid and session_enabled
+            ))
+            if use_ctx:
+                ctx_window_cfg = config_loader.bot.context
+                if ctx_window_cfg.chat_context_enabled and ctx_window_cfg.chat_context_window > 0:
+                    ctx = await self._build_context_window(processed, ctx_window_cfg.chat_context_window)
+                    if ctx:
+                        logger.debug("追加上下文窗口 (%d 条)", ctx_window_cfg.chat_context_window)
                         user_input = f"以下是最近的聊天记录：\n{ctx}\n\n---\n{user_input}"
-                    else:
-                        persist_content = user_input
-                else:
-                    persist_content = user_input
-                    ctx_window_cfg = config_loader.bot.context
-                    if ctx_window_cfg.chat_context_enabled and ctx_window_cfg.chat_context_window > 0:
-                        ctx = await self._build_context_window(processed, ctx_window_cfg.chat_context_window)
-                        if ctx:
-                            logger.debug("追加上下文窗口 (%d 条)", ctx_window_cfg.chat_context_window)
-                            user_input = f"以下是最近的聊天记录：\n{ctx}\n\n---\n{user_input}"
-            else:
-                persist_content = user_input
+            # set_session 已通过 self.messages 结构化加载历史，无需额外拼接
 
-            chatllm_reply = await self._call_chatllm(user_input, persist_content)
+            # 首次调用不落库（save_to_session=False），最终回复在最后统一持久化
+            # 避免工具调用轮次和最终回复双重写入
+            chatllm_reply = await self._call_chatllm(user_input, persist_content, save_to_session=False)
             parsed = parse_xml_msg(chatllm_reply)
 
             # AI 使用 <msg></msg> 主动结束对话，不发送任何消息
@@ -726,6 +744,29 @@ class TaleCore:
                     processed, first_messages[:MAX_SPLIT_COUNT], adapter_instance=adapter_instance
                 )
 
+            # ── 处理跨会话消息：解析 session_send 标签并异步投递 ──
+            _pending_sends = []
+            for ss in parsed.get("session_sends", []):
+                target = ss.get("target", "").strip()
+                text = ss.get("text", "").strip()
+                if target and text and sid and self.bridge:
+                    _pending_sends.append(asyncio.create_task(
+                        self._send_cross_session(sid, target, text)
+                    ))
+
+            # ── B1: 统一持久化最终回复 ──
+            # 首次 chat() 用 save_to_session=False 不落库，这里统一持久化
+            # needs_follow_up: Agent 循环后存最终回复
+            # 非 follow_up: 直接存首条回复
+            if self.chat and self.chat.current_sid and persist_content:
+                self.chat._save_session_memory(persist_content)
+
+            # ── 确认跨会话消息已处理（ack） ──
+            if inbox_msgs and sid and self.bridge:
+                msg_ids = [m["id"] for m in inbox_msgs if m.get("id")]
+                if msg_ids:
+                    await self.bridge.ack(sid, msg_ids)
+
         except Exception as e:
             logger.error("处理消息时出错: %s", e, exc_info=True)
             # 给用户回显错误提示
@@ -737,6 +778,7 @@ class TaleCore:
                 reply_to=processed.message_id,
                 is_group=is_group
             )
+        # _chat_lock 由 async with 自动释放
 
     async def _send_message_batch(self, processed: ProcessedMessage, messages: list, adapter_instance: str = None):
         """批量发送消息，每条消息前模拟打字延迟（包括第一条），句间额外停顿"""
@@ -788,12 +830,16 @@ class TaleCore:
             return True
         return False
 
-    async def _call_chatllm_with_timeout(self, user_input: str, timeout: float) -> str:
+    async def _call_chatllm_with_timeout(self, user_input: str, timeout: float,
+                                          persist_content: str = None,
+                                          save_to_session: bool = True) -> str:
         """带超时的 ChatLLM 调用
 
         Args:
             user_input: 用户输入
             timeout: 超时秒数
+            persist_content: 落库用纯净原文，None 则用 user_input
+            save_to_session: 是否写入会话记忆，Agent 内部步骤应传 False
 
         Returns:
             AI 回复文本，超时时返回错误提示
@@ -802,7 +848,7 @@ class TaleCore:
             return ""
         try:
             return await asyncio.wait_for(
-                self._call_chatllm(user_input),
+                self._call_chatllm(user_input, persist_content, save_to_session),
                 timeout=timeout
             )
         except asyncio.TimeoutError:
@@ -912,7 +958,10 @@ class TaleCore:
                 iteration, max_steps, combined_result,
                 f"第 {iteration} 轮执行结果", remaining,
             )
-            current_reply = await self._call_chatllm_with_timeout(follow_up_prompt, per_step_timeout)
+            current_reply = await self._call_chatllm_with_timeout(
+                follow_up_prompt, per_step_timeout,
+                persist_content=None, save_to_session=False,
+            )
             current_parsed = parse_xml_msg(current_reply)
 
         if iteration >= max_steps and self._has_tool_content(current_parsed, current_reply):
@@ -1002,12 +1051,14 @@ class TaleCore:
                     return True
         return False
 
-    async def _call_chatllm(self, user_input: str, persist_content: str = None) -> str:
+    async def _call_chatllm(self, user_input: str, persist_content: str = None,
+                             save_to_session: bool = True) -> str:
         """调用 ChatLLM 生成回复（非阻塞，使用线程池执行同步 API 调用）
 
         Args:
-            user_input: 发给 LLM 的用户输入（可能已拼接历史/元数据）
+            user_input: 发给 LLM 的用户输入
             persist_content: 落库时存入会话记忆的纯净用户原文，None 则用 user_input
+            save_to_session: 是否写入会话记忆，Agent 内部步骤传 False
 
         Returns:
             AI 回复文本
@@ -1030,7 +1081,7 @@ class TaleCore:
             # 在专用线程池中执行同步 API 调用，避免阻塞事件循环
             loop = asyncio.get_running_loop()
             chatllm_reply = await loop.run_in_executor(
-                self._llm_executor, self.chat.chat, user_input, persist_content
+                self._llm_executor, self.chat.chat, user_input, persist_content, save_to_session
             )
         finally:
             # 停止动画（daemon 线程无需 join，进程退出时自动终止）
@@ -1050,7 +1101,7 @@ class TaleCore:
         if not user_input:
             return []
 
-        chatllm_reply = await self._call_chatllm(user_input)
+        chatllm_reply = await self._call_chatllm(user_input, persist_content=user_input)
         return await self._resolve_follow_up(chatllm_reply)
 
     def _extract_reply_text(self, parsed: dict) -> str:
