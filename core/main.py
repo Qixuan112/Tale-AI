@@ -605,10 +605,16 @@ class TaleCore:
         # 构造会话标识并绑定 ChatLLM 会话上下文
         persistence = config_loader.bot.bot.persistence_enabled
         sid = None
+        session_enabled = True
+        session_title = ""
+        session_desc = ""
         if persistence and self.session_manager and self.chat:
             stype = "gm" if is_group else "dm"
             sid = f"{processed.platform.value}:{stype}:{target_id}"
-            self.session_manager.get_or_create(sid)
+            session_obj = self.session_manager.get_or_create(sid)
+            session_enabled = session_obj.enabled
+            session_title = session_obj.session_title or ""
+            session_desc = session_obj.session_description or ""
             self.chat.set_session(sid)
 
         try:
@@ -644,19 +650,31 @@ class TaleCore:
             # 追加滑动上下文窗口
             if processed.text:
                 if persistence and self.session_manager and sid:
-                    session_memory = self.session_manager.get_memory(sid)
-                    if session_memory:
-                        ctx_lines = []
-                        for msg in session_memory:
-                            role = msg.get("role", "")
-                            content = msg.get("content", "")
-                            if role == "user":
-                                ctx_lines.append(f"[user] {content[:300]}")
-                            elif role == "assistant":
-                                ctx_lines.append(f"[assistant] {content[:300]}")
-                        ctx = "\n".join(ctx_lines)
-                        logger.debug("从会话历史追加上下文 (%d 条消息)", len(session_memory))
-                        user_input = f"以下是最近的聊天记录：\n{ctx}\n\n---\n{user_input}"
+                    # 注入会话元数据（标题/描述），让 AI 知道当前会话背景
+                    if session_title or session_desc:
+                        meta_parts = []
+                        if session_title:
+                            meta_parts.append(f"标题={session_title}")
+                        if session_desc:
+                            meta_parts.append(f"描述={session_desc}")
+                        user_input += f"\n[会话] " + "，".join(meta_parts)
+                    # 仅启用的会话才加载历史上下文
+                    if session_enabled:
+                        session_memory = self.session_manager.get_memory(sid)
+                        if session_memory:
+                            ctx_lines = []
+                            for msg in session_memory:
+                                role = msg.get("role", "")
+                                content = msg.get("content", "")
+                                if role == "user":
+                                    ctx_lines.append(f"[user] {content[:300]}")
+                                elif role == "assistant":
+                                    ctx_lines.append(f"[assistant] {content[:300]}")
+                            ctx = "\n".join(ctx_lines)
+                            logger.debug("从会话历史追加上下文 (%d 条消息)", len(session_memory))
+                            user_input = f"以下是最近的聊天记录：\n{ctx}\n\n---\n{user_input}"
+                    else:
+                        logger.debug("会话 [%s] 已禁用，跳过历史上下文加载", sid)
                 else:
                     ctx_window_cfg = config_loader.bot.context
                     if ctx_window_cfg.chat_context_enabled and ctx_window_cfg.chat_context_window > 0:
