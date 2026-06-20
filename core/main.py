@@ -650,10 +650,15 @@ class TaleCore:
                         for msg in session_memory:
                             role = msg.get("role", "")
                             content = msg.get("content", "")
+                            # 从上下文历史中剥离 @/reply 标签，避免 AI 模仿旧模式
+                            import re as _re
+                            content = _re.sub(r'<at_targets>.*?</at_targets>\s*', '', content)
+                            content = _re.sub(r'<reply>.*?</reply>\s*', '', content)
+                            content = _re.sub(r'\s*<reply>.*?</reply>', '', content)
                             if role == "user":
-                                ctx_lines.append(f"[user] {content[:200]}")
+                                ctx_lines.append(f"[user] {content[:300]}")
                             elif role == "assistant":
-                                ctx_lines.append(f"[assistant] {content[:200]}")
+                                ctx_lines.append(f"[assistant] {content[:300]}")
                         ctx = "\n".join(ctx_lines)
                         logger.debug("从会话历史追加上下文 (%d 条消息)", len(session_memory))
                         user_input = f"以下是最近的聊天记录：\n{ctx}\n\n---\n{user_input}"

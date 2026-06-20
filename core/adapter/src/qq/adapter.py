@@ -367,6 +367,10 @@ class QQAdapter(BaseAdapter):
                     message_segments.append(
                         {"type": "at", "data": {"qq": at_qq}}
                     )
+                # @ 后加空格，避免 @nyx消息 粘连
+                message_segments.append(
+                    {"type": "text", "data": {"text": " "}}
+                )
 
             if content.text:
                 message_segments.append(
