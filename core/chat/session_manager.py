@@ -182,9 +182,14 @@ class SessionManager:
             self._save()
 
     def get_memory(self, sid: str) -> list[dict]:
-        """获取会话历史消息列表（展平后的 [{role, content}, ...]）"""
+        """获取会话历史消息列表（展平后的 [{role, content}, ...]）
+
+        只读，不创建会话；sid 不存在返回空列表。
+        """
         with self._lock:
-            d = self._ensure_session(sid)
+            d = self._data.get(sid)
+            if d is None:
+                return []
             messages = []
             for chunk in d.get("memory", []):
                 user_text = chunk.get("user", "")
@@ -196,10 +201,10 @@ class SessionManager:
             return messages
 
     def get_memory_count(self, sid: str) -> int:
-        """获取会话记忆轮数"""
+        """获取会话记忆轮数（只读，不创建会话）"""
         with self._lock:
-            d = self._ensure_session(sid)
-            return len(d.get("memory", []))
+            d = self._data.get(sid)
+            return len(d.get("memory", [])) if d else 0
 
     def append_memory(self, sid: str, user_msg: dict, asst_msg: dict) -> bool:
         """追加一轮对话（user + assistant）
@@ -234,9 +239,11 @@ class SessionManager:
         return True
 
     def clear_memory(self, sid: str):
-        """清空指定会话的记忆"""
+        """清空指定会话的记忆（只读查找，不创建会话）"""
         with self._lock:
-            d = self._ensure_session(sid)
+            d = self._data.get(sid)
+            if d is None:
+                return
             d["memory"] = []
             self._save()
         logger.info("记忆已清空 [%s]", sid)
@@ -249,9 +256,11 @@ class SessionManager:
     # ── 单条记忆（chunk）操作 ──────────────────────────────────
 
     def get_memory_chunks(self, sid: str) -> list[dict]:
-        """获取记忆 chunk 列表，每个含 {id, user, assistant}"""
+        """获取记忆 chunk 列表，每个含 {id, user, assistant}（只读，不创建）"""
         with self._lock:
-            d = self._ensure_session(sid)
+            d = self._data.get(sid)
+            if d is None:
+                return []
             return [
                 {"id": c.get("id"), "user": c.get("user", ""), "assistant": c.get("assistant", "")}
                 for c in d.get("memory", [])
@@ -262,7 +271,9 @@ class SessionManager:
         if not user_text or not asst_text:
             return False
         with self._lock:
-            d = self._ensure_session(sid)
+            d = self._data.get(sid)
+            if d is None:
+                return False
             for c in d.get("memory", []):
                 if c.get("id") == chunk_id:
                     c["user"] = user_text
@@ -274,7 +285,9 @@ class SessionManager:
     def delete_memory_chunk(self, sid: str, chunk_id: int) -> bool:
         """按 chunk id 删除一轮记忆"""
         with self._lock:
-            d = self._ensure_session(sid)
+            d = self._data.get(sid)
+            if d is None:
+                return False
             mem = d.get("memory", [])
             for i, c in enumerate(mem):
                 if c.get("id") == chunk_id:

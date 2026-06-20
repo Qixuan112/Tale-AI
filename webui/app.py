@@ -1811,6 +1811,8 @@ def api_session_clear(sid):
         core = get_core()
         if not core.session_manager:
             return jsonify({"ok": False, "error": "会话管理器未启用"}), 400
+        if not core.session_manager.get_session(sid):
+            return jsonify({"ok": False, "error": "会话不存在"}), 404
         core.session_manager.clear_memory(sid)
         return jsonify({"ok": True})
     except Exception:
@@ -1828,6 +1830,8 @@ def api_session_meta(sid):
         core = get_core()
         if not core.session_manager:
             return jsonify({"ok": False, "error": "会话管理器未启用"}), 400
+        if not core.session_manager.get_session(sid):
+            return jsonify({"ok": False, "error": "会话不存在"}), 404
         data = request.get_json(silent=True) or {}
         title = data.get("title")
         description = data.get("description")
@@ -1857,6 +1861,8 @@ def api_session_memory_add(sid):
         core = get_core()
         if not core.session_manager:
             return jsonify({"ok": False, "error": "会话管理器未启用"}), 400
+        if not core.session_manager.get_session(sid):
+            return jsonify({"ok": False, "error": "会话不存在"}), 404
         data = request.get_json(silent=True) or {}
         user_text = (data.get("user") or "").strip()
         asst_text = (data.get("assistant") or "").strip()
