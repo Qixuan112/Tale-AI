@@ -112,10 +112,17 @@ class SessionManager:
             s.session_title = d.get("title", "")
             s.session_description = d.get("description", "")
             s.timestamp = d.get("timestamp", 0)
+            s.enabled = d.get("enabled", True)
         return s
 
-    def update_session(self, sid: str, title: str = None, description: str = None):
-        """更新会话元数据"""
+    def update_session(self, sid: str, title: str = None, description: str = None, enabled: bool = None):
+        """更新会话元数据
+
+        Args:
+            title: 会话标题（None 表示不修改）
+            description: 会话描述（None 表示不修改）
+            enabled: 是否启用（None 表示不修改）。禁用的会话不加载历史上下文
+        """
         lock = self._get_lock(sid)
         with lock:
             d = self._ensure_session(sid)
@@ -123,6 +130,8 @@ class SessionManager:
                 d["title"] = title
             if description is not None:
                 d["description"] = description
+            if enabled is not None:
+                d["enabled"] = bool(enabled)
             d["timestamp"] = int(time.time())
             self._save()
 
@@ -194,10 +203,58 @@ class SessionManager:
                 s.session_title = d.get("title", "")
                 s.session_description = d.get("description", "")
                 s.timestamp = d.get("timestamp", 0)
+                s.enabled = d.get("enabled", True)
                 result.append(s)
             except ValueError:
                 continue
         return result
+
+    # ── 单条记忆（chunk）操作 ──────────────────────────────────
+
+    def get_memory_chunks(self, sid: str) -> list[list[dict]]:
+        """获取原始记忆 chunk 列表（每轮一个 [user, assistant]）"""
+        lock = self._get_lock(sid)
+        with lock:
+            d = self._ensure_session(sid)
+            return [list(chunk) for chunk in d.get("memory", [])]
+
+    def add_memory_chunk(self, sid: str, user_msg: dict, asst_msg: dict) -> bool:
+        """手动追加一轮记忆（供 WebUI 使用）
+
+        与 append_memory 区别：append 由 AI 对话自动调用，add 由用户手动添加。
+        两者均要求 user/asst 非空。
+        """
+        return self.append_memory(sid, user_msg, asst_msg)
+
+    def update_memory_chunk(self, sid: str, index: int, user_msg: dict, asst_msg: dict) -> bool:
+        """修改第 index 轮记忆"""
+        if not user_msg or not user_msg.get("content"):
+            return False
+        if not asst_msg or not asst_msg.get("content"):
+            return False
+        lock = self._get_lock(sid)
+        with lock:
+            d = self._ensure_session(sid)
+            mem = d.get("memory", [])
+            if index < 0 or index >= len(mem):
+                return False
+            mem[index] = [user_msg, asst_msg]
+            d["timestamp"] = int(time.time())
+            self._save()
+        return True
+
+    def delete_memory_chunk(self, sid: str, index: int) -> bool:
+        """删除第 index 轮记忆"""
+        lock = self._get_lock(sid)
+        with lock:
+            d = self._ensure_session(sid)
+            mem = d.get("memory", [])
+            if index < 0 or index >= len(mem):
+                return False
+            mem.pop(index)
+            d["timestamp"] = int(time.time())
+            self._save()
+        return True
 
     def delete_session(self, sid: str):
         """删除会话（含记忆和锁）"""
