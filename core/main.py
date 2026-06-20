@@ -739,6 +739,21 @@ class TaleCore:
                     processed, first_messages[:MAX_SPLIT_COUNT], adapter_instance=adapter_instance
                 )
 
+            # ── 处理跨会话消息：解析 session_send 标签并异步投递 ──
+            for ss in parsed.get("session_sends", []):
+                target = ss.get("target", "").strip()
+                text = ss.get("text", "").strip()
+                if target and text and sid and self.bridge:
+                    asyncio.create_task(
+                        self._send_cross_session(sid, target, text)
+                    )
+
+            # ── 确认跨会话消息已处理（ack） ──
+            if inbox_msgs and sid and self.bridge:
+                msg_ids = [m["id"] for m in inbox_msgs if m.get("id")]
+                if msg_ids:
+                    await self.bridge.ack(sid, msg_ids)
+
         except Exception as e:
             logger.error("处理消息时出错: %s", e, exc_info=True)
             # 给用户回显错误提示
