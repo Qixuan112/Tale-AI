@@ -57,14 +57,12 @@ class BridgeState:
     def __init__(self):
         self._inbox: dict[str, list[BridgeMessage]] = {}
         self._pending: dict[str, list[BridgeMessage]] = {}
-        self._processed: dict[str, list[str]] = {}  # FIFO 有序
+        self._processed: dict[str, list[tuple]] = {}  # [(msg_id, timestamp), ...] FIFO
         self._locks: dict[str, asyncio.Lock] = {}
         self._rate: dict[str, list[float]] = {}
 
     def _lock(self, sid: str) -> asyncio.Lock:
-        if sid not in self._locks:
-            self._locks[sid] = asyncio.Lock()
-        return self._locks[sid]
+        return self._locks.setdefault(sid, asyncio.Lock())
 
     # ── 权限校验 ───────────────────────────────────────────────
 
@@ -83,7 +81,11 @@ class BridgeState:
         return "无权向该会话发送消息"
 
     def _check_rate(self, sid: str) -> bool:
-        """频率限制：窗口内不超过上限"""
+        """频率限制：窗口内不超过上限
+
+        best-effort：_rate 无独立锁，并发下可能短暂超限，
+        但对限流目的可接受（防止 AI 异常高频刷屏，非精确计量）。
+        """
         now = time.time()
         window = now - BridgeState.RATE_INTERVAL
         ts_list = self._rate.get(sid, [])
@@ -100,25 +102,23 @@ class BridgeState:
         """_processed 上界淘汰：超过 MAX_PROCESSED 移除最旧；超 TTL 移除"""
         ttl_cutoff = time.time() - BridgeState.PENDING_TTL
         items = self._processed.get(sid, [])
-        items = [i for i in items if self._ts_from_id(i) > ttl_cutoff]
+        # 按 timestamp 过滤超 TTL 的
+        items = [(mid, ts) for mid, ts in items if ts > ttl_cutoff]
         if len(items) > BridgeState.MAX_PROCESSED:
             items = items[-BridgeState.MAX_PROCESSED:]
         self._processed[sid] = items
 
-    @staticmethod
-    def _ts_from_id(_id: str) -> int:
-        """从 uuid 中提取近似时间戳（用于 TTL 淘汰）
-        实际用消息创建时间，这里简化"""
-        return int(time.time())
-
     def _is_processed(self, sid: str, msg_id: str) -> bool:
-        return msg_id in self._processed.get(sid, [])
+        for mid, _ts in self._processed.get(sid, []):
+            if mid == msg_id:
+                return True
+        return False
 
     def _mark_processed(self, sid: str, msg_id: str):
         self._prune_processed(sid)
         if sid not in self._processed:
             self._processed[sid] = []
-        self._processed[sid].append(msg_id)
+        self._processed[sid].append((msg_id, time.time()))
 
     # ── 核心 API ───────────────────────────────────────────────
 
@@ -217,9 +217,10 @@ class BridgeState:
             if removed_count:
                 logger.debug("跨会话 ack: sid=%s, count=%d", sid, removed_count)
 
-    def format_for_prompt(self, sid: str) -> str:
-        """格式化本会话的 inbox 消息为 LLM prompt 文本"""
-        msgs = self._inbox.get(sid, [])
+    async def format_for_prompt(self, sid: str) -> str:
+        """格式化本会话的 inbox 消息为 LLM prompt 文本（加锁读取）"""
+        async with self._lock(sid):
+            msgs = list(self._inbox.get(sid, []))
         if not msgs:
             return ""
         lines = []
@@ -231,9 +232,10 @@ class BridgeState:
     def list_accessible(self, sid: str) -> list[str]:
         """获取当前会话可通信的会话列表（同 adapter 前缀）"""
         prefix = ":".join(sid.split(":", 2)[:2]) + ":"
+        # 快照键，避免并发修改时 RuntimeError
+        all_sids = set(self._inbox.keys()) | set(self._pending.keys())
         result = []
-        for other_sid in (list(self._inbox.keys()) +
-                          list(self._pending.keys())):
+        for other_sid in all_sids:
             if other_sid.startswith(prefix) and other_sid != sid:
                 if other_sid not in result:
                     result.append(other_sid)

@@ -613,7 +613,7 @@ class TaleCore:
         is_group = processed.group_id is not None
         target_id = processed.group_id if processed.group_id else processed.sender_id
 
-        # 构造会话标识并绑定 ChatLLM 会话上下文
+        # 构造会话标识（set_session 移入锁内，防跨会话串味）
         persistence = config_loader.bot.bot.persistence_enabled
         sid = None
         session_enabled = True
@@ -622,13 +622,14 @@ class TaleCore:
             sid = f"{processed.platform.value}:{stype}:{target_id}"
             session_obj = self.session_manager.get_or_create(sid)
             session_enabled = session_obj.enabled
-            # 禁用的会话不加载历史上下文（读侧门控）
-            self.chat.set_session(sid, load_history=session_enabled)
 
         try:
             # 全局 ChatLLM 锁：保护单例 self.chat，防跨会话串味
             # set_session 到 chat() 完成之间其他会话不得修改 self.messages/current_sid
             async with self._get_chat_lock():
+                # set_session 在锁内执行，确保 self.messages/current_sid 原子化
+                if sid:
+                    self.chat.set_session(sid, load_history=session_enabled)
                 # ── 跨会话消息注入（consume inbox） ──
                 inbox_msgs = []
                 if sid and self.bridge:
@@ -690,7 +691,9 @@ class TaleCore:
                         user_input = f"以下是最近的聊天记录：\n{ctx}\n\n---\n{user_input}"
             # set_session 已通过 self.messages 结构化加载历史，无需额外拼接
 
-            chatllm_reply = await self._call_chatllm(user_input, persist_content)
+            # 首次调用不落库（save_to_session=False），最终回复在最后统一持久化
+            # 避免工具调用轮次和最终回复双重写入
+            chatllm_reply = await self._call_chatllm(user_input, persist_content, save_to_session=False)
             parsed = parse_xml_msg(chatllm_reply)
 
             # AI 使用 <msg></msg> 主动结束对话，不发送任何消息
@@ -742,19 +745,20 @@ class TaleCore:
                 )
 
             # ── 处理跨会话消息：解析 session_send 标签并异步投递 ──
+            _pending_sends = []
             for ss in parsed.get("session_sends", []):
                 target = ss.get("target", "").strip()
                 text = ss.get("text", "").strip()
                 if target and text and sid and self.bridge:
-                    asyncio.create_task(
+                    _pending_sends.append(asyncio.create_task(
                         self._send_cross_session(sid, target, text)
-                    )
+                    ))
 
-            # ── B1: 确认最终回复写入记忆（finally 块持久化） ──
-            # needs_follow_up: 首条已由 set_session 后的 chat() 写入（save_to_session=True）
-            # Agent 循环各步 save_to_session=False 不写入
-            # 最终轮次由下面的 finally 统一持久化
-            if needs_follow_up and self.chat and self.chat.current_sid:
+            # ── B1: 统一持久化最终回复 ──
+            # 首次 chat() 用 save_to_session=False 不落库，这里统一持久化
+            # needs_follow_up: Agent 循环后存最终回复
+            # 非 follow_up: 直接存首条回复
+            if self.chat and self.chat.current_sid and persist_content:
                 self.chat._save_session_memory(persist_content)
 
             # ── 确认跨会话消息已处理（ack） ──
