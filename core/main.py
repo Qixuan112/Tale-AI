@@ -3,6 +3,7 @@ import time
 import threading
 import asyncio
 import signal
+import re
 from pathlib import Path
 from typing import Optional, Callable, Any, List, Dict
 
@@ -651,10 +652,9 @@ class TaleCore:
                             role = msg.get("role", "")
                             content = msg.get("content", "")
                             # 从上下文历史中剥离 @/reply 标签，避免 AI 模仿旧模式
-                            import re as _re
-                            content = _re.sub(r'<at_targets>.*?</at_targets>\s*', '', content)
-                            content = _re.sub(r'<reply>.*?</reply>\s*', '', content)
-                            content = _re.sub(r'\s*<reply>.*?</reply>', '', content)
+                            content = re.sub(r'<at_targets>.*?</at_targets>\s*', '', content)
+                            content = re.sub(r'<reply>.*?</reply>\s*', '', content)
+                            content = re.sub(r'\s*<reply>.*?</reply>', '', content)
                             if role == "user":
                                 ctx_lines.append(f"[user] {content[:300]}")
                             elif role == "assistant":
