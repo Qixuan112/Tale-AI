@@ -637,12 +637,18 @@ class TaleCore:
             inbox_msgs = []
             if sid and self.bridge:
                 inbox_msgs = await self.bridge.consume(sid)
-                if inbox_msgs:
-                    inbox_text = "\n".join(
+                inbox_text_parts = []
+                for m in inbox_msgs:
+                    inbox_text_parts.append(
                         f"[来自 {m['from_sid']} 的跨会话消息] {m['content'][:200]}"
-                        for m in inbox_msgs
                     )
-                    user_input = f"{inbox_text}\n\n---\n\n{user_input}"
+                if inbox_msgs:
+                    user_input = "\n".join(inbox_text_parts) + "\n\n---\n\n" + user_input
+                # 注入可通信会话列表（最多 5 个）
+                accessible = self.bridge.list_accessible(sid)
+                if accessible:
+                    sess_list = "、".join(accessible)
+                    user_input += f"\n[可通信会话] {sess_list}"
 
             # 条件图片识别：有图片 + 满足触发条件时先用 VLM 识别
             if processed.images and self._should_recognize_image(processed):
