@@ -58,19 +58,23 @@ class SessionManager:
                 try:
                     with open(self._file_path, "r", encoding="utf-8") as f:
                         self._data = json.load(f)
+                    # 先迁移旧格式（[[user, asst], ...] → [{id, user, asst}]），
+                    # 迁移后所有 chunk 都是 dict，再算 max_id 才安全。
+                    self._migrate_chunks()
                     # 推进 chunk id 计数器，避免与已有 id 冲突
                     max_id = 0
                     for d in self._data.values():
                         for chunk in d.get("memory", []):
-                            cid = chunk.get("id", 0)
-                            if isinstance(cid, int) and cid > max_id:
-                                max_id = cid
+                            if isinstance(chunk, dict):
+                                cid = chunk.get("id", 0)
+                                if isinstance(cid, int) and cid > max_id:
+                                    max_id = cid
                     self._next_chunk_id = max_id + 1
-                    # 兼容旧格式：给无 id 的 chunk 补 id
-                    self._migrate_chunks()
                     logger.info("会话数据已加载 (%d 个会话)", len(self._data))
                 except Exception as e:
-                    logger.error("加载会话数据失败: %s，使用空数据", e)
+                    # 加载失败不清空盘上数据：保留空内存态，但绝不覆盖原文件，
+                    # 避免损坏/格式异常导致老用户会话被误删。
+                    logger.error("加载会话数据失败: %s，保留磁盘文件但本次使用空数据", e)
                     self._data = {}
             else:
                 self._data = {}
