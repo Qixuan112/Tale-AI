@@ -308,7 +308,7 @@ class TaleCore:
                 extra_info += f" [媒体: {media_type}]"
             user_input = f"[朋友圈动态] {sender_name}: {text}{extra_info}"
 
-            chatllm_reply = await self._call_chatllm(user_input)
+            chatllm_reply = await self._call_chatllm(user_input, persist_content=user_input)
             # 朋友圈动态不需要发送回复（仅让 LLM 记录到记忆中）
             logger.info("[朋友圈] LLM 已处理 %s 的动态", sender_name)
         except Exception as e:
@@ -649,23 +649,10 @@ class TaleCore:
             persist_content = user_input
             if processed.text:
                 if persistence and self.session_manager and sid and session_enabled:
-                    session_memory = self.session_manager.get_memory(sid)
-                    if session_memory:
-                        ctx_lines = []
-                        for msg in session_memory:
-                            role = msg.get("role", "")
-                            content = msg.get("content", "")
-                            if role == "user":
-                                ctx_lines.append(f"[user] {content[:300]}")
-                            elif role == "assistant":
-                                ctx_lines.append(f"[assistant] {content[:300]}")
-                        ctx = "\n".join(ctx_lines)
-                        logger.debug("从会话历史追加上下文 (%d 条消息)", len(session_memory))
-                        user_input = f"以下是最近的聊天记录：\n{ctx}\n\n---\n{user_input}"
-                    else:
-                        persist_content = user_input
+                    # set_session 已通过 self.messages 结构化加载历史，
+                    # 无需重复拼接文本块。
+                    pass
                 else:
-                    persist_content = user_input
                     ctx_window_cfg = config_loader.bot.context
                     if ctx_window_cfg.chat_context_enabled and ctx_window_cfg.chat_context_window > 0:
                         ctx = await self._build_context_window(processed, ctx_window_cfg.chat_context_window)
@@ -788,12 +775,16 @@ class TaleCore:
             return True
         return False
 
-    async def _call_chatllm_with_timeout(self, user_input: str, timeout: float) -> str:
+    async def _call_chatllm_with_timeout(self, user_input: str, timeout: float,
+                                          persist_content: str = None,
+                                          save_to_session: bool = True) -> str:
         """带超时的 ChatLLM 调用
 
         Args:
             user_input: 用户输入
             timeout: 超时秒数
+            persist_content: 落库用纯净原文，None 则用 user_input
+            save_to_session: 是否写入会话记忆，Agent 内部步骤应传 False
 
         Returns:
             AI 回复文本，超时时返回错误提示
@@ -802,7 +793,7 @@ class TaleCore:
             return ""
         try:
             return await asyncio.wait_for(
-                self._call_chatllm(user_input),
+                self._call_chatllm(user_input, persist_content, save_to_session),
                 timeout=timeout
             )
         except asyncio.TimeoutError:
@@ -912,7 +903,10 @@ class TaleCore:
                 iteration, max_steps, combined_result,
                 f"第 {iteration} 轮执行结果", remaining,
             )
-            current_reply = await self._call_chatllm_with_timeout(follow_up_prompt, per_step_timeout)
+            current_reply = await self._call_chatllm_with_timeout(
+                follow_up_prompt, per_step_timeout,
+                persist_content=None, save_to_session=False,
+            )
             current_parsed = parse_xml_msg(current_reply)
 
         if iteration >= max_steps and self._has_tool_content(current_parsed, current_reply):
@@ -1002,12 +996,14 @@ class TaleCore:
                     return True
         return False
 
-    async def _call_chatllm(self, user_input: str, persist_content: str = None) -> str:
+    async def _call_chatllm(self, user_input: str, persist_content: str = None,
+                             save_to_session: bool = True) -> str:
         """调用 ChatLLM 生成回复（非阻塞，使用线程池执行同步 API 调用）
 
         Args:
-            user_input: 发给 LLM 的用户输入（可能已拼接历史/元数据）
+            user_input: 发给 LLM 的用户输入
             persist_content: 落库时存入会话记忆的纯净用户原文，None 则用 user_input
+            save_to_session: 是否写入会话记忆，Agent 内部步骤传 False
 
         Returns:
             AI 回复文本
@@ -1030,7 +1026,7 @@ class TaleCore:
             # 在专用线程池中执行同步 API 调用，避免阻塞事件循环
             loop = asyncio.get_running_loop()
             chatllm_reply = await loop.run_in_executor(
-                self._llm_executor, self.chat.chat, user_input, persist_content
+                self._llm_executor, self.chat.chat, user_input, persist_content, save_to_session
             )
         finally:
             # 停止动画（daemon 线程无需 join，进程退出时自动终止）
@@ -1050,7 +1046,7 @@ class TaleCore:
         if not user_input:
             return []
 
-        chatllm_reply = await self._call_chatllm(user_input)
+        chatllm_reply = await self._call_chatllm(user_input, persist_content=user_input)
         return await self._resolve_follow_up(chatllm_reply)
 
     def _extract_reply_text(self, parsed: dict) -> str:
