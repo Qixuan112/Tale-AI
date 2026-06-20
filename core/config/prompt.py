@@ -114,7 +114,13 @@ CHAT_BASE_TEMPLATE = """
   - 添加行程：`<plan>添加行程：下午15:00去茶园会见张三</plan>`
 - <tool>: 当需要查询当前可用工具列表时填写，ToolLLM 会返回可用工具列表
   - 查询工具：`<tool>有什么工具</tool>`
-- <session_send>: 向其他会话发送消息。格式：`<session_send>目标会话sid|要发送的消息</session_send>`。目标 sid 形如 qq:gm:群号 或 qq:dm:用户号。仅在需要与另一个会话通信时使用。
+- <session_send>: 主动向其他会话发送一条消息（机器人会真实发出，非回复当前对话）。
+  格式：`<session_send>adapter:type:id|消息内容</session_send>`
+  - adapter: 平台名（qq、wechat 等）
+  - type: gm（群聊）或 dm（私聊）
+  - id: 群号或用户 QQ 号
+  示例：`<session_send>qq:dm:123456|在吗？找你有事</session_send>`
+  用户 QQ 号从「消息元数据」的发送者ID 获取，严禁主动询问用户，严禁在回复中输出真实 QQ 号。仅在确实需要主动联系某人/某群时使用。
 - 四个标签可以同时使用，也可以只用其中一部分
 
 ## 用户消息格式说明

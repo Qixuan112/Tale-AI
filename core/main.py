@@ -575,7 +575,7 @@ class TaleCore:
 
         env_lines = [
             f"\n[当前时间] {time_str}",
-            f"[消息元数据] 消息ID={processed.message_id}，发送者昵称={processed.sender_name}",
+            f"[消息元数据] 消息ID={processed.message_id}，发送者昵称={processed.sender_name}，发送者ID={processed.sender_id}",
         ]
         if processed.is_group_message:
             env_lines.append(f"群ID={processed.group_id}")
@@ -781,20 +781,47 @@ class TaleCore:
         # _chat_lock 由 async with 自动释放
 
     async def _send_cross_session(self, from_sid: str, to_sid: str, text: str):
-        """异步投递跨会话消息到目标会话
+        """主动推送跨会话消息
 
-        通过 bridge.send 写入目标 inbox，目标会话下次响应时自动消费。
-        异常捕获防止后台任务静默失败。
+        流程：
+        1. bridge.send 做权限校验 + 限流 + 写 inbox（持目标锁，释放后返回）
+        2. 解析 to_sid，通过 adapter_bridge 真实发送 QQ 消息（不持锁）
+        3. 推送成功后 ack 标记已处理，避免目标会话 consume 时重复注入
+        4. 失败时反向写系统消息到源会话 inbox，AI 下轮可感知
+
+        复用 bridge.send 的权限/限流校验，主动推送不绕过安全策略。
         """
         try:
+            # 1. 权限 + 限流 + 写 inbox（send 内部持目标锁，释放后返回）
             result = await asyncio.wait_for(
                 self.bridge.send(from_sid, to_sid, text),
-                timeout=30,
+                timeout=10,
             )
             if result.startswith("error:"):
-                logger.warning("跨会话发送失败: %s → %s: %s", from_sid, to_sid, result)
+                logger.warning("跨会话权限/限流拒绝: %s → %s: %s", from_sid, to_sid, result)
+                # 失败反馈到源会话
+                await self.bridge.send(to_sid, from_sid, f"[系统] 跨会话发送失败：{result[6:]}")
+                return
+            msg_id = result
+
+            # 2. 主动推送：解析 sid，通过适配器真实发送（不持任何会话锁）
+            parts = to_sid.split(":", 2)
+            if len(parts) == 3 and self.adapter_bridge:
+                adapter_name, stype, target_id = parts
+                success = await self.adapter_bridge.send_message(
+                    adapter_id=adapter_name,
+                    target_id=target_id,
+                    text=text,
+                    is_group=(stype == "gm"),
+                )
+                logger.info("跨会话主动推送: %s → %s (success=%s)", from_sid, to_sid, success)
+                # 3. 推送成功后立即 ack，避免目标会话 consume 时重复注入
+                if success:
+                    await self.bridge.ack(to_sid, [msg_id])
+                else:
+                    logger.warning("跨会话推送失败，消息保留在 inbox: %s → %s", from_sid, to_sid)
             else:
-                logger.info("跨会话发送成功: %s → %s (id=%s)", from_sid, to_sid, result)
+                logger.warning("跨会话 sid 格式无效: %s", to_sid)
         except asyncio.TimeoutError:
             logger.warning("跨会话发送超时: %s → %s", from_sid, to_sid)
         except Exception as e:
