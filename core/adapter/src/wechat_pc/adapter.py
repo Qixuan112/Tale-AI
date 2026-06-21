@@ -4,7 +4,7 @@ import asyncio
 import os
 import random
 import uuid
-from collections import deque
+from collections import OrderedDict, deque
 from datetime import datetime
 from typing import Optional
 
@@ -69,8 +69,11 @@ class WeChatPCAdapter(BaseAdapter):
         )
         self._shutdown_event = asyncio.Event()
         self._polling_task: Optional[asyncio.Task] = None
-        self._seen_msg_ids: set[str] = set()
-        self._seen_fingerprints: set[str] = set()
+        # 使用 OrderedDict 作为按插入顺序有界的去重缓存：
+        # 保留 O(1) 成员检测，超限时按插入顺序丢弃最旧的项，
+        # 避免 set 截断时随机丢弃刚加入的 msg_id 导致消息被重复处理。
+        self._seen_msg_ids: "OrderedDict[str, None]" = OrderedDict()
+        self._seen_fingerprints: "OrderedDict[str, None]" = OrderedDict()
 
         # 朋友圈轮询状态
         self._moments_polling_task: Optional[asyncio.Task] = None
@@ -119,13 +122,27 @@ class WeChatPCAdapter(BaseAdapter):
             content: 标准化消息内容
         """
         try:
+            sent_any = False
             if content.text:
                 await self._client.send_text(
                     target_id, content.text, at=content.at_targets or None
                 )
+                sent_any = True
             for img_path in content.images:
+                # 仅本地存在的文件可直接发送；URL/不存在的路径计为未发送
                 if os.path.isfile(img_path):
                     await self._client.send_files(target_id, [img_path])
+                    sent_any = True
+                else:
+                    logger.warning(
+                        f"Skip non-local image for {target_id}: {img_path}"
+                    )
+            if not sent_any:
+                # 文本为空且无可发送的本地图片，实际什么都没发出去
+                logger.warning(
+                    f"Nothing sent to {target_id}: empty text and no valid images"
+                )
+                return False
             return True
         except Exception as e:
             logger.error(f"Failed to send message to {target_id}: {e}")
@@ -184,16 +201,16 @@ class WeChatPCAdapter(BaseAdapter):
                             continue
 
                         if msg.msg_id:
-                            self._seen_msg_ids.add(msg.msg_id)
+                            self._seen_msg_ids[msg.msg_id] = None
+                            # 超过上限时按插入顺序丢弃最旧的项，回落到下限 300
                             if len(self._seen_msg_ids) > 500:
-                                self._seen_msg_ids = set(
-                                    list(self._seen_msg_ids)[-300:]
-                                )
-                        self._seen_fingerprints.add(fp)
+                                while len(self._seen_msg_ids) > 300:
+                                    self._seen_msg_ids.popitem(last=False)
+                        self._seen_fingerprints[fp] = None
+                        # 超过上限时按插入顺序丢弃最旧的项，回落到下限 600
                         if len(self._seen_fingerprints) > 1000:
-                            self._seen_fingerprints = set(
-                                list(self._seen_fingerprints)[-600:]
-                            )
+                            while len(self._seen_fingerprints) > 600:
+                                self._seen_fingerprints.popitem(last=False)
 
                         # 跳过系统/时间/自己消息
                         if msg.msg_type == "sys" or msg.sender_type in (

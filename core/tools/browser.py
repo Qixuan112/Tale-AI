@@ -8,7 +8,7 @@ from urllib.parse import urljoin
 
 from ddgs import DDGS
 
-from .network_safety import validate_url, MAX_RESPONSE_BYTES
+from .network_safety import safe_request, SSRFValidationError, MAX_RESPONSE_BYTES
 
 # 尝试导入 requests 和 BeautifulSoup
 try:
@@ -51,42 +51,38 @@ def fetch_url(
     try:
         if not url.startswith(('http://', 'https://')):
             url = 'https://' + url
-        # SSRF 防护
-        ssrf_error = validate_url(url)
-        if ssrf_error:
-            return {"status": "failed", "tool": "browser.fetch_url", "error": f"SSRF 安全检查未通过: {ssrf_error}"}
         default_headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
         }
-        
+
         if headers:
             default_headers.update(headers)
-        
+
         request_kwargs = {
             "headers": default_headers,
             "timeout": timeout,
             "verify": verify_ssl,
-            "allow_redirects": False,
         }
 
         redirect_count = 0
         max_redirects = 5
-        if method.lower() == "post":
-            response = requests.post(url, **request_kwargs)
-        else:
-            response = requests.get(url, **request_kwargs)
-        while response.is_redirect and redirect_count < max_redirects:
-            raw_redirect = response.headers.get("Location")
-            if not raw_redirect:
-                break
-            redirect_count += 1
-            redirect_url = urljoin(response.url, raw_redirect)
-            redirect_ssrf = validate_url(redirect_url)
-            if redirect_ssrf:
-                return {"status": "failed", "tool": "browser.fetch_url", "error": f"重定向目标 SSRF 安全检查未通过: {redirect_ssrf}"}
-            response = requests.get(redirect_url, **request_kwargs)
+        # safe_request 内部完成「解析 -> 校验全部 IP -> 固定连接到已校验 IP」，
+        # 消除 TOCTOU / DNS rebinding；并强制禁用自动重定向，由下面逐跳重新校验。
+        try:
+            request_method = "post" if method.lower() == "post" else "get"
+            response = safe_request(request_method, url, requests_mod=requests, **request_kwargs)
+            while response.is_redirect and redirect_count < max_redirects:
+                raw_redirect = response.headers.get("Location")
+                if not raw_redirect:
+                    break
+                redirect_count += 1
+                redirect_url = urljoin(response.url, raw_redirect)
+                # 重定向后统一改用 GET 重新发起，且每一跳都重新解析+校验+固定 IP
+                response = safe_request("get", redirect_url, requests_mod=requests, **request_kwargs)
+        except SSRFValidationError as e:
+            return {"status": "failed", "tool": "browser.fetch_url", "error": f"SSRF 安全检查未通过: {e}"}
 
         response.raise_for_status()
 

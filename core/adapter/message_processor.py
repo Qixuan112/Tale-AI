@@ -285,6 +285,11 @@ class MessageProcessor:
         Returns:
             (决策, 原因)
         """
+        # 平台无关的安全网：忽略机器人自身/其它机器人发出的消息，
+        # 避免群聊"无条件回复"（group_need_at_or_keyword=False）时自我回复成环
+        if message.is_bot:
+            return ResponseDecision.IGNORE, "ignore_bot_message"
+
         # 私聊消息
         if message.is_private_message:
             if self.config.private_always_respond:

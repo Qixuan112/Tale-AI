@@ -31,7 +31,7 @@ import logging.handlers
 import queue
 import threading
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from pathlib import Path
 from typing import Optional
 
@@ -195,6 +195,8 @@ def inject_csrf_token():
 
 # 线程池，用于执行同步的 LLM 调用
 _executor = ThreadPoolExecutor(max_workers=4)
+# 单次 LLM 调用最长等待时间（秒）。上游卡死时及时返回，避免占满线程池
+CHAT_FUTURE_TIMEOUT = 120
 
 # ============ 全局组件初始化 ============
 
@@ -373,7 +375,14 @@ class ConversationStore:
         # 在线程池中执行阻塞的 LLM 调用
         future = _executor.submit(self.chatllm.chat, full_text)
         try:
-            reply = future.result()
+            # 加超时上限：上游卡死时及时返回，避免拖死整个线程池
+            reply = future.result(timeout=CHAT_FUTURE_TIMEOUT)
+        except FutureTimeoutError:
+            # 超时不等于失败，调用可能仍在后台跑；保存当前历史并提示用户重试
+            self._messages[self.current_id] = self.chatllm.get_history()
+            self._save_messages(self.current_id)
+            logger.warning("ChatLLM 调用超时（>%ss）", CHAT_FUTURE_TIMEOUT)
+            return f"[超时] 模型在 {CHAT_FUTURE_TIMEOUT} 秒内未返回，请稍后重试"
         except Exception as e:
             self._messages[self.current_id] = self.chatllm.get_history()
             self._save_messages(self.current_id)
@@ -457,9 +466,16 @@ def _get_adapter_manager():
         pass
     return None
 
-# 日志：内存队列（用于 SSE）+ 文件持久化
+# 日志：内存环形缓冲（历史查询）+ SSE 订阅者扇出 + 文件持久化
+import collections
+
 MAX_LOGS = 500
-LOG_QUEUE = queue.Queue(maxsize=MAX_LOGS)
+# 历史环形缓冲：供 /api/logs 查询，非消费型，多客户端读取互不影响
+LOG_RING = collections.deque(maxlen=MAX_LOGS)
+_log_ring_lock = threading.Lock()
+# SSE 订阅者集合：每个连接持有自己的 Queue，日志拦截器向所有订阅者广播
+_log_subscribers: set = set()
+_log_subscribers_lock = threading.Lock()
 LOG_FILE = Path(PROJECT_ROOT) / "data" / "logs" / "webui.log"
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 _log_lock = threading.Lock()
@@ -495,15 +511,22 @@ def _put_log(record_dict):
                 f.write(line)
     except Exception:
         pass
-    # 内存队列（用于 SSE 实时推送）
-    try:
-        LOG_QUEUE.put_nowait(record_dict)
-    except queue.Full:
+    # 历史环形缓冲（供 /api/logs 查询）
+    with _log_ring_lock:
+        LOG_RING.append(record_dict)
+    # 扇出广播：把同一条记录推送给每个 SSE 订阅者各自的队列
+    with _log_subscribers_lock:
+        subscribers = list(_log_subscribers)
+    for q in subscribers:
         try:
-            LOG_QUEUE.get_nowait()
-            LOG_QUEUE.put_nowait(record_dict)
-        except queue.Empty:
-            pass
+            q.put_nowait(record_dict)
+        except queue.Full:
+            # 该订阅者消费过慢，丢弃最旧一条再塞入，避免无界增长
+            try:
+                q.get_nowait()
+                q.put_nowait(record_dict)
+            except (queue.Empty, queue.Full):
+                pass
 
 # 内存级指标缓存（Dashboard 实时数据）
 _metrics_cache = {
@@ -1232,7 +1255,8 @@ def api_tools_list():
 
 @app.route("/api/logs/modules")
 def api_logs_modules():
-    logs_list = list(LOG_QUEUE.queue)
+    with _log_ring_lock:
+        logs_list = list(LOG_RING)
     modules = sorted({l.get("module", "system") for l in logs_list if l.get("module")})
     if not modules:
         modules = ["system", "core", "adapter", "llm", "tools"]
@@ -1270,19 +1294,28 @@ def api_plan_event_types():
 @app.route("/api/logs/stream")
 def api_logs_stream():
     def event_stream():
-        while True:
-            try:
-                item = LOG_QUEUE.get(timeout=5)
-                yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
-                # Drain any additional accumulated items
-                while True:
-                    try:
-                        item = LOG_QUEUE.get_nowait()
-                        yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
-                    except queue.Empty:
-                        break
-            except queue.Empty:
-                yield ": keepalive\n\n"
+        # 每个连接注册独立的订阅队列，日志拦截器会向所有订阅者广播同一条记录
+        sub_q = queue.Queue(maxsize=MAX_LOGS)
+        with _log_subscribers_lock:
+            _log_subscribers.add(sub_q)
+        try:
+            while True:
+                try:
+                    item = sub_q.get(timeout=5)
+                    yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+                    # 排空已累积的剩余条目
+                    while True:
+                        try:
+                            item = sub_q.get_nowait()
+                            yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+                        except queue.Empty:
+                            break
+                except queue.Empty:
+                    yield ": keepalive\n\n"
+        finally:
+            # 连接断开时注销订阅，避免订阅者集合泄漏
+            with _log_subscribers_lock:
+                _log_subscribers.discard(sub_q)
 
     return Response(event_stream(), mimetype="text/event-stream")
 
@@ -1290,12 +1323,9 @@ def api_logs_stream():
 @app.route("/api/logs", methods=["GET", "DELETE"])
 def api_logs():
     if request.method == "DELETE":
-        cleared = LOG_QUEUE.qsize()
-        while True:
-            try:
-                LOG_QUEUE.get_nowait()
-            except queue.Empty:
-                break
+        with _log_ring_lock:
+            cleared = len(LOG_RING)
+            LOG_RING.clear()
         # 也清空日志文件（轮转）
         try:
             if LOG_FILE.exists():
@@ -1306,7 +1336,8 @@ def api_logs():
 
     level = request.args.get("level", "")
     module = request.args.get("module", "")
-    logs = list(LOG_QUEUE.queue)
+    with _log_ring_lock:
+        logs = list(LOG_RING)
 
     # 内存日志不足 200 条时，从日志文件补充历史
     if len(logs) < 200 and LOG_FILE.exists():
@@ -1916,14 +1947,13 @@ def api_session_memory_delete(sid, chunk_id):
         return jsonify({"ok": False, "error": "Internal server error"}), 500
 
 
-# ============ 日志拦截（捕获 logging 与 print 输出到 LOG_QUEUE） ============
+# ============ 日志拦截（捕获 logging 与 print 输出到环形缓冲并广播 SSE） ============
 
 class LogQueueHandler(logging.Handler):
-    """将 logging 日志记录捕获到 LOG_QUEUE，供 WebUI SSE 推送"""
+    """将 logging 日志记录捕获到环形缓冲并广播给 SSE 订阅者"""
 
     def __init__(self, level=logging.NOTSET):
         super().__init__(level)
-        self.queue = LOG_QUEUE
         # 简化格式，只取时间、级别、模块名和消息
         self.setFormatter(logging.Formatter("%(asctime)s||%(levelname)s||%(name)s||%(message)s", datefmt="%H:%M:%S"))
 

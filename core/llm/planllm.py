@@ -156,6 +156,9 @@ class PlanLLM:
             except Exception as e:
                 logger.error("加载今日计划失败: %s", e)
                 self._today_plan = None
+        else:
+            # 今日无计划文件 → 显式置空，避免跨天后残留昨日计划对象
+            self._today_plan = None
 
         # 加载长期目标
         goals_file = self._get_goals_file_path()
@@ -391,6 +394,33 @@ class PlanLLM:
 
         return response
     
+    @staticmethod
+    def _parse_hhmm(value: str) -> time:
+        """严格解析 HH:MM 24小时制时间字符串，格式非法时抛出 ValueError。
+
+        显式校验格式（而非依赖 strptime 的宽松匹配），便于上层返回明确的错误提示。
+        """
+        if not isinstance(value, str):
+            raise ValueError(f"时间必须为字符串，收到: {value!r}")
+        s = value.strip()
+        parts = s.split(":")
+        if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
+            raise ValueError(f"时间格式必须为 HH:MM，收到: {value!r}")
+        hour, minute = int(parts[0]), int(parts[1])
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            raise ValueError(f"时间超出范围（00:00-23:59），收到: {value!r}")
+        return time(hour=hour, minute=minute)
+
+    @staticmethod
+    def _duration_seconds(start: time, end: time) -> float:
+        """计算 start→end 的时长（秒）。end < start 视为跨午夜，自动加一天保证为正。"""
+        base = datetime.today()
+        start_dt = datetime.combine(base, start)
+        end_dt = datetime.combine(base, end)
+        if end_dt < start_dt:
+            end_dt += timedelta(days=1)
+        return (end_dt - start_dt).total_seconds()
+
     def add_event_from_request(self, request: str) -> str:
         """
         从自然语言请求中添加行程
@@ -456,14 +486,22 @@ class PlanLLM:
                 logger.warning("未知优先级 '%s'，使用 'medium' 代替", priority_str)
                 priority = Priority.MEDIUM
 
+            # 显式校验时间格式，非法时返回明确提示（而非落入兜底的通用失败）
+            try:
+                start_time = self._parse_hhmm(event_data["start_time"])
+                end_time = self._parse_hhmm(event_data["end_time"]) if event_data.get("end_time") else None
+            except (KeyError, ValueError) as e:
+                logger.warning("行程时间格式非法: %s", e)
+                return f"❌ 添加行程失败：时间格式非法（需 HH:MM 24小时制）：{e}"
+
             entry = DiaryEntry(
                 id=str(uuid.uuid4())[:8],
                 title=event_data.get("title", "未命名事件"),
                 description=event_data.get("description", ""),
                 event_type=event_type,
                 priority=priority,
-                start_time=datetime.strptime(event_data["start_time"], "%H:%M").time(),
-                end_time=datetime.strptime(event_data["end_time"], "%H:%M").time() if event_data.get("end_time") else None,
+                start_time=start_time,
+                end_time=end_time,
                 related_people=event_data.get("related_people", []),
                 location=event_data.get("location"),
                 source="user"
@@ -477,19 +515,17 @@ class PlanLLM:
             if self._today_plan._check_conflict(entry):
                 # 尝试找到可用时间段
                 available_slot = self._today_plan.find_slot(
-                    duration_minutes=60 if not entry.end_time else 
-                    int((datetime.combine(datetime.today(), entry.end_time) - 
-                         datetime.combine(datetime.today(), entry.start_time)).total_seconds() / 60),
+                    duration_minutes=60 if not entry.end_time else
+                    int(self._duration_seconds(entry.start_time, entry.end_time) / 60),
                     after_time=entry.start_time
                 )
-                
+
                 if available_slot:
                     old_time = entry.start_time
                     entry.start_time = available_slot
                     if entry.end_time:
-                        duration = (datetime.combine(datetime.today(), entry.end_time) - 
-                                   datetime.combine(datetime.today(), old_time)).total_seconds()
-                        entry.end_time = (datetime.combine(datetime.today(), available_slot) + 
+                        duration = self._duration_seconds(old_time, entry.end_time)
+                        entry.end_time = (datetime.combine(datetime.today(), available_slot) +
                                          timedelta(seconds=duration)).time()
                     
                     success = self._today_plan.add_entry(entry)

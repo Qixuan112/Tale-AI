@@ -36,14 +36,26 @@ class WorkspacePlugin(PluginBase):
     MAX_COMMAND_OUTPUT = 50_000
     COMMAND_TIMEOUT = 30
 
+    # 仅保留安全只读 / 无副作用命令；移除 make / git / sed / env 等可导致
+    # 任意代码执行或敏感信息泄露的命令。
     _ALLOWED_COMMANDS: frozenset = frozenset({
-        "cat", "head", "tail", "wc", "sort", "uniq", "grep", "awk", "sed",
+        "cat", "head", "tail", "wc", "sort", "uniq", "grep",
         "cut", "tr", "diff", "cmp",
-        "tar", "gzip", "gunzip", "zip", "unzip", "bzip2",
-        "echo", "printf", "env", "which", "file", "du", "df", "date",
-        "cal", "whoami", "id", "uname", "pwd", "ls",
-        "ping", "nslookup", "dig",
-        "git", "make", "jq", "yq", "tree",
+        "echo", "printf", "which", "file", "du", "df", "date",
+        "cal", "uname", "pwd", "ls",
+        "jq", "yq", "tree",
+    })
+
+    # 不接受参数路径校验的命令（其参数不是文件路径，无需走沙盒解析）。
+    _NON_PATH_COMMANDS: frozenset = frozenset({
+        "echo", "printf", "date", "cal", "uname", "pwd", "df", "which",
+    })
+
+    # 可经「文件中列出的路径」间接读取任意文件的危险选项：即使选项值本身在
+    # 工作区内，其指向的列表文件内容仍可引用工作区外的绝对路径，无法靠路径
+    # 校验拦截，故整体拒绝。
+    _DANGEROUS_FILE_OPTIONS: frozenset = frozenset({
+        "--files0-from",  # sort / wc / du：从文件读取待处理文件名列表
     })
 
     # ------------------------------------------------------------------
@@ -212,6 +224,51 @@ class WorkspacePlugin(PluginBase):
         if base_cmd not in self._ALLOWED_COMMANDS:
             return {"status": "failed", "error": f"命令不被允许: {base_cmd}"}
 
+        # 校验参数：拒绝绝对路径、包含 ".." 的 token，以及可读取任意文件的危险选项。
+        # 注意：选项参数（- 开头）也可能内联文件路径（如 --opt=/etc/passwd、-f/etc/passwd），
+        # 不能整体跳过；位置参数与选项内联值统一通过 _resolve_path 限定在工作区内，
+        # 防止读取/逃逸到工作区外。
+        if base_cmd not in self._NON_PATH_COMMANDS:
+            for arg in tokens[1:]:
+                opt_name = arg.split("=", 1)[0]
+                # 危险文件列表选项：可间接读取任意文件，整体拒绝
+                if opt_name in self._DANGEROUS_FILE_OPTIONS:
+                    return {"status": "failed", "error": f"选项不被允许: {opt_name}"}
+                # grep 的 -f/--file 从文件读取模式 → 可回显任意文件内容
+                if base_cmd == "grep" and (
+                    opt_name in ("-f", "--file")
+                    or (arg.startswith("-f") and not arg.startswith("--") and len(arg) > 2)
+                ):
+                    return {"status": "failed", "error": f"选项不被允许: {arg}"}
+
+                # 提取需要做路径校验的候选值：位置参数本身，或选项的内联值
+                # （--opt=VALUE / 短选项粘连值 -XVALUE）；裸选项名（-n、--color）跳过。
+                if arg.startswith("--"):
+                    candidate_val = arg.split("=", 1)[1] if "=" in arg else None
+                elif arg.startswith("-"):
+                    candidate_val = arg[2:] if len(arg) > 2 else None
+                else:
+                    candidate_val = arg
+                if not candidate_val:
+                    continue
+
+                if os.path.isabs(candidate_val) or ".." in candidate_val.split(os.sep):
+                    return {"status": "failed", "error": f"参数路径不被允许: {arg}"}
+                # 统一通过 _resolve_path 限定在工作区内（容忍不存在的目标路径，
+                # 非路径参数如普通 grep pattern 会解析到工作区内、不会误报）。
+                try:
+                    self._resolve_path(candidate_val)
+                except ValueError:
+                    return {"status": "failed", "error": f"参数路径逃逸: {arg}"}
+
+        # 构造最小化环境，避免向子进程泄露 API key / token 等敏感变量。
+        safe_env = {
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "HOME": str(self.WORKSPACE_DIR),
+            "LANG": os.environ.get("LANG", "C.UTF-8"),
+            "LC_ALL": os.environ.get("LC_ALL", "C.UTF-8"),
+        }
+
         try:
             proc = subprocess.run(
                 tokens,
@@ -220,7 +277,7 @@ class WorkspacePlugin(PluginBase):
                 capture_output=True,
                 text=True,
                 timeout=self.COMMAND_TIMEOUT,
-                env={**os.environ, "HOME": str(self.WORKSPACE_DIR)},
+                env=safe_env,
             )
         except subprocess.TimeoutExpired:
             return {"status": "failed", "error": f"命令超时 ({self.COMMAND_TIMEOUT}s)"}
@@ -293,7 +350,7 @@ class WorkspacePlugin(PluginBase):
 
 4. **workspace_execute** — 执行沙盒命令
    - `command` (必填): 要执行的 shell 命令
-   - 限制：30 秒超时，最大输出 50,000 字符，禁止 shell 管道/重定向/通配符，仅允许白名单内的安全命令（echo、cat、ls、git 等）
+   - 限制：30 秒超时，最大输出 50,000 字符，禁止 shell 管道/重定向/通配符，仅允许白名单内的安全只读命令（echo、cat、ls、grep 等），且参数路径同样限定在工作区内
 
 5. **workspace_delete** — 删除文件或空目录
    - `path` (必填): 要删除的路径
@@ -320,9 +377,9 @@ class WorkspacePlugin(PluginBase):
 
 ### 注意事项
 
-- 所有路径均为相对路径，自动限定在工作区范围内，无法访问工作区外的文件
+- 所有路径均为相对路径，自动限定在工作区范围内，无法访问工作区外的文件（命令参数中的路径同样受限，禁止绝对路径与 ".."）
 - 命令执行有 30 秒超时限制，且不再支持 shell 管道/重定向/通配符
-- 命令需在白名单内（echo、cat、ls、git 等），否则会被自动拦截
+- 命令需在白名单内（echo、cat、ls、grep 等只读命令），否则会被自动拦截
 - 单个文件读取上限 500KB
 - 命令输出上限 50,000 字符，超出部分会被截断
 - 只允许删除空目录，防止误删

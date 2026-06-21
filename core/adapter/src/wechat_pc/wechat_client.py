@@ -467,15 +467,27 @@ class WeChatClient:
                             raw_messages[current_chat].append(m)
 
                     # 更新记录，限制集合大小防止内存泄漏
-                    merged_ids = current_ids | last_ids
-                    if len(merged_ids) > MAX_MSG_ID_CACHE:
-                        merged_ids = set(list(merged_ids)[-MAX_MSG_ID_CACHE:])
-                    self._last_msg_ids[current_chat] = merged_ids
+                    # 用插入序去重：旧 id 在前、本轮 id 在后（all_msgs 顺序即时间序），
+                    # 超限时截取最近 N 个，避免 set 无序截断误删最新 id 导致重复处理
+                    merged_id_order = list(last_ids) + [
+                        getattr(m, "id", "") for m in all_msgs if getattr(m, "id", "")
+                    ]
+                    merged_ids_od = dict.fromkeys(merged_id_order)
+                    if len(merged_ids_od) > MAX_MSG_ID_CACHE:
+                        merged_ids_od = dict.fromkeys(
+                            list(merged_ids_od)[-MAX_MSG_ID_CACHE:]
+                        )
+                    self._last_msg_ids[current_chat] = set(merged_ids_od)
 
-                    merged_fps = current_fingerprints | last_fps
-                    if len(merged_fps) > MAX_MSG_ID_CACHE:
-                        merged_fps = set(list(merged_fps)[-MAX_MSG_ID_CACHE:])
-                    self._last_msg_fingerprints[current_chat] = merged_fps
+                    merged_fp_order = list(last_fps) + [
+                        self._msg_fingerprint(current_chat, m) for m in all_msgs
+                    ]
+                    merged_fps_od = dict.fromkeys(merged_fp_order)
+                    if len(merged_fps_od) > MAX_MSG_ID_CACHE:
+                        merged_fps_od = dict.fromkeys(
+                            list(merged_fps_od)[-MAX_MSG_ID_CACHE:]
+                        )
+                    self._last_msg_fingerprints[current_chat] = set(merged_fps_od)
         except Exception as e:
             logger.debug(f"Fallback GetAllMessage failed: {e}")
 

@@ -300,23 +300,26 @@ class AdapterManager:
             logger.info(f"Adapter {adapter_id} is not running")
             return False
 
+        platform_key = adapter.platform.value
         try:
-            # 从 platform 索引中移除
-            platform_key = adapter.platform.value
-            if platform_key in self._platform_index:
-                if adapter_id in self._platform_index[platform_key]:
-                    self._platform_index[platform_key].remove(adapter_id)
-                if not self._platform_index[platform_key]:
-                    del self._platform_index[platform_key]
-
             await adapter.stop()
-            del self._adapters[adapter_id]
-            self._enabled_adapters.remove(adapter_id)
             logger.info(f"Stopped adapter: {adapter_id}")
             return True
         except Exception as e:
             logger.info(f"Error stopping adapter {adapter_id}: {e}")
             return False
+        finally:
+            # 无论 stop() 成功与否都要原子地清理登记，避免半移除状态：
+            # 否则 platform 索引和 _adapters/_enabled_adapters 不一致，
+            # resolve_adapter_id 找不到但 get_adapter 仍返回（split state）
+            self._adapters.pop(adapter_id, None)
+            if adapter_id in self._enabled_adapters:
+                self._enabled_adapters.remove(adapter_id)
+            if platform_key in self._platform_index:
+                if adapter_id in self._platform_index[platform_key]:
+                    self._platform_index[platform_key].remove(adapter_id)
+                if not self._platform_index[platform_key]:
+                    del self._platform_index[platform_key]
 
     async def stop_all(self):
         """停止所有适配器"""

@@ -444,15 +444,13 @@ class TaleCore:
         if not url_or_path.startswith(('http://', 'https://')):
             return None
 
-        # SSRF 防护
-        from core.tools.network_safety import validate_url
-        ssrf_error = validate_url(url_or_path)
-        if ssrf_error:
-            logger.warning("SSRF 安全检查未通过，跳过图片下载: %s", ssrf_error)
-            return None
+        # SSRF 防护：用 safe_get 把连接固定到已校验 IP（消除 TOCTOU / DNS rebinding），
+        # 并逐跳重新校验重定向目标。
+        from core.tools.network_safety import safe_get, SSRFValidationError
 
         import hashlib
         import os
+        from urllib.parse import urljoin
         try:
             import requests
         except ImportError:
@@ -468,17 +466,38 @@ class TaleCore:
         if dest.is_file():
             return str(dest)
 
+        MAX_IMAGE_BYTES = 5 * 1024 * 1024
         try:
-            resp = requests.get(url_or_path, timeout=10, stream=True)
+            current_url = url_or_path
+            resp = None
+            for _ in range(5):  # 最多跟随 4 次重定向，每跳重新校验+固定 IP
+                resp = safe_get(current_url, requests_mod=requests, timeout=10, stream=True)
+                if resp.is_redirect and resp.headers.get("location"):
+                    next_url = urljoin(current_url, resp.headers["location"])
+                    resp.close()
+                    current_url = next_url
+                    continue
+                break
             resp.raise_for_status()
             content_length = resp.headers.get('content-length')
-            if content_length and int(content_length) > 5 * 1024 * 1024:
+            if content_length and int(content_length) > MAX_IMAGE_BYTES:
                 logger.warning("图片过大，跳过下载: %s (%s)", url_or_path, content_length)
                 return None
+            # 即使响应未声明 content-length，也按上限边下边截断，防止无界下载
+            total = 0
             with open(dest, 'wb') as f:
                 for chunk in resp.iter_content(8192):
+                    total += len(chunk)
+                    if total > MAX_IMAGE_BYTES:
+                        logger.warning("图片超出大小上限，中止下载: %s", url_or_path)
+                        f.close()
+                        dest.unlink(missing_ok=True)
+                        return None
                     f.write(chunk)
             return str(dest)
+        except SSRFValidationError as e:
+            logger.warning("SSRF 安全检查未通过，跳过图片下载: %s", e)
+            return None
         except Exception as e:
             logger.warning("下载上下文图片失败 %s: %s", url_or_path, e)
             return None
@@ -676,96 +695,96 @@ class TaleCore:
                     except Exception as e:
                         logger.warning("VLM 图片识别失败: %s", e)
 
-            # 追加滑动上下文窗口
-            # persist_content = 拼接历史前的 user_input（纯净用户消息，用于落库）
-            persist_content = user_input
-            use_ctx = bool(processed.text and not (
-                persistence and self.session_manager and sid and session_enabled
-            ))
-            if use_ctx:
-                ctx_window_cfg = config_loader.bot.context
-                if ctx_window_cfg.chat_context_enabled and ctx_window_cfg.chat_context_window > 0:
-                    ctx = await self._build_context_window(processed, ctx_window_cfg.chat_context_window)
-                    if ctx:
-                        logger.debug("追加上下文窗口 (%d 条)", ctx_window_cfg.chat_context_window)
-                        user_input = f"以下是最近的聊天记录：\n{ctx}\n\n---\n{user_input}"
-            # set_session 已通过 self.messages 结构化加载历史，无需额外拼接
+                # 追加滑动上下文窗口
+                # persist_content = 拼接历史前的 user_input（纯净用户消息，用于落库）
+                persist_content = user_input
+                use_ctx = bool(processed.text and not (
+                    persistence and self.session_manager and sid and session_enabled
+                ))
+                if use_ctx:
+                    ctx_window_cfg = config_loader.bot.context
+                    if ctx_window_cfg.chat_context_enabled and ctx_window_cfg.chat_context_window > 0:
+                        ctx = await self._build_context_window(processed, ctx_window_cfg.chat_context_window)
+                        if ctx:
+                            logger.debug("追加上下文窗口 (%d 条)", ctx_window_cfg.chat_context_window)
+                            user_input = f"以下是最近的聊天记录：\n{ctx}\n\n---\n{user_input}"
+                # set_session 已通过 self.messages 结构化加载历史，无需额外拼接
 
-            # 首次调用不落库（save_to_session=False），最终回复在最后统一持久化
-            # 避免工具调用轮次和最终回复双重写入
-            chatllm_reply = await self._call_chatllm(user_input, persist_content, save_to_session=False)
-            parsed = parse_xml_msg(chatllm_reply)
+                # 首次调用不落库（save_to_session=False），最终回复在最后统一持久化
+                # 避免工具调用轮次和最终回复双重写入
+                chatllm_reply = await self._call_chatllm(user_input, persist_content, save_to_session=False)
+                parsed = parse_xml_msg(chatllm_reply)
 
-            # AI 使用 <msg></msg> 主动结束对话，不发送任何消息
-            if parsed.get("skip_reply") and not parsed.get("messages") and not self._has_tool_content(parsed):
-                logger.info("AI 选择不回复消息 (skip_reply) -> %s", target_id)
-                return
+                # AI 使用 <msg></msg> 主动结束对话，不发送任何消息
+                if parsed.get("skip_reply") and not parsed.get("messages") and not self._has_tool_content(parsed):
+                    logger.info("AI 选择不回复消息 (skip_reply) -> %s", target_id)
+                    return
 
-            if parsed.get("parse_error"):
-                logger.warning("XML 解析失败，使用原始回复")
-                await self._send_reply(
-                    adapter_instance or processed.platform.value,
-                    target_id,
-                    chatllm_reply,
-                    reply_to=processed.message_id,
-                    is_group=is_group
-                )
-                return
+                if parsed.get("parse_error"):
+                    logger.warning("XML 解析失败，使用原始回复")
+                    await self._send_reply(
+                        adapter_instance or processed.platform.value,
+                        target_id,
+                        chatllm_reply,
+                        reply_to=processed.message_id,
+                        is_group=is_group
+                    )
+                    return
 
-            first_messages = parsed.get("messages", [])
-            needs_follow_up = self._has_tool_content(parsed) or parse_function_call(chatllm_reply) is not None
+                first_messages = parsed.get("messages", [])
+                needs_follow_up = self._has_tool_content(parsed) or parse_function_call(chatllm_reply) is not None
 
-            # ChatLLM 可能返回不包含 <msg> XML 标签的文本（如纯文本回复）
-            # 此时 parse_xml_msg 返回空消息列表但不报错，导致回复被静默丢弃
-            if not first_messages and not needs_follow_up:
-                logger.warning("ChatLLM 返回了非 XML 格式回复，直接作为纯文本发送")
-                await self._send_reply(
-                    adapter_instance or processed.platform.value,
-                    target_id,
-                    chatllm_reply,
-                    reply_to=processed.message_id,
-                    is_group=is_group
-                )
-                return
+                # ChatLLM 可能返回不包含 <msg> XML 标签的文本（如纯文本回复）
+                # 此时 parse_xml_msg 返回空消息列表但不报错，导致回复被静默丢弃
+                if not first_messages and not needs_follow_up:
+                    logger.warning("ChatLLM 返回了非 XML 格式回复，直接作为纯文本发送")
+                    await self._send_reply(
+                        adapter_instance or processed.platform.value,
+                        target_id,
+                        chatllm_reply,
+                        reply_to=processed.message_id,
+                        is_group=is_group
+                    )
+                    return
 
-            if needs_follow_up:
-                # 多轮对话：先发送首条回复
-                await self._send_message_batch(
-                    processed, first_messages[:MAX_SPLIT_COUNT], adapter_instance=adapter_instance
-                )
-                # 执行后续操作并获取最终回复
-                final_messages = await self._resolve_follow_up(chatllm_reply, parsed)
-                await self._send_message_batch(
-                    processed, final_messages[:MAX_SPLIT_COUNT], adapter_instance=adapter_instance
-                )
-            else:
-                # 普通回复直接发送
-                await self._send_message_batch(
-                    processed, first_messages[:MAX_SPLIT_COUNT], adapter_instance=adapter_instance
-                )
+                if needs_follow_up:
+                    # 多轮对话：先发送首条回复
+                    await self._send_message_batch(
+                        processed, first_messages[:MAX_SPLIT_COUNT], adapter_instance=adapter_instance
+                    )
+                    # 执行后续操作并获取最终回复
+                    final_messages = await self._resolve_follow_up(chatllm_reply, parsed)
+                    await self._send_message_batch(
+                        processed, final_messages[:MAX_SPLIT_COUNT], adapter_instance=adapter_instance
+                    )
+                else:
+                    # 普通回复直接发送
+                    await self._send_message_batch(
+                        processed, first_messages[:MAX_SPLIT_COUNT], adapter_instance=adapter_instance
+                    )
 
-            # ── 处理跨会话消息：解析 session_send 标签并异步投递 ──
-            _pending_sends = []
-            for ss in parsed.get("session_sends", []):
-                target = ss.get("target", "").strip()
-                text = ss.get("text", "").strip()
-                if target and text and sid and self.bridge:
-                    _pending_sends.append(asyncio.create_task(
-                        self._send_cross_session(sid, target, text)
-                    ))
+                # ── 处理跨会话消息：解析 session_send 标签并异步投递 ──
+                _pending_sends = []
+                for ss in parsed.get("session_sends", []):
+                    target = ss.get("target", "").strip()
+                    text = ss.get("text", "").strip()
+                    if target and text and sid and self.bridge:
+                        _pending_sends.append(asyncio.create_task(
+                            self._send_cross_session(sid, target, text)
+                        ))
 
-            # ── B1: 统一持久化最终回复 ──
-            # 首次 chat() 用 save_to_session=False 不落库，这里统一持久化
-            # needs_follow_up: Agent 循环后存最终回复
-            # 非 follow_up: 直接存首条回复
-            if self.chat and self.chat.current_sid and persist_content:
-                self.chat._save_session_memory(persist_content)
+                # ── B1: 统一持久化最终回复 ──
+                # 首次 chat() 用 save_to_session=False 不落库，这里统一持久化
+                # needs_follow_up: Agent 循环后存最终回复
+                # 非 follow_up: 直接存首条回复
+                if self.chat and self.chat.current_sid and persist_content:
+                    self.chat._save_session_memory(persist_content)
 
-            # ── 确认跨会话消息已处理（ack） ──
-            if inbox_msgs and sid and self.bridge:
-                msg_ids = [m["id"] for m in inbox_msgs if m.get("id")]
-                if msg_ids:
-                    await self.bridge.ack(sid, msg_ids)
+                # ── 确认跨会话消息已处理（ack） ──
+                if inbox_msgs and sid and self.bridge:
+                    msg_ids = [m["id"] for m in inbox_msgs if m.get("id")]
+                    if msg_ids:
+                        await self.bridge.ack(sid, msg_ids)
 
         except Exception as e:
             logger.error("处理消息时出错: %s", e, exc_info=True)
@@ -799,8 +818,9 @@ class TaleCore:
             )
             if result.startswith("error:"):
                 logger.warning("跨会话权限/限流拒绝: %s → %s: %s", from_sid, to_sid, result)
-                # 失败反馈到源会话
-                await self.bridge.send(to_sid, from_sid, f"[系统] 跨会话发送失败：{result[6:]}")
+                # 失败反馈直接写源会话 inbox，绕过权限/限流校验，
+                # 避免反向 bridge.send 因对称权限拒绝而静默丢失提示
+                await self.bridge.add_system_message(from_sid, f"[系统] 跨会话发送失败：{result[6:]}")
                 return
             msg_id = result
 
@@ -972,16 +992,21 @@ class TaleCore:
 
             # Phase C: <tool> 标签
             if current_parsed.get("tool"):
-                logger.info("[Agent %d/%d] 查询工具列表", iteration, max_steps)
-                tools_result = self.toolllm.query_tools()
-                first_reply = self._extract_reply_text(current_parsed)
-                tool_content = (
-                    f'你刚才对用户说："{first_reply}"\n\n'
-                    f"现在我已经获取到可用工具列表：\n{tools_result}\n\n"
-                    f"请介绍这些工具的功能。"
-                )
-                result_parts.append(("可用工具列表", tool_content))
-                _emit_once("tools_queried", tools_result)
+                # ToolLLM 未配置 API Key 时为 None，跳过工具阶段并告知用户
+                if self.toolllm is None:
+                    logger.warning("[Agent %d/%d] ToolLLM 未初始化，跳过工具查询", iteration, max_steps)
+                    result_parts.append(("工具不可用", "工具能力未配置，无法查询可用工具列表，请告知用户。"))
+                else:
+                    logger.info("[Agent %d/%d] 查询工具列表", iteration, max_steps)
+                    tools_result = self.toolllm.query_tools()
+                    first_reply = self._extract_reply_text(current_parsed)
+                    tool_content = (
+                        f'你刚才对用户说："{first_reply}"\n\n'
+                        f"现在我已经获取到可用工具列表：\n{tools_result}\n\n"
+                        f"请介绍这些工具的功能。"
+                    )
+                    result_parts.append(("可用工具列表", tool_content))
+                    _emit_once("tools_queried", tools_result)
 
             # Phase D: <plan> 标签
             if current_parsed.get("plan"):
@@ -1062,6 +1087,10 @@ class TaleCore:
     async def _execute_actions(self, actions: list) -> list:
         """执行动作列表，返回所有执行结果"""
         results = []
+        # ToolLLM 未配置 API Key 时为 None，无法生成 Function Calling，直接降级
+        if self.toolllm is None:
+            logger.warning("ToolLLM 未初始化，跳过 %d 个动作", len(actions))
+            return ["工具能力未配置，无法执行该动作。"]
         loop = asyncio.get_running_loop()
         for i, action in enumerate(actions, 1):
             logger.info("ToolLLM 处理动作 %d/%d: %s", i, len(actions), action)

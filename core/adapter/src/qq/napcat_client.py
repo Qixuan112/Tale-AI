@@ -124,6 +124,9 @@ class NapCatWebSocketClient:
                 open_timeout=5.0,
                 ping_timeout=10.0,
             )
+            # （重）连成功后重置心跳基准为当前本地时刻，
+            # 避免上一次连接遗留的 last_heartbeat 让 watchdog 立即误判超时
+            self.last_heartbeat = int(datetime.now().timestamp())
             return {"status": "ok"}
         except Exception as e:
             logger.error(f"连接失败: {e}")
@@ -180,7 +183,8 @@ class NapCatWebSocketClient:
         self._listening_task = asyncio.create_task(self._listen_loop())
 
         # 验证 bot_uin 是否匹配（直接用 get_login_info，不依赖 lifecycle）
-        login_info = await self.send_action("get_login_info", {})
+        # _bootstrap=True：此调用属于启动验证流程，跳过就绪等待避免死锁
+        login_info = await self.send_action("get_login_info", {}, _bootstrap=True)
         if not login_info:
             logger.error("获取登录信息失败")
             await self.close()
@@ -277,7 +281,9 @@ class NapCatWebSocketClient:
         # 心跳检测
         if data.get("post_type") == "meta_event":
             if data.get("meta_event_type") == "heartbeat":
-                self.last_heartbeat = data.get("time")
+                # 用本地收到心跳的时刻记录，避免服务端时钟与本地时钟漂移
+                # 导致 watchdog 误判超时（与下方 datetime.now() 同一时钟基准）
+                self.last_heartbeat = int(datetime.now().timestamp())
             elif data.get("meta_event_type") == "lifecycle":
                 # lifecycle 仅日志，不再作为登录就绪信号
                 logger.info("收到 lifecycle 事件: %s", data.get("sub_type", ""))
@@ -309,7 +315,8 @@ class NapCatWebSocketClient:
     # ── API 调用 ──────────────────────────────────────────────────────
 
     async def send_action(
-        self, action: str, params: dict = None, timeout: float = 10.0
+        self, action: str, params: dict = None, timeout: float = 10.0,
+        _bootstrap: bool = False,
     ) -> Optional[dict]:
         """发送 OneBot API 请求并等待响应。
 
@@ -321,6 +328,10 @@ class NapCatWebSocketClient:
             参数字典。
         timeout : float
             超时秒数。
+        _bootstrap : bool
+            内部参数。run() 启动流程中的登录验证调用置为 True，跳过就绪等待，
+            避免「run() 等 send_action、send_action 等 _run_done、_run_done 等
+            run() 完成」的死锁。
 
         Returns
         -------
@@ -330,16 +341,19 @@ class NapCatWebSocketClient:
             logger.warning("WebSocket 未连接，无法发送 API 请求")
             return None
 
-        # 等待首次可用（最多 10 秒，后续不再等待）
-        if not self._send_ready:
-            # 如果 websocket 已连接但尚未标记就绪（run() 正在验证登录），
-            # 直接放行，避免与 _run_done 形成死锁
-            if self.websocket is None:
-                try:
-                    await asyncio.wait_for(self._run_done, timeout=10)
-                except (asyncio.TimeoutError, asyncio.InvalidStateError):
-                    logger.error("send_action 失败: 尚未就绪")
-                    return None
+        # 等待 run() 验证登录完成（最多 10 秒，后续不再等待）。
+        # 非 bootstrap 调用在尚未就绪时阻塞等待 _run_done，确保 run() 已验证登录。
+        if not self._send_ready and not _bootstrap and self._run_done is not None:
+            try:
+                ready = await asyncio.wait_for(
+                    asyncio.shield(self._run_done), timeout=10
+                )
+            except (asyncio.TimeoutError, asyncio.InvalidStateError):
+                logger.error("send_action 失败: 尚未就绪")
+                return None
+            if not ready:
+                logger.error("send_action 失败: 启动未成功")
+                return None
 
         echo = str(uuid.uuid4())
         future = asyncio.get_running_loop().create_future()

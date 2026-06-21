@@ -136,9 +136,12 @@ class QQAdapter(BaseAdapter):
             logger.debug(f"[QQ] Duplicate message (id={msg_id}), skipped")
             return
 
-        # fingerprint 去重（不含 message_id，用于捕获内容相同的重发）
+        # fingerprint 去重（不含 message_id，仅用于拦截平台层的短时重发）
+        # 加入分钟级时间桶：同一分钟内相同内容视为重发拦截，
+        # 跨分钟后用户再发相同内容（在吗/?/哈哈/嗯）可正常触发，不会被永久吞掉。
+        time_bucket = event.timestamp.strftime("%Y%m%d%H%M")
         fp = (
-            f"{event.sender.id}:{event.content.text or ''}"
+            f"{event.sender.id}:{time_bucket}:{event.content.text or ''}"
         )
         if fp in self._seen_fingerprints:
             logger.debug("[QQ] Duplicate message (fingerprint matched), skipped")

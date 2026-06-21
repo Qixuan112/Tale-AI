@@ -266,7 +266,12 @@ class ConfigLoader:
             return {}
 
         with open(filepath, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
+            try:
+                data = yaml.safe_load(f) or {}
+            except yaml.YAMLError as e:
+                # YAML 格式错误时不让整个进程在 import 阶段崩溃，回退到空配置
+                logger.error("[Config] 解析 %s 失败，已回退到空配置: %s", filename, e)
+                return {}
 
         _validate_config(os.path.basename(filename), data)
         return data
@@ -420,6 +425,7 @@ class ConfigLoader:
             typing_min_delay=bot_data.get("typing_min_delay", 0.5),
             max_agent_steps=bot_data.get("max_agent_steps", 3),
             per_step_timeout=bot_data.get("per_step_timeout", 60.0),
+            persistence_enabled=bot_data.get("persistence_enabled", True),
         )
 
         context = ContextConfig(
@@ -594,13 +600,23 @@ class ConfigLoader:
     def get_provider(self, name: str) -> Optional[ProviderConfig]:
         return self._config.providers.get(name)
 
+    # LLM 系列模型类型：未配置/未匹配时可回退到第一个 provider（通常即聊天 LLM）。
+    # 非 LLM 类型（tts/stt/image/rerank/embedding）若回退到聊天 LLM 会用错 endpoint/key/model，
+    # 因此这些类型无映射时直接返回 None。
+    _LLM_MODEL_TYPES = frozenset(
+        {"main_llm", "plan_llm", "tool_llm", "generic_llm", "util_model", "vlm"}
+    )
+
     def get_active_provider(self, model_type: str) -> Optional[ProviderConfig]:
         model_mapping = getattr(self._config.models, model_type, None)
         if model_mapping and model_mapping.provider:
             provider = self._config.providers.get(model_mapping.provider)
             if provider:
                 return provider
-        # routing 未配置或 provider 名不匹配 → 回退到第一个可用 provider
+        # routing 未配置或 provider 名不匹配：仅 LLM 系列才回退到第一个可用 provider，
+        # 非 LLM 类型回退会用错 endpoint/key/model，故返回 None。
+        if model_type not in self._LLM_MODEL_TYPES:
+            return None
         providers = self._config.providers
         if providers:
             return list(providers.values())[0]
