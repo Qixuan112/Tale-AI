@@ -404,7 +404,12 @@ class PlanLLM:
             raise ValueError(f"时间必须为字符串，收到: {value!r}")
         s = value.strip()
         parts = s.split(":")
-        if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
+        # 时/分各 1~2 位数字（容忍 "9:30" 这类单位数小时，但拒绝超长/非数字串）
+        if (
+            len(parts) != 2
+            or not (1 <= len(parts[0]) <= 2 and parts[0].isdigit())
+            or not (1 <= len(parts[1]) <= 2 and parts[1].isdigit())
+        ):
             raise ValueError(f"时间格式必须为 HH:MM，收到: {value!r}")
         hour, minute = int(parts[0]), int(parts[1])
         if not (0 <= hour <= 23 and 0 <= minute <= 59):

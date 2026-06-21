@@ -63,6 +63,9 @@ def fetch_url(
         request_kwargs = {
             "headers": default_headers,
             "timeout": timeout,
+            # 流式读取：避免无 Content-Length 的响应被 response.text 一次性全量缓冲，
+            # 下面按 MAX_RESPONSE_BYTES 边读边截断，防止内存被打爆。
+            "stream": True,
             "verify": verify_ssl,
         }
 
@@ -88,14 +91,36 @@ def fetch_url(
 
         content_len_header = response.headers.get("content-length")
         if content_len_header and int(content_len_header) > MAX_RESPONSE_BYTES:
+            response.close()
             return {"status": "failed", "tool": "browser.fetch_url", "error": f"响应过大 (>{MAX_RESPONSE_BYTES // 1024 // 1024}MB)"}
 
-        if encoding:
-            response.encoding = encoding
-        else:
-            response.encoding = response.apparent_encoding
+        # 流式读取原始字节并按上限截断，避免无 Content-Length 的响应被全量缓冲
+        raw = bytearray()
+        try:
+            for chunk in response.iter_content(8192):
+                if not chunk:
+                    continue
+                raw.extend(chunk)
+                if len(raw) >= MAX_RESPONSE_BYTES:
+                    del raw[MAX_RESPONSE_BYTES:]
+                    break
+        finally:
+            response.close()
+        raw_bytes = bytes(raw)
 
-        content = response.text
+        # 推断编码：显式指定 > 响应头声明 > 内容探测 > utf-8
+        if encoding:
+            enc = encoding
+        else:
+            enc = response.encoding
+            if not enc or enc.lower() == "iso-8859-1":
+                try:
+                    from charset_normalizer import from_bytes
+                    guess = from_bytes(raw_bytes).best()
+                    enc = guess.encoding if guess else (enc or "utf-8")
+                except Exception:
+                    enc = enc or "utf-8"
+        content = raw_bytes.decode(enc or "utf-8", errors="replace")
         if len(content) > MAX_RESPONSE_BYTES:
             content = content[:MAX_RESPONSE_BYTES]
 

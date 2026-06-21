@@ -136,16 +136,17 @@ class QQAdapter(BaseAdapter):
             logger.debug(f"[QQ] Duplicate message (id={msg_id}), skipped")
             return
 
-        # fingerprint 去重（不含 message_id，仅用于拦截平台层的短时重发）
-        # 加入分钟级时间桶：同一分钟内相同内容视为重发拦截，
-        # 跨分钟后用户再发相同内容（在吗/?/哈哈/嗯）可正常触发，不会被永久吞掉。
-        time_bucket = event.timestamp.strftime("%Y%m%d%H%M")
-        fp = (
-            f"{event.sender.id}:{time_bucket}:{event.content.text or ''}"
-        )
-        if fp in self._seen_fingerprints:
-            logger.debug("[QQ] Duplicate message (fingerprint matched), skipped")
-            return
+        # fingerprint 去重：仅在缺少 message_id 时启用（message_id 唯一，是首选去重键）。
+        # 有 message_id 时已由上面的 id 维度去重保证，不再叠加指纹，
+        # 避免同一用户在同一分钟内发出的「不同 message_id、相同内容」正常消息被误判重复丢弃。
+        # 无 message_id 的事件用分钟级时间桶兜底，仅拦截平台层短时重发。
+        fp = None
+        if not msg_id:
+            time_bucket = event.timestamp.strftime("%Y%m%d%H%M")
+            fp = f"{event.sender.id}:{time_bucket}:{event.content.text or ''}"
+            if fp in self._seen_fingerprints:
+                logger.debug("[QQ] Duplicate message (fingerprint matched), skipped")
+                return
 
         if msg_id:
             self._seen_msg_ids[msg_id] = None
@@ -153,11 +154,12 @@ class QQAdapter(BaseAdapter):
                 self._seen_msg_ids = OrderedDict(
                     list(self._seen_msg_ids.items())[-_DEDUP_TRIM:]
                 )
-        self._seen_fingerprints[fp] = None
-        if len(self._seen_fingerprints) > _DEDUP_MAX:
-            self._seen_fingerprints = OrderedDict(
-                list(self._seen_fingerprints.items())[-_DEDUP_TRIM:]
-            )
+        if fp is not None:
+            self._seen_fingerprints[fp] = None
+            if len(self._seen_fingerprints) > _DEDUP_MAX:
+                self._seen_fingerprints = OrderedDict(
+                    list(self._seen_fingerprints.items())[-_DEDUP_TRIM:]
+                )
 
         # 获取引用消息原文
         if event.content.reply_to:
@@ -210,12 +212,15 @@ class QQAdapter(BaseAdapter):
             event_type = EventType.MESSAGE
 
         # 构建发送者信息
+        # is_bot：发送者为机器人自身（user_id == self_id）时置 True，
+        # 供平台无关层（MessageProcessor）兜底过滤自回环，不再硬编码 False。
         sender_info = raw_event.get("sender", {})
+        self_id = str(raw_event.get("self_id", ""))
         sender = SenderInfo(
             id=user_id,
             name=sender_info.get("nickname", user_id),
             avatar=None,
-            is_bot=False,
+            is_bot=bool(self_id and self_id == user_id),
         )
 
         return PlatformEvent(

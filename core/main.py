@@ -467,9 +467,9 @@ class TaleCore:
             return str(dest)
 
         MAX_IMAGE_BYTES = 5 * 1024 * 1024
+        resp = None
         try:
             current_url = url_or_path
-            resp = None
             for _ in range(5):  # 最多跟随 4 次重定向，每跳重新校验+固定 IP
                 resp = safe_get(current_url, requests_mod=requests, timeout=10, stream=True)
                 if resp.is_redirect and resp.headers.get("location"):
@@ -497,10 +497,16 @@ class TaleCore:
             return str(dest)
         except SSRFValidationError as e:
             logger.warning("SSRF 安全检查未通过，跳过图片下载: %s", e)
+            dest.unlink(missing_ok=True)
             return None
         except Exception as e:
+            # 异常时清掉可能的半成品文件，避免被 dest.is_file() 缓存命中复用损坏数据
             logger.warning("下载上下文图片失败 %s: %s", url_or_path, e)
+            dest.unlink(missing_ok=True)
             return None
+        finally:
+            if resp is not None:
+                resp.close()
 
     async def _build_context_window(self, processed: ProcessedMessage, window: int) -> str:
         """从缓冲区获取最近 N 条消息作为上下文，图片自动 VLM 识别。
@@ -715,9 +721,21 @@ class TaleCore:
                 chatllm_reply = await self._call_chatllm(user_input, persist_content, save_to_session=False)
                 parsed = parse_xml_msg(chatllm_reply)
 
+                async def _persist_and_ack():
+                    # 本轮跨会话消息已被 consume 移入 pending；无论以何种路径结束
+                    # （含 skip_reply / 解析失败 / 纯文本回复等提前 return），
+                    # 都需落库并 ack，否则这些消息会被判超时重复投递，回退回复也不会写入记忆。
+                    if self.chat and self.chat.current_sid and persist_content:
+                        self.chat._save_session_memory(persist_content)
+                    if inbox_msgs and sid and self.bridge:
+                        _mids = [m["id"] for m in inbox_msgs if m.get("id")]
+                        if _mids:
+                            await self.bridge.ack(sid, _mids)
+
                 # AI 使用 <msg></msg> 主动结束对话，不发送任何消息
                 if parsed.get("skip_reply") and not parsed.get("messages") and not self._has_tool_content(parsed):
                     logger.info("AI 选择不回复消息 (skip_reply) -> %s", target_id)
+                    await _persist_and_ack()
                     return
 
                 if parsed.get("parse_error"):
@@ -729,6 +747,7 @@ class TaleCore:
                         reply_to=processed.message_id,
                         is_group=is_group
                     )
+                    await _persist_and_ack()
                     return
 
                 first_messages = parsed.get("messages", [])
@@ -745,6 +764,7 @@ class TaleCore:
                         reply_to=processed.message_id,
                         is_group=is_group
                     )
+                    await _persist_and_ack()
                     return
 
                 if needs_follow_up:
@@ -773,18 +793,10 @@ class TaleCore:
                             self._send_cross_session(sid, target, text)
                         ))
 
-                # ── B1: 统一持久化最终回复 ──
-                # 首次 chat() 用 save_to_session=False 不落库，这里统一持久化
-                # needs_follow_up: Agent 循环后存最终回复
-                # 非 follow_up: 直接存首条回复
-                if self.chat and self.chat.current_sid and persist_content:
-                    self.chat._save_session_memory(persist_content)
-
-                # ── 确认跨会话消息已处理（ack） ──
-                if inbox_msgs and sid and self.bridge:
-                    msg_ids = [m["id"] for m in inbox_msgs if m.get("id")]
-                    if msg_ids:
-                        await self.bridge.ack(sid, msg_ids)
+                # ── B1: 统一持久化最终回复 + ack 跨会话消息 ──
+                # 首次 chat() 用 save_to_session=False 不落库，这里统一持久化；
+                # needs_follow_up 存 Agent 循环后的最终回复，否则存首条回复。
+                await _persist_and_ack()
 
         except Exception as e:
             logger.error("处理消息时出错: %s", e, exc_info=True)
@@ -831,8 +843,9 @@ class TaleCore:
                 # 校验 target_id 必须是纯数字（群号/QQ号），拒绝群名/占位符
                 if not target_id.isdigit():
                     logger.warning("跨会话 sid 的 id 非数字: %s", to_sid)
-                    await self.bridge.send(
-                        to_sid, from_sid,
+                    # 失败反馈走内部投递，绕过对称权限/限流，避免静默丢失
+                    await self.bridge.add_system_message(
+                        from_sid,
                         f"[系统] 跨会话发送失败：id 必须是纯数字群号或用户号，收到 '{target_id}'"
                     )
                     await self.bridge.ack(to_sid, [msg_id])

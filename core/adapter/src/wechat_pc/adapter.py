@@ -124,15 +124,15 @@ class WeChatPCAdapter(BaseAdapter):
         try:
             sent_any = False
             if content.text:
-                await self._client.send_text(
+                text_ok = await self._client.send_text(
                     target_id, content.text, at=content.at_targets or None
                 )
-                sent_any = True
+                sent_any = sent_any or bool(text_ok)
             for img_path in content.images:
                 # 仅本地存在的文件可直接发送；URL/不存在的路径计为未发送
                 if os.path.isfile(img_path):
-                    await self._client.send_files(target_id, [img_path])
-                    sent_any = True
+                    file_ok = await self._client.send_files(target_id, [img_path])
+                    sent_any = sent_any or bool(file_ok)
                 else:
                     logger.warning(
                         f"Skip non-local image for {target_id}: {img_path}"
