@@ -184,6 +184,11 @@ def safe_request(method: str, url: str, requests_mod=None, **kwargs):
     # 始终禁用自动重定向，交由调用方逐跳校验
     kwargs["allow_redirects"] = False
 
+    # 代理会让 socket 连到代理而非已校验 IP，彻底绕过固定逻辑：拒绝显式 proxies，
+    # 并禁用 trust_env（HTTP_PROXY/HTTPS_PROXY 等环境变量）。
+    if kwargs.get("proxies"):
+        raise SSRFValidationError("safe_request 不支持 proxies（会绕过 IP 固定）")
+
     # 在当前线程的 thread-local 映射里登记「hostname -> 已校验 IP」，
     # 用 had_prev/prev 支持同线程嵌套/重入（如重定向到同一 host）。
     _ensure_pin_hook_installed()
@@ -196,6 +201,7 @@ def safe_request(method: str, url: str, requests_mod=None, **kwargs):
     pins[hostname] = pinned_ip
 
     session = requests_mod.Session()
+    session.trust_env = False  # 不读取环境代理/.netrc，确保连接走已固定的 IP
     try:
         return session.request(method, url, **kwargs)
     finally:
