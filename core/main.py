@@ -1306,6 +1306,25 @@ class TaleCore:
 
             register_plugin_handler("delete_msg", _run_delete_msg)
 
+            # 注册查询群列表工具
+            def _run_query_group_list(parameters):
+                future = asyncio.run_coroutine_threadsafe(
+                    QQApiClient.get_group_list(), _loop
+                )
+                try:
+                    groups = future.result(timeout=30)
+                except Exception as e:
+                    return {"status": "failed", "error": f"查询群列表失败: {e}"}
+                if not groups:
+                    return {"status": "ok", "groups": [], "message": "机器人未加入任何群"}
+                return {
+                    "status": "ok",
+                    "groups": groups,
+                    "message": f"机器人加入了 {len(groups)} 个群",
+                }
+
+            register_plugin_handler("query_group_list", _run_query_group_list)
+
             from .tools.registry import get_registry, ToolDefinition, ToolParameter
             get_registry().register(
                 ToolDefinition(
@@ -1323,6 +1342,13 @@ class TaleCore:
                     parameters=[
                         ToolParameter("message_id", "要撤回的消息 ID"),
                     ],
+                )
+            )
+            get_registry().register(
+                ToolDefinition(
+                    name="query_group_list",
+                    description="获取机器人加入的所有群聊列表，返回群号和群名称。无需参数。",
+                    parameters=[],
                 )
             )
 

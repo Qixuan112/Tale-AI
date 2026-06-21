@@ -523,6 +523,28 @@ class QQApiClient:
         cls._adapter = adapter
 
     @classmethod
+    async def get_group_list(cls) -> List[dict]:
+        """获取机器人加入的群聊列表
+
+        Returns:
+            [{"group_id": "123456", "group_name": "群名称"}, ...]
+        """
+        if not cls._adapter:
+            logger.warning("[QQApi] QQAdapter not bound")
+            return []
+        data = await cls._adapter.api_call("get_group_list", {})
+        if not data:
+            return []
+        groups = data if isinstance(data, list) else data.get("list", data)
+        return [
+            {
+                "group_id": str(g.get("group_id", "")),
+                "group_name": g.get("group_name", ""),
+            }
+            for g in groups
+        ]
+
+    @classmethod
     async def get_group_member_list(cls, group_id: str) -> List[dict]:
         """获取群成员列表
 
