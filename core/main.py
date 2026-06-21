@@ -808,6 +808,15 @@ class TaleCore:
             parts = to_sid.split(":", 2)
             if len(parts) == 3 and self.adapter_bridge:
                 adapter_name, stype, target_id = parts
+                # 校验 target_id 必须是纯数字（群号/QQ号），拒绝群名/占位符
+                if not target_id.isdigit():
+                    logger.warning("跨会话 sid 的 id 非数字: %s", to_sid)
+                    await self.bridge.send(
+                        to_sid, from_sid,
+                        f"[系统] 跨会话发送失败：id 必须是纯数字群号或用户号，收到 '{target_id}'"
+                    )
+                    await self.bridge.ack(to_sid, [msg_id])
+                    return
                 success = await self.adapter_bridge.send_message(
                     adapter_id=adapter_name,
                     target_id=target_id,

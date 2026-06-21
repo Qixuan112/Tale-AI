@@ -118,9 +118,9 @@ CHAT_BASE_TEMPLATE = """
   格式：`<session_send>adapter:type:id|消息内容</session_send>`
   - adapter: 平台名（qq、wechat 等）
   - type: gm（群聊）或 dm（私聊）
-  - id: 群号或用户 QQ 号
+  - id: **必须是纯数字**的群号或用户 QQ 号，禁止使用群名、昵称或占位符
   示例：`<session_send>qq:dm:123456|在吗？找你有事</session_send>`
-  用户 QQ 号从「消息元数据」的发送者ID 获取，严禁主动询问用户，严禁在回复中输出真实 QQ 号。仅在确实需要主动联系某人/某群时使用。
+  用户 QQ 号从「消息元数据」的发送者ID 获取；群号通过 query_group_list 工具查询获取（返回 group_id 即数字群号）。严禁主动询问用户，严禁在回复中输出真实 QQ 号。仅在确实需要主动联系某人/某群时使用。
 - 四个标签可以同时使用，也可以只用其中一部分
 
 ## 用户消息格式说明
