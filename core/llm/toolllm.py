@@ -4,6 +4,7 @@ from ..tools.registry import (
     get_tools_list, format_tools_for_chatllm, build_fc_prompt, get_registry,
 )
 from ..utils import get_logger
+from ..bus import bus
 from .context import AgentContext, create_tool_context
 from .provider import OpenAICompatibleProvider, provider_manager
 
@@ -56,6 +57,9 @@ class ToolLLM:
         except Exception:
             pass
 
+        # 监听配置热重载事件
+        bus.on("config_reloaded", self._on_config_reloaded)
+
     def _init_provider(self):
         """根据当前 api_key/base_url 初始化 OpenAICompatibleProvider。"""
         if self.api_key and self.base_url:
@@ -68,6 +72,21 @@ class ToolLLM:
             )
         else:
             self._provider = None
+
+    def _on_config_reloaded(self):
+        """配置重载后热更新 API 客户端。"""
+        cfg = provider_manager.get_api_config("tool_llm")
+        api_key = cfg.get("api_key", "")
+        base_url = cfg.get("url", "")
+        model = cfg.get("model", "")
+        if api_key:
+            self.api_key = api_key
+        if base_url:
+            self.base_url = base_url
+        if model:
+            self.model = model
+        self._init_provider()
+        logger.info("ToolLLM: 配置已热更新")
 
     def generate_fc(self, action):
         """

@@ -140,6 +140,7 @@ class TaleCore:
             if self.toolllm is not None:
                 logger.info("ToolLLM 热重载初始化成功")
         if self.toolllm is not None:
+            self.toolllm._on_config_reloaded()  # 热更新 API 凭据
             self.toolllm.rebuild_tool_definitions()
 
     def _init_message_processor(self):
