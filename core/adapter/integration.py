@@ -99,6 +99,12 @@ class AdapterEventBridge:
         if self.config_loader:
             self._load_adapter_configs()
 
+        # 监听配置热重载事件
+        try:
+            self.event_bus.on("config_reloaded", self._sync_adapter_configs)
+        except Exception as e:
+            logger.info("[AdapterBridge] 注册 config_reloaded 监听失败: %s", e)
+
         return self.manager
 
     def _load_adapter_configs(self):
@@ -167,6 +173,74 @@ class AdapterEventBridge:
                 logger.info(f"[AdapterBridge] Failed to start {adapter_id} adapter")
         except Exception as e:
             logger.info(f"[AdapterBridge] Error starting {adapter_id} adapter: {e}")
+
+    def _sync_adapter_configs(self):
+        """配置热重载后同步适配器状态（同步入口，派发异步任务）
+
+        EventBus 使用同步 emit()，此处创建异步任务避免阻塞。
+        """
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._do_sync_adapter_configs())
+        except RuntimeError:
+            logger.info("[AdapterBridge] 无运行中的事件循环，跳过适配器同步")
+
+    async def _do_sync_adapter_configs(self):
+        """异步执行适配器配置同步
+
+        对比当前运行中的适配器与最新配置，自动重启变更的适配器、
+        启动新增的适配器、停止已删除的适配器。
+        """
+        if not self.manager or not self.config_loader:
+            return
+
+        try:
+            platforms_data = self.config_loader._load_yaml("config/platforms.yaml")
+        except Exception as e:
+            logger.info("[AdapterBridge] 读取 platforms.yaml 失败: %s", e)
+            return
+
+        # 构建最新配置映射：instance_name -> (config_dict, adapter_type)
+        new_configs = {}
+        for instance_name, cfg in platforms_data.items():
+            if not isinstance(cfg, dict):
+                continue
+            enabled = cfg.get("enabled", False)
+            if not enabled:
+                continue
+            adapter_type = str(cfg.get("adapter_type", "")).lower()
+            if adapter_type not in ("qq", "telegram", "bilibili"):
+                continue
+            config_dict = {
+                k: v for k, v in cfg.items()
+                if k not in ("enabled", "adapter_type")
+            }
+            new_configs[instance_name] = (config_dict, adapter_type)
+
+        running = set(self.manager.list_running_adapters())
+        configured = set(new_configs.keys())
+
+        # 停止已删除的适配器
+        for instance_name in running - configured:
+            logger.info("[AdapterBridge] 适配器配置已删除，停止: %s", instance_name)
+            await self.manager.stop_adapter(instance_name)
+
+        # 启动新增的适配器
+        for instance_name in configured - running:
+            config_dict, adapter_type = new_configs[instance_name]
+            logger.info("[AdapterBridge] 检测到新适配器，启动: %s", instance_name)
+            await self._start_adapter_async(instance_name, config_dict, adapter_type)
+
+        # 重启配置变更的适配器
+        for instance_name in running & configured:
+            old_adapter = self.manager.get_adapter(instance_name)
+            if old_adapter is None:
+                continue
+            new_config_dict, adapter_type = new_configs[instance_name]
+            # 比较配置是否变更（深度比较）
+            if old_adapter.config != new_config_dict:
+                logger.info("[AdapterBridge] 检测到配置变更，重启适配器: %s", instance_name)
+                await self.manager.restart_adapter(instance_name, new_config_dict, adapter_type)
 
     async def send_message(
         self,

@@ -302,6 +302,24 @@ class AdapterManager:
         for adapter_id in list(self._adapters.keys()):
             await self.stop_adapter(adapter_id)
 
+    async def restart_adapter(self, adapter_id: str, adapter_config: dict, adapter_type: str = None) -> bool:
+        """重启指定适配器实例（stop + start）
+
+        Args:
+            adapter_id: 适配器实例ID
+            adapter_config: 新配置
+            adapter_type: 适配器类型
+
+        Returns:
+            重启是否成功
+        """
+        await self.stop_adapter(adapter_id)
+        try:
+            return await self.start_adapter(adapter_id, adapter_config, adapter_type=adapter_type)
+        except Exception as e:
+            logger.info("重启适配器 %s 失败: %s", adapter_id, e)
+            return False
+
     def get_adapter(self, adapter_id: str) -> Optional[BaseAdapter]:
         """获取运行中的适配器实例
 
