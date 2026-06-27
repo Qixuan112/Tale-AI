@@ -11,6 +11,7 @@ from core.adapter.event import (
     EventType,
     MessageContent,
     SenderInfo,
+    FileAttachment,
 )
 from ....utils import get_logger
 from .napcat_client import NapCatWebSocketClient
@@ -276,6 +277,7 @@ class QQAdapter(BaseAdapter):
         videos = []
         voices = []
         json_cards = []
+        files = []
 
         if isinstance(message, str):
             # CQ码格式
@@ -309,6 +311,13 @@ class QQAdapter(BaseAdapter):
                 elif seg_type == "json":
                     card_info = self._extract_card_info(data.get("data", ""))
                     json_cards.append(card_info)
+                elif seg_type == "file":
+                    files.append(FileAttachment(
+                        name=data.get("name") or data.get("file", ""),
+                        url=data.get("url", ""),
+                        path=data.get("path"),
+                        size=str(data.get("file_size", "")) if data.get("file_size") else None,
+                    ))
 
         return MessageContent(
             text=" ".join(text_parts) if text_parts else None,
@@ -320,6 +329,7 @@ class QQAdapter(BaseAdapter):
             videos=videos,
             voices=voices,
             json_cards=json_cards,
+            files=files,
         )
 
     # ── 消息发送 ──────────────────────────────────────────────────────
@@ -354,6 +364,37 @@ class QQAdapter(BaseAdapter):
             except Exception:
                 return ""
         return img
+
+    @staticmethod
+    def _normalize_file(file_path: str) -> str:
+        """归一化文件路径/URL 供 OneBot 文件上传 API 使用。
+
+        逻辑与 _normalize_image_file 一致：HTTP URL 做 SSRF 校验，
+        base64:// / file:// 原样透传，本地路径读字节转 base64://。
+        返回空串表示应跳过。
+        """
+        if not file_path:
+            return file_path
+        low = file_path.lower()
+        if low.startswith(("http://", "https://")):
+            from core.tools.network_safety import validate_url
+            err = validate_url(file_path)
+            if err:
+                logger.warning("[QQ] 拒绝不安全文件 URL: %s", err)
+                return ""
+            return file_path
+        if low.startswith(("base64://", "file://")):
+            return file_path
+        import base64
+        import os
+        if os.path.isfile(file_path):
+            try:
+                with open(file_path, "rb") as f:
+                    b64 = base64.b64encode(f.read()).decode("utf-8")
+                return f"base64://{b64}"
+            except Exception:
+                return ""
+        return file_path
 
     async def send_message(
         self, target_id: str, content: MessageContent, **kwargs
@@ -410,34 +451,76 @@ class QQAdapter(BaseAdapter):
 
             if not self.client.websocket:
                 logger.warning("[QQ] send_message 失败: WebSocket 未连接 (target=%s)", target_id)
-                return False
+                return {"success": False, "failed_files": []}
 
-            result = await self.client.send_action(api_action, params)
-            if result is None:
-                logger.warning(
-                    "[QQ] send_message 失败: 未收到响应 (target=%s, action=%s)",
-                    target_id, api_action,
-                )
-                return False
-            if result.get("status") != "ok":
-                logger.warning(
-                    "[QQ] send_message 失败: status=%s, retcode=%s (target=%s)",
-                    result.get("status"), result.get("retcode", "unknown"), target_id,
-                )
-                return False
+            # 正常消息发送（仅当有内容时）
+            if message_segments:
+                if is_group:
+                    api_action = "send_group_msg"
+                    params = {"group_id": int(target_id), "message": message_segments}
+                else:
+                    api_action = "send_private_msg"
+                    params = {"user_id": int(target_id), "message": message_segments}
 
-            # 缓存已发送消息 ID（用于引用唤醒）
-            message_id = (result.get("data") or {}).get("message_id")
-            if message_id:
-                from ...sent_message_cache import sent_message_cache
+                result = await self.client.send_action(api_action, params)
+                if result is None:
+                    logger.warning(
+                        "[QQ] send_message 失败: 未收到响应 (target=%s, action=%s)",
+                        target_id, api_action,
+                    )
+                    return {"success": False, "failed_files": []}
+                if result.get("status") != "ok":
+                    logger.warning(
+                        "[QQ] send_message 失败: status=%s, retcode=%s (target=%s)",
+                        result.get("status"), result.get("retcode", "unknown"), target_id,
+                    )
+                    return {"success": False, "failed_files": []}
 
-                sent_message_cache.add(str(message_id))
+                # 缓存已发送消息 ID（用于引用唤醒）
+                message_id = (result.get("data") or {}).get("message_id")
+                if message_id:
+                    from ...sent_message_cache import sent_message_cache
 
-            return True
+                    sent_message_cache.add(str(message_id))
+            elif not content.files:
+                return {"success": False, "failed_files": []}
+
+            # 文件上传（独立 API，不走 message 段）
+            failed_files = []
+            if content.files:
+                for file_att in content.files:
+                    file_src = self._normalize_file(file_att.url or file_att.path or file_att.name)
+                    if not file_src:
+                        logger.warning("[QQ] 文件跳过（归一化失败）: %s", file_att.name)
+                        failed_files.append(file_att.name)
+                        continue
+                    upload_params: Dict[str, Any] = {"file": file_src, "name": file_att.name or "file"}
+                    if is_group:
+                        upload_params["group_id"] = int(target_id)
+                        upload_action = "upload_group_file"
+                    else:
+                        upload_params["user_id"] = int(target_id)
+                        upload_action = "upload_private_file"
+                    # 上传 API 成功时 data 可能为 None，用 _call_action 检查 status + retcode
+                    upload_resp = await self._call_action(upload_action, upload_params)
+                    if (
+                        upload_resp is None
+                        or upload_resp.get("status") != "ok"
+                        or upload_resp.get("retcode", 0) != 0
+                    ):
+                        logger.warning(
+                            "[QQ] 文件上传失败: %s (status=%s, retcode=%s)",
+                            file_att.name,
+                            (upload_resp or {}).get("status"),
+                            (upload_resp or {}).get("retcode"),
+                        )
+                        failed_files.append(file_att.name)
+
+            return {"success": True, "failed_files": failed_files}
 
         except Exception as e:
             logger.info(f"[QQ] Failed to send message: {e}")
-            return False
+            return {"success": False, "failed_files": []}
 
     # ── 追溯原文 ─────────────────────────────────────────────────────
 

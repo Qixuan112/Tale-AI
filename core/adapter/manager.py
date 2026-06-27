@@ -378,7 +378,7 @@ class AdapterManager:
         text: Optional[str] = None,
         images: Optional[List[str]] = None,
         **kwargs
-    ) -> bool:
+    ) -> Dict[str, Any]:
         """通过指定适配器发送消息
 
         支持通过实例名或 platform 类型查找适配器。
@@ -389,33 +389,51 @@ class AdapterManager:
             target_id: 目标ID（用户ID或群ID）
             text: 文本内容
             images: 图片URL列表
-            **kwargs: 其他参数
+            **kwargs: 其他参数（包括 files: List[FileAttachment | dict]）
 
         Returns:
             发送是否成功
         """
-        from .event import MessageContent
+        from .event import MessageContent, FileAttachment
 
         # 解析 adapter_id（支持实例名或 platform 类型）
         resolved = self.resolve_adapter_id(adapter_id)
         if not resolved:
             logger.info(f"No running adapter for: {adapter_id}")
-            return False
+            return {"success": False, "failed_files": []}
 
         adapter = self._adapters[resolved]
+
+        # 处理 files 参数：统一转为 FileAttachment 对象
+        raw_files = kwargs.pop("files", None) or []
+        file_attachments = []
+        for f in raw_files:
+            if isinstance(f, FileAttachment):
+                file_attachments.append(f)
+            elif isinstance(f, dict):
+                file_attachments.append(FileAttachment(
+                    name=f.get("name", "file"),
+                    url=f.get("url", ""),
+                    path=f.get("path"),
+                    size=f.get("size"),
+                ))
 
         content = MessageContent(
             text=text,
             images=images or [],
             at_targets=kwargs.get("at_targets") or [],
             reply_to=kwargs.get("reply_to"),
+            files=file_attachments,
         )
 
         try:
-            return await adapter.send_message(target_id, content, **kwargs)
+            result = await adapter.send_message(target_id, content, **kwargs)
+            if isinstance(result, dict):
+                return result
+            return {"success": bool(result), "failed_files": []}
         except Exception as e:
             logger.info(f"Error sending message via {resolved}: {e}")
-            return False
+            return {"success": False, "failed_files": []}
 
     async def broadcast(
         self,

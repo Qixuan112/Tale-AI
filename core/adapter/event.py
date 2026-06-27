@@ -29,6 +29,15 @@ class EventType(Enum):
 
 
 @dataclass
+class FileAttachment:
+    """文件附件"""
+    name: str
+    url: str = ""
+    path: Optional[str] = None
+    size: Optional[str] = None
+
+
+@dataclass
 class MessageContent:
     """标准化消息内容"""
     text: Optional[str] = None
@@ -42,10 +51,11 @@ class MessageContent:
     videos: List[Dict[str, Any]] = field(default_factory=list)
     voices: List[Dict[str, Any]] = field(default_factory=list)
     json_cards: List[Dict[str, Any]] = field(default_factory=list)
+    files: List['FileAttachment'] = field(default_factory=list)
 
     def is_empty(self) -> bool:
         """检查消息是否为空"""
-        return not self.text and not self.images and not self.faces and not self.stickers and not self.videos and not self.voices and not self.json_cards
+        return not self.text and not self.images and not self.faces and not self.stickers and not self.videos and not self.voices and not self.json_cards and not self.files
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
@@ -60,6 +70,7 @@ class MessageContent:
             "videos": self.videos,
             "voices": self.voices,
             "json_cards": self.json_cards,
+            "files": [{"name": f.name, "url": f.url, "path": f.path, "size": f.size} for f in self.files],
         }
 
 
