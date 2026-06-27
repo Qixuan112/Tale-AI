@@ -502,10 +502,19 @@ class QQAdapter(BaseAdapter):
                     else:
                         upload_params["user_id"] = int(target_id)
                         upload_action = "upload_private_file"
-                    # 上传 API 成功时 data 可能为 None，用 _call_action 检查 status
+                    # 上传 API 成功时 data 可能为 None，用 _call_action 检查 status + retcode
                     upload_resp = await self._call_action(upload_action, upload_params)
-                    if upload_resp is None or upload_resp.get("status") != "ok":
-                        logger.warning("[QQ] 文件上传失败: %s (status=%s)", file_att.name, (upload_resp or {}).get("status"))
+                    if (
+                        upload_resp is None
+                        or upload_resp.get("status") != "ok"
+                        or upload_resp.get("retcode", 0) != 0
+                    ):
+                        logger.warning(
+                            "[QQ] 文件上传失败: %s (status=%s, retcode=%s)",
+                            file_att.name,
+                            (upload_resp or {}).get("status"),
+                            (upload_resp or {}).get("retcode"),
+                        )
                         failed_files.append(file_att.name)
 
             return {"success": True, "failed_files": failed_files}

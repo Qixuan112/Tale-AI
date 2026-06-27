@@ -893,6 +893,7 @@ class TaleCore:
         is_group = processed.group_id is not None
         target_id = processed.group_id if processed.group_id else processed.sender_id
         inter_delay = getattr(config_loader.bot.bot, 'typing_inter_delay', 2.0)
+        all_failed_files = []
         for idx, msg in enumerate(messages):
             reply_text = self._extract_message_text(msg)
             if reply_text or msg.images or msg.files:
@@ -916,7 +917,7 @@ class TaleCore:
                 # AI 可主动通过 <reply> 指定引用回复的消息 ID；
                 # 不写 <reply> 则不引用（而非默认引用当前消息）
                 reply_to = msg.reply_to or None
-                await self._send_reply(
+                failed = await self._send_reply(
                     adapter_instance or processed.platform.value,
                     target_id,
                     reply_text,
@@ -926,6 +927,32 @@ class TaleCore:
                     images=msg.images or None,
                     files=msg.files or None,
                 )
+                all_failed_files.extend(failed or [])
+                # 句与句之间的额外停顿（最后一条不等待）
+                if idx < len(messages) - 1:
+                    await asyncio.sleep(inter_delay)
+        # 文件发送失败通知：注入到当前 session 上下文供 AI 感知
+        if all_failed_files:
+            self._notify_file_upload_failure(processed, all_failed_files)
+
+    def _notify_file_upload_failure(self, processed: ProcessedMessage, failed_files: list):
+        """将文件发送失败信息注入 AI 上下文"""
+        file_list = "、".join(failed_files[:5])
+        notice = f"[系统通知] 文件发送失败：{file_list}"
+        # 写入上下文缓冲区
+        key = processed.group_id or processed.sender_id
+        if key:
+            if key not in self._chat_context_buffer:
+                self._chat_context_buffer[key] = []
+            import time
+            self._chat_context_buffer[key].append({
+                "sender": "系统",
+                "text": notice,
+                "time": time.strftime("%H:%M"),
+                "images": [],
+                "files": [],
+            })
+        logger.info("已注入文件发送失败通知: %s", notice)
                 # 句与句之间的额外停顿（最后一条不等待）
                 if idx < len(messages) - 1:
                     await asyncio.sleep(inter_delay)
@@ -1281,8 +1308,10 @@ class TaleCore:
                 logger.warning("发送失败 [%s] -> %s", platform, target_id)
             if failed_files:
                 logger.warning("[文件发送失败] %s -> %s: %s", platform, target_id, failed_files)
+            return failed_files
         except Exception as e:
             logger.error("发送错误: %s", e)
+            return []
 
     async def start_adapters(self):
         """启动所有配置的适配器"""

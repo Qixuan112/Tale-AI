@@ -378,7 +378,7 @@ class AdapterManager:
         text: Optional[str] = None,
         images: Optional[List[str]] = None,
         **kwargs
-    ) -> bool:
+    ) -> Dict[str, Any]:
         """通过指定适配器发送消息
 
         支持通过实例名或 platform 类型查找适配器。
