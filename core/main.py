@@ -953,9 +953,6 @@ class TaleCore:
                 "files": [],
             })
         logger.info("已注入文件发送失败通知: %s", notice)
-                # 句与句之间的额外停顿（最后一条不等待）
-                if idx < len(messages) - 1:
-                    await asyncio.sleep(inter_delay)
 
     @staticmethod
     def _has_tool_content(parsed: dict, raw_reply: str = "") -> bool:
