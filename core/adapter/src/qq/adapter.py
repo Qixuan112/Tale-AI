@@ -488,7 +488,6 @@ class QQAdapter(BaseAdapter):
             # 文件上传（独立 API，不走 message 段）
             failed_files = []
             if content.files:
-                is_group = kwargs.get("is_group", False)
                 for file_att in content.files:
                     file_src = self._normalize_file(file_att.url or file_att.path or file_att.name)
                     if not file_src:

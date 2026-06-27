@@ -552,7 +552,11 @@ class TaleCore:
 
         for msg in recent:
             text = msg.get('text') or ''
-            line = f"[{msg['sender']}] {text}".rstrip() if text else f"[{msg['sender']}] [图片]"
+            if not text and msg.get('files'):
+                file_names = ", ".join(f.get('name', '') for f in msg['files'][:3])
+                line = f"[{msg['sender']}] [文件: {file_names}]"
+            else:
+                line = f"[{msg['sender']}] {text}".rstrip() if text else f"[{msg['sender']}] [图片]"
 
             # 历史消息有图片且 VLM 可用时自动识别
             if vlm_available and msg.get('images') and img_count < max_ctx_images:
@@ -939,19 +943,24 @@ class TaleCore:
         """将文件发送失败信息注入 AI 上下文"""
         file_list = "、".join(failed_files[:5])
         notice = f"[系统通知] 文件发送失败：{file_list}"
-        # 写入上下文缓冲区
+        # 写入上下文缓冲区（插入到当前消息之前，避免被 : -1 跳过）
         key = processed.group_id or processed.sender_id
         if key:
-            if key not in self._chat_context_buffer:
+            if key not in self._chat_context_buffer or not self._chat_context_buffer[key]:
                 self._chat_context_buffer[key] = []
             import time
-            self._chat_context_buffer[key].append({
+            entry = {
                 "sender": "系统",
                 "text": notice,
                 "time": time.strftime("%H:%M"),
                 "images": [],
                 "files": [],
-            })
+            }
+            # 插入到最后一条（当前消息）之前，确保 _build_context_window 的 [:-1] 能读到
+            if self._chat_context_buffer[key]:
+                self._chat_context_buffer[key].insert(-1, entry)
+            else:
+                self._chat_context_buffer[key].append(entry)
         logger.info("已注入文件发送失败通知: %s", notice)
 
     @staticmethod
