@@ -414,7 +414,9 @@ class TaleCore:
         if persistence and self.session_manager:
             return
         key = processed.group_id or processed.sender_id
-        if not key or not processed.text:
+        if not key:
+            return
+        if not processed.text and not processed.images:
             return
         if key not in self._chat_context_buffer:
             self._chat_context_buffer[key] = []
@@ -537,7 +539,8 @@ class TaleCore:
         max_ctx_images = 2
 
         for msg in recent:
-            line = f"[{msg['sender']}] {msg['text']}"
+            text = msg.get('text') or ''
+            line = f"[{msg['sender']}] {text}".rstrip() if text else f"[{msg['sender']}] [图片]"
 
             # 历史消息有图片且 VLM 可用时自动识别
             if vlm_available and msg.get('images') and img_count < max_ctx_images:
@@ -672,8 +675,8 @@ class TaleCore:
                         sess_list = "、".join(accessible)
                         user_input += f"\n[可通信会话] {sess_list}"
 
-                # 条件图片识别：有图片 + 满足触发条件时先用 VLM 识别
-                if processed.images and self._should_recognize_image(processed):
+                # 有图片时直接用 VLM 识别，结果注入上下文供 ChatLLM 感知
+                if processed.images:
                     try:
                         vlm_llm = get_vlm_llm()
                         loop = asyncio.get_running_loop()
@@ -1129,25 +1132,6 @@ class TaleCore:
                 logger.warning("无法解析 Function Calling")
         return results
 
-    def _should_recognize_image(self, processed) -> bool:
-        """判断是否应触发图片识别。
-        条件：@提及 / 引用回复 / 纯贴图(有图无文字) / 唤醒关键词
-        """
-        if getattr(processed, "at_targets", None):
-            return True
-        if getattr(processed, "reply_to", None):
-            return True
-        text = getattr(processed, "text", "") or ""
-        images = getattr(processed, "images", []) or []
-        if not text.strip() and images:
-            return True
-        wake_keywords = config_loader.bot.wake.waking_keywords
-        if wake_keywords and text:
-            text_lower = text.lower()
-            for kw in wake_keywords:
-                if kw.lower() in text_lower:
-                    return True
-        return False
 
     async def _call_chatllm(self, user_input: str, persist_content: str = None,
                              save_to_session: bool = True) -> str:
