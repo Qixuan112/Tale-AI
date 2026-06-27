@@ -36,6 +36,8 @@ class PluginManager:
     _manifests: Dict[str, PluginManifest] = {}
     _schemas: Dict[str, list] = {}
     _scanned_dirs: set = set()
+    # 扫描时因未启用而延迟执行模块代码的插件目录，运行时启用后用于按需加载
+    _deferred_dirs: Dict[str, Path] = {}
 
     _nav_items: List[Dict[str, str]] = []
     _plugins: Dict[str, PluginBase] = {}
@@ -72,31 +74,58 @@ class PluginManager:
     # Discovery
     # ------------------------------------------------------------------
 
-    @classmethod
-    def _load_plugin_module(cls, plugin_dir: Path) -> Optional[str]:
+    def _load_plugin_module(self, plugin_dir: Path) -> Optional[str]:
         """Load manifest + module for a single plugin directory.
 
         Side effects: populates ``_manifests``, ``_schemas``, ``_registry``.
 
         Returns the manifest id on success, or None on failure.
         """
+        cls = type(self)
         plugin_id = plugin_dir.name
         manifest_path = plugin_dir / "manifest.json"
         schema_path = plugin_dir / "schema.json"
         module_file = plugin_dir / "plugin.py"
 
-        # 1. Parse manifest
+        # 1. Parse manifest（manifest 是独立文件，id 无需执行模块即可读取）
         try:
             with open(manifest_path, "r", encoding="utf-8") as f:
                 raw = json.load(f)
             manifest = PluginManifest.from_dict(raw)
             manifest_id = manifest.id or plugin_id
-            cls._manifests[manifest_id] = manifest
         except Exception as e:
             logger.warning("Failed to load manifest for %s: %s", plugin_id, e)
             return None
 
-        # 2. Parse schema (best-effort)
+        # 2. id 冲突保护：已登记的内置插件不允许被后扫描的（自定义）插件覆盖
+        #    与 install_from_zip 的内置冲突保护保持一致；不依赖模块是否已执行，
+        #    因此即使内置插件被禁用（延迟执行）也能挡住自定义插件的同名覆盖。
+        existing_manifest = cls._manifests.get(manifest_id)
+        if (
+            existing_manifest is not None
+            and existing_manifest.builtin
+            and not manifest.builtin
+        ):
+            logger.warning(
+                "拒绝注册插件 %s：与内置插件 id 冲突，跳过 %s",
+                manifest_id, plugin_dir,
+            )
+            return None
+
+        # 3. 延迟执行模块代码：未启用的插件不导入/不执行其模块级代码
+        #    （manifest id 已可读，故可在执行模块前完成启用判断）
+        runtime = self._runtime_configs.get(manifest_id)
+        if runtime is not None and not runtime.enabled:
+            logger.info("Plugin %s is disabled in config, skip module exec", manifest_id)
+            cls._manifests[manifest_id] = manifest
+            # 记录目录，运行时启用时由 load_plugin 按需执行模块
+            cls._deferred_dirs[manifest_id] = plugin_dir
+            return None
+
+        cls._deferred_dirs.pop(manifest_id, None)
+        cls._manifests[manifest_id] = manifest
+
+        # 4. Parse schema (best-effort)
         if schema_path.exists():
             try:
                 with open(schema_path, "r", encoding="utf-8") as f:
@@ -106,12 +135,12 @@ class PluginManager:
         else:
             cls._schemas[manifest_id] = []
 
-        # 3. Module required
+        # 5. Module required
         if not module_file.exists():
             logger.warning("Plugin %s has no plugin.py", plugin_id)
             return None
 
-        # 4. Import module → find PluginBase subclass
+        # 6. Import module → find PluginBase subclass
         try:
             package_name = f"plugins.{plugin_id}"
             module_name = f"{package_name}.plugin"
@@ -167,8 +196,8 @@ class PluginManager:
             logger.warning("  Failed to load plugin %s: %s", plugin_id, e)
             return None
 
-    @classmethod
-    def _scan_plugins(cls, plugins_dir: Path) -> None:
+    def _scan_plugins(self, plugins_dir: Path) -> None:
+        cls = type(self)
         key = str(plugins_dir.resolve())
         if key in cls._scanned_dirs:
             return
@@ -186,15 +215,14 @@ class PluginManager:
             manifest_path = plugin_dir / "manifest.json"
             if not manifest_path.exists():
                 continue
-            cls._load_plugin_module(plugin_dir)
+            self._load_plugin_module(plugin_dir)
 
         cls._scanned_dirs.add(key)
         logger.info(
             "Plugin scan complete. Found %d plugin(s).", len(cls._registry)
         )
 
-    @classmethod
-    def _scan_single_plugin(cls, plugins_dir: Path, plugin_id: str) -> bool:
+    def _scan_single_plugin(self, plugins_dir: Path, plugin_id: str) -> bool:
         """Scan a single plugin subdirectory and register it.
 
         Returns True on success, False on failure.
@@ -202,7 +230,7 @@ class PluginManager:
         plugin_dir = plugins_dir / plugin_id
         if not plugin_dir.is_dir():
             return False
-        return cls._load_plugin_module(plugin_dir) is not None
+        return self._load_plugin_module(plugin_dir) is not None
 
     @classmethod
     def _unregister_plugin(cls, plugin_id: str):
@@ -210,6 +238,7 @@ class PluginManager:
         cls._registry.pop(plugin_id, None)
         cls._manifests.pop(plugin_id, None)
         cls._schemas.pop(plugin_id, None)
+        cls._deferred_dirs.pop(plugin_id, None)
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -221,13 +250,19 @@ class PluginManager:
                 logger.info("Plugin %s is already loaded", plugin_id)
                 return True
 
-            if plugin_id not in self._registry:
-                logger.warning("Plugin %s not found in registry", plugin_id)
-                return False
-
             runtime = self._runtime_configs.get(plugin_id)
             if runtime and not runtime.enabled:
                 logger.info("Plugin %s is disabled in config, skipping", plugin_id)
+                return False
+
+            # 启用但模块尚未执行（扫描时因未启用而延迟）：此刻按需执行模块代码
+            if plugin_id not in self._registry:
+                deferred_dir = PluginManager._deferred_dirs.get(plugin_id)
+                if deferred_dir is not None:
+                    self._load_plugin_module(deferred_dir)
+
+            if plugin_id not in self._registry:
+                logger.warning("Plugin %s not found in registry", plugin_id)
                 return False
 
             manifest = self._manifests[plugin_id]

@@ -19,7 +19,8 @@ class AgentContextConfig:
         return {s["name"]: s.get("order", 0) for s in self.sections}
 
     def get_cacheable_map(self) -> Dict[str, bool]:
-        return {s["name"]: s.get("cacheable", True) for s in self.sections}
+        # 仅返回 YAML 中显式声明了 cacheable 的 section，避免用默认值覆盖 section 自身的设置
+        return {s["name"]: s["cacheable"] for s in self.sections if "cacheable" in s}
 
 
 @dataclass
@@ -54,11 +55,17 @@ class ContextConfig:
             agent_context.reorder(order_map)
 
         # Apply cacheable flags
+        # 仅对 YAML 中显式声明 cacheable 的 section 应用，未声明的保留 section 自身的值
         cache_map = agent_cfg.get_cacheable_map()
         for section_name, cacheable in cache_map.items():
             section = agent_context.get_section(section_name)
             if section:
                 section.cacheable = cacheable
+
+        # 任何带动态内容提供器的 section 强制保持非缓存，避免动态内容被缓存后变陈旧
+        for section in agent_context.sections:
+            if getattr(section, "_content_provider", None) is not None:
+                section.cacheable = False
 
     @classmethod
     def from_yaml(cls, path: str) -> "ContextConfig":

@@ -6,6 +6,7 @@ import json
 import os
 import threading
 import time
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Literal, Optional
@@ -109,8 +110,10 @@ class WeChatClient:
         self._session_cache: list[str] = []
         self._group_cache: dict[str, Optional[bool]] = self._load_group_cache()
         self._connected = False
-        self._last_msg_ids: dict[str, set[str]] = {}  # 各会话上次轮询的消息 id
-        self._last_msg_fingerprints: dict[str, set[str]] = {}  # 各会话上次轮询的内容指纹（RuntimeId 失效时兜底去重）
+        # 用 OrderedDict 按插入序保留最近 N 条；存为有序结构而非 set，
+        # 确保超限截断时确定性地丢弃最旧、保留最新（set 迭代无序会误删最新 id）。
+        self._last_msg_ids: dict[str, "OrderedDict[str, None]"] = {}  # 各会话上次轮询的消息 id
+        self._last_msg_fingerprints: dict[str, "OrderedDict[str, None]"] = {}  # 各会话上次轮询的内容指纹（RuntimeId 失效时兜底去重）
         self._recent_fingerprints: dict[str, list[tuple[str, float]]] = {}  # 各会话最近见过的消息指纹，用于时间窗口去重
 
     @staticmethod
@@ -246,7 +249,9 @@ class WeChatClient:
                 all_msgs = self._wx.GetAllMessage()
                 current_chat = self._wx.CurrentChat()
                 if all_msgs and current_chat:
-                    current_ids = {getattr(m, "id", "") for m in all_msgs if getattr(m, "id", "")}
+                    current_ids = OrderedDict.fromkeys(
+                        mid for m in all_msgs if (mid := getattr(m, "id", ""))
+                    )
                     self._last_msg_ids[current_chat] = current_ids
                     # 同步初始化 wxauto 的 usedmsgid，避免 GetNextNewMessage 首次调用时
                     # 因 usedmsgid 为空而错误进入"获取其他窗口新消息"分支导致超时
@@ -422,14 +427,16 @@ class WeChatClient:
                 except Exception as sync_e:
                     logger.debug(f"[poll] Failed to sync wxauto usedmsgid: {sync_e}")
 
-                current_ids = {getattr(m, "id", "") for m in all_msgs if getattr(m, "id", "")}
+                current_ids = OrderedDict.fromkeys(
+                    mid for m in all_msgs if (mid := getattr(m, "id", ""))
+                )
                 last_ids = self._last_msg_ids.get(current_chat)
 
                 # 同时维护内容指纹集合，作为 RuntimeId 失效时的去重兜底
-                current_fingerprints = {
+                current_fingerprints = OrderedDict.fromkeys(
                     self._msg_fingerprint(current_chat, m) for m in all_msgs
-                }
-                last_fps = self._last_msg_fingerprints.get(current_chat, set())
+                )
+                last_fps = self._last_msg_fingerprints.get(current_chat, OrderedDict())
 
                 if last_ids is None:
                     # 首次轮询该会话：只记录 id，不返回任何消息
@@ -466,16 +473,28 @@ class WeChatClient:
                             self._record_fingerprint(current_chat, fp)
                             raw_messages[current_chat].append(m)
 
-                    # 更新记录，限制集合大小防止内存泄漏
-                    merged_ids = current_ids | last_ids
-                    if len(merged_ids) > MAX_MSG_ID_CACHE:
-                        merged_ids = set(list(merged_ids)[-MAX_MSG_ID_CACHE:])
-                    self._last_msg_ids[current_chat] = merged_ids
+                    # 更新记录，限制集合大小防止内存泄漏。
+                    # 全程用 OrderedDict 保序：本轮出现的 id/指纹 move_to_end 置于尾部（最新），
+                    # 超限时 popitem(last=False) 丢弃最旧，保证最新项始终保留、截断确定性。
+                    merged_ids_od: "OrderedDict[str, None]" = OrderedDict(last_ids or OrderedDict())
+                    for m in all_msgs:
+                        mid = getattr(m, "id", "")
+                        if not mid:
+                            continue
+                        merged_ids_od[mid] = None
+                        merged_ids_od.move_to_end(mid)
+                    while len(merged_ids_od) > MAX_MSG_ID_CACHE:
+                        merged_ids_od.popitem(last=False)
+                    self._last_msg_ids[current_chat] = merged_ids_od
 
-                    merged_fps = current_fingerprints | last_fps
-                    if len(merged_fps) > MAX_MSG_ID_CACHE:
-                        merged_fps = set(list(merged_fps)[-MAX_MSG_ID_CACHE:])
-                    self._last_msg_fingerprints[current_chat] = merged_fps
+                    merged_fps_od: "OrderedDict[str, None]" = OrderedDict(last_fps or OrderedDict())
+                    for m in all_msgs:
+                        fp = self._msg_fingerprint(current_chat, m)
+                        merged_fps_od[fp] = None
+                        merged_fps_od.move_to_end(fp)
+                    while len(merged_fps_od) > MAX_MSG_ID_CACHE:
+                        merged_fps_od.popitem(last=False)
+                    self._last_msg_fingerprints[current_chat] = merged_fps_od
         except Exception as e:
             logger.debug(f"Fallback GetAllMessage failed: {e}")
 

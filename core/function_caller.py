@@ -70,16 +70,16 @@ def parse_function_call(response_text: str) -> dict:
         # 解析 JSON
         data = json.loads(json_str)
         
-        # 检查必需字段
-        if "function" in data and "arguments" in data:
+        # 检查必需字段（非 dict 结果，如裸数字/null，视为不是 function call）
+        if isinstance(data, dict) and "function" in data and "arguments" in data:
             return {
                 "name": data["function"],
                 "parameters": data["arguments"]
             }
-        
+
         return None
-        
-    except (json.JSONDecodeError, KeyError):
+
+    except (json.JSONDecodeError, KeyError, TypeError):
         return None
 
 

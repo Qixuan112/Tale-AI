@@ -10,6 +10,31 @@ import operator
 from typing import Union, Any
 
 
+# 幂运算限制：防止 9**9**9 / 2**99999999 这类表达式阻塞事件循环或耗尽内存
+_MAX_POW_EXPONENT = 1000          # 指数绝对值上限
+_MAX_POW_BASE = 10 ** 6           # 底数绝对值上限
+_MAX_POW_RESULT_BITS = 4096       # 结果位长上限（约 1233 位十进制数）
+
+
+def _safe_pow(base, exp):
+    """
+    受限的幂运算，超出限制时抛出 ValueError（由上层错误处理转为普通计算错误）
+
+    限制：指数绝对值 <= 1000，底数绝对值 <= 1e6，结果位长 <= 4096 位
+    """
+    # 指数绝对值过大直接拒绝
+    if abs(exp) > _MAX_POW_EXPONENT:
+        raise ValueError(f"指数过大（绝对值上限 {_MAX_POW_EXPONENT}）")
+    # 底数绝对值过大且指数会放大时拒绝
+    if abs(base) > _MAX_POW_BASE and abs(exp) > 1:
+        raise ValueError(f"底数过大（绝对值上限 {_MAX_POW_BASE}）")
+    result = operator.pow(base, exp)
+    # 整数结果位长超限时拒绝，避免巨型整数运算
+    if isinstance(result, int) and result.bit_length() > _MAX_POW_RESULT_BITS:
+        raise ValueError(f"计算结果过大（位长上限 {_MAX_POW_RESULT_BITS}）")
+    return result
+
+
 # 支持的运算符映射
 _OPERATORS = {
     ast.Add: operator.add,
@@ -18,7 +43,7 @@ _OPERATORS = {
     ast.Div: operator.truediv,
     ast.FloorDiv: operator.floordiv,
     ast.Mod: operator.mod,
-    ast.Pow: operator.pow,
+    ast.Pow: _safe_pow,
     ast.USub: operator.neg,
     ast.UAdd: operator.pos,
 }
@@ -96,6 +121,12 @@ def _eval_node(node: ast.AST) -> Any:
 
         args = [_eval_node(arg) for arg in node.args]
         kwargs = {kw.arg: _eval_node(kw.value) for kw in node.keywords}
+
+        # pow 函数走受限实现，防止 pow(2, 99999999) 这类 DoS
+        if func_name == "pow":
+            if kwargs or len(args) != 2:
+                raise ValueError("pow 仅支持两个位置参数")
+            return _safe_pow(args[0], args[1])
 
         import builtins
         # 获取内置函数

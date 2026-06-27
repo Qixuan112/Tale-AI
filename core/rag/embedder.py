@@ -53,10 +53,16 @@ class OpenAIEmbedder(BaseEmbedder):
             self._dim = len(probe.data[0].embedding)
         return self._dim
 
+    def _supports_dimensions(self) -> bool:
+        """仅 text-embedding-3 系列支持显式指定 dimensions；
+        ada-002 及第三方兼容端点会因该参数返回 400，故不发送"""
+        return self._model.startswith("text-embedding-3")
+
     def _build_kwargs(self, input_batch: list) -> dict:
         """构造传给 embeddings.create 的参数"""
         kwargs: dict = {"input": input_batch, "model": self._model}
-        if self._dim is not None:
+        # 仅在模型支持时才发送 dimensions，避免 ada-002/兼容端点报错
+        if self._dim is not None and self._supports_dimensions():
             kwargs["dimensions"] = self._dim
         return kwargs
 

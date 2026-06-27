@@ -8,7 +8,7 @@ from urllib.parse import urljoin
 
 from ddgs import DDGS
 
-from .network_safety import validate_url, MAX_RESPONSE_BYTES
+from .network_safety import safe_request, SSRFValidationError, MAX_RESPONSE_BYTES
 
 # 尝试导入 requests 和 BeautifulSoup
 try:
@@ -51,55 +51,76 @@ def fetch_url(
     try:
         if not url.startswith(('http://', 'https://')):
             url = 'https://' + url
-        # SSRF 防护
-        ssrf_error = validate_url(url)
-        if ssrf_error:
-            return {"status": "failed", "tool": "browser.fetch_url", "error": f"SSRF 安全检查未通过: {ssrf_error}"}
         default_headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
         }
-        
+
         if headers:
             default_headers.update(headers)
-        
+
         request_kwargs = {
             "headers": default_headers,
             "timeout": timeout,
+            # 流式读取：避免无 Content-Length 的响应被 response.text 一次性全量缓冲，
+            # 下面按 MAX_RESPONSE_BYTES 边读边截断，防止内存被打爆。
+            "stream": True,
             "verify": verify_ssl,
-            "allow_redirects": False,
         }
 
         redirect_count = 0
         max_redirects = 5
-        if method.lower() == "post":
-            response = requests.post(url, **request_kwargs)
-        else:
-            response = requests.get(url, **request_kwargs)
-        while response.is_redirect and redirect_count < max_redirects:
-            raw_redirect = response.headers.get("Location")
-            if not raw_redirect:
-                break
-            redirect_count += 1
-            redirect_url = urljoin(response.url, raw_redirect)
-            redirect_ssrf = validate_url(redirect_url)
-            if redirect_ssrf:
-                return {"status": "failed", "tool": "browser.fetch_url", "error": f"重定向目标 SSRF 安全检查未通过: {redirect_ssrf}"}
-            response = requests.get(redirect_url, **request_kwargs)
+        # safe_request 内部完成「解析 -> 校验全部 IP -> 固定连接到已校验 IP」，
+        # 消除 TOCTOU / DNS rebinding；并强制禁用自动重定向，由下面逐跳重新校验。
+        try:
+            request_method = "post" if method.lower() == "post" else "get"
+            response = safe_request(request_method, url, requests_mod=requests, **request_kwargs)
+            while response.is_redirect and redirect_count < max_redirects:
+                raw_redirect = response.headers.get("Location")
+                if not raw_redirect:
+                    break
+                redirect_count += 1
+                redirect_url = urljoin(response.url, raw_redirect)
+                # 重定向后统一改用 GET 重新发起，且每一跳都重新解析+校验+固定 IP
+                response = safe_request("get", redirect_url, requests_mod=requests, **request_kwargs)
+        except SSRFValidationError as e:
+            return {"status": "failed", "tool": "browser.fetch_url", "error": f"SSRF 安全检查未通过: {e}"}
 
         response.raise_for_status()
 
         content_len_header = response.headers.get("content-length")
         if content_len_header and int(content_len_header) > MAX_RESPONSE_BYTES:
+            response.close()
             return {"status": "failed", "tool": "browser.fetch_url", "error": f"响应过大 (>{MAX_RESPONSE_BYTES // 1024 // 1024}MB)"}
 
-        if encoding:
-            response.encoding = encoding
-        else:
-            response.encoding = response.apparent_encoding
+        # 流式读取原始字节并按上限截断，避免无 Content-Length 的响应被全量缓冲
+        raw = bytearray()
+        try:
+            for chunk in response.iter_content(8192):
+                if not chunk:
+                    continue
+                raw.extend(chunk)
+                if len(raw) >= MAX_RESPONSE_BYTES:
+                    del raw[MAX_RESPONSE_BYTES:]
+                    break
+        finally:
+            response.close()
+        raw_bytes = bytes(raw)
 
-        content = response.text
+        # 推断编码：显式指定 > 响应头声明 > 内容探测 > utf-8
+        if encoding:
+            enc = encoding
+        else:
+            enc = response.encoding
+            if not enc or enc.lower() == "iso-8859-1":
+                try:
+                    from charset_normalizer import from_bytes
+                    guess = from_bytes(raw_bytes).best()
+                    enc = guess.encoding if guess else (enc or "utf-8")
+                except Exception:
+                    enc = enc or "utf-8"
+        content = raw_bytes.decode(enc or "utf-8", errors="replace")
         if len(content) > MAX_RESPONSE_BYTES:
             content = content[:MAX_RESPONSE_BYTES]
 

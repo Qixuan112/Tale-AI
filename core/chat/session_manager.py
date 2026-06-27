@@ -86,14 +86,27 @@ class SessionManager:
             if mem and isinstance(mem[0], list):
                 new_mem = []
                 for chunk in mem:
-                    user_msg = chunk[0] if len(chunk) > 0 else {"role": "user", "content": ""}
-                    asst_msg = chunk[1] if len(chunk) > 1 else {"role": "assistant", "content": ""}
+                    user_msg = chunk[0] if len(chunk) > 0 else ""
+                    asst_msg = chunk[1] if len(chunk) > 1 else ""
                     new_mem.append({
                         "id": self._alloc_chunk_id(),
-                        "user": user_msg.get("content", ""),
-                        "assistant": asst_msg.get("content", ""),
+                        "user": self._chunk_content(user_msg),
+                        "assistant": self._chunk_content(asst_msg),
                     })
                 d["memory"] = new_mem
+
+    @staticmethod
+    def _chunk_content(x) -> str:
+        """从旧格式 chunk 元素提取文本：dict 取 content，str 直接用，其它强制空串。
+
+        兼容两种历史数据：[[{"content":..}, ..], ..] 和 [["hi", "hello"], ..]，
+        避免单条脏数据触发 AttributeError 导致整次加载失败。
+        """
+        if isinstance(x, dict):
+            return x.get("content", "")
+        if isinstance(x, str):
+            return x
+        return ""
 
     def _alloc_chunk_id(self) -> int:
         """分配一个新的递增 chunk id（须持锁调用）"""

@@ -33,6 +33,9 @@ class BridgeMessage:
         self.from_sid = from_sid
         self.content = content[:BridgeState.MAX_CONTENT]
         self.timestamp = int(time.time())
+        # 进入 pending 的时刻，移入 pending 时刷新；与 timestamp（创建时刻）独立，
+        # 用于 pending 超时判定，避免老消息按创建时间被误判过期循环重投。
+        self.enqueued_at = 0
 
     def to_dict(self) -> dict:
         return {"id": self.id, "from_sid": self.from_sid,
@@ -53,6 +56,7 @@ class BridgeState:
     PENDING_TIMEOUT = 300   # pending 超时重投（秒）
     RATE_INTERVAL = 60      # 率控时间窗口（秒）
     RATE_LIMIT = 10         # 窗口内最大发送数
+    SID_IDLE_TTL = 3600     # 空闲 sid 淘汰 TTL（秒）：inbox/pending 皆空且超时则清理
 
     def __init__(self):
         self._inbox: dict[str, list[BridgeMessage]] = {}
@@ -60,9 +64,39 @@ class BridgeState:
         self._processed: dict[str, list[tuple]] = {}  # [(msg_id, timestamp), ...] FIFO
         self._locks: dict[str, asyncio.Lock] = {}
         self._rate: dict[str, list[float]] = {}
+        self._last_active: dict[str, float] = {}  # 每 sid 最后活跃时刻，用于空闲淘汰
 
     def _lock(self, sid: str) -> asyncio.Lock:
         return self._locks.setdefault(sid, asyncio.Lock())
+
+    def _touch(self, sid: str):
+        """刷新 sid 最后活跃时刻"""
+        self._last_active[sid] = time.time()
+
+    def _evict_idle(self):
+        """空闲 sid 淘汰：inbox 与 pending 皆空、超过 SID_IDLE_TTL 未活跃，
+        且锁未被持有/争用时，从全部五个 dict 与锁表中移除该 sid，
+        维持"所有集合有上界"的不变式。
+        """
+        cutoff = time.time() - BridgeState.SID_IDLE_TTL
+        # 快照键，避免遍历中修改。并集 _locks 以回收「只创建了锁却没记录活跃时刻」
+        # 的孤儿锁（缺失 _last_active 视为 0，即已空闲）。
+        for sid in list(set(self._last_active.keys()) | set(self._locks.keys())):
+            if self._last_active.get(sid, 0) > cutoff:
+                continue
+            if self._inbox.get(sid) or self._pending.get(sid):
+                continue
+            lock = self._locks.get(sid)
+            # 仅淘汰空闲（锁未被持有/无人等待）的 sid，避免清理正在使用的锁
+            if lock is not None and lock.locked():
+                continue
+            self._inbox.pop(sid, None)
+            self._pending.pop(sid, None)
+            self._processed.pop(sid, None)
+            self._rate.pop(sid, None)
+            self._locks.pop(sid, None)
+            self._last_active.pop(sid, None)
+            logger.debug("跨会话空闲 sid 淘汰: sid=%s", sid)
 
     # ── 权限校验 ───────────────────────────────────────────────
 
@@ -156,9 +190,41 @@ class BridgeState:
                 logger.warning("跨会话 inbox 溢出丢弃: to=%s, dropped_id=%s, from=%s",
                                to_sid, dropped.id, dropped.from_sid)
             inbox.append(msg)
+            self._touch(to_sid)
+
+        # 空闲 sid 淘汰（不持锁，仅清理已空且超时的 sid）
+        self._evict_idle()
 
         logger.info("跨会话消息已发送: %s → %s (id=%s, len=%d)",
                     from_sid, to_sid, msg.id, len(text))
+        return msg.id
+
+    async def add_system_message(self, sid: str, text: str) -> str:
+        """向指定会话 inbox 追加一条系统消息（不做权限/率控校验）
+
+        用于系统侧主动注入消息（from_sid 形如 "system"），复用 send() 的
+        BridgeMessage 构造与 inbox 追加逻辑，但绕过 _check_permission/_check_rate。
+
+        Returns:
+            消息 id
+        """
+        # 构造消息（自动 500 字符截断）
+        text = text[:BridgeState.MAX_CONTENT]
+        msg = BridgeMessage("system", text)
+
+        # 写入目标 inbox（持目标锁）
+        async with self._lock(sid):
+            if sid not in self._inbox:
+                self._inbox[sid] = []
+            inbox = self._inbox[sid]
+            if len(inbox) >= BridgeState.MAX_INBOX:
+                dropped = inbox.pop(0)
+                logger.warning("跨会话 inbox 溢出丢弃: to=%s, dropped_id=%s, from=%s",
+                               sid, dropped.id, dropped.from_sid)
+            inbox.append(msg)
+            self._touch(sid)
+
+        logger.info("系统消息已注入: → %s (id=%s, len=%d)", sid, msg.id, len(text))
         return msg.id
 
     async def consume(self, sid: str) -> list[dict]:
@@ -171,14 +237,17 @@ class BridgeState:
             消息 dict 列表 [{"id":..., "from_sid":..., "content":..., "timestamp":...}]
         """
         async with self._lock(sid):
+            self._touch(sid)
             # 1. 检查 pending 超时消息 → 重新入队
-            now = int(time.time())
+            #    超时以 enqueued_at（进入 pending 时刻）为准，而非 timestamp（创建时刻），
+            #    否则老消息会在下一次 consume 立即被判定过期，无限循环重投。
+            now = time.time()
             cutoff = now - BridgeState.PENDING_TIMEOUT
             expired = [m for m in self._pending.get(sid, [])
-                       if m.timestamp < cutoff]
+                       if m.enqueued_at < cutoff]
             if expired:
                 self._pending[sid] = [m for m in self._pending.get(sid, [])
-                                      if m.timestamp >= cutoff]
+                                      if m.enqueued_at >= cutoff]
                 for m in expired:
                     if sid not in self._inbox:
                         self._inbox[sid] = []
@@ -193,9 +262,12 @@ class BridgeState:
             # 3. 过滤已处理的
             filtered = [m for m in to_consume if not self._is_processed(sid, m.id)]
 
-            # 4. 移入 pending
+            # 4. 移入 pending，记录进入 pending 的时刻供超时判定
             if sid not in self._pending:
                 self._pending[sid] = []
+            enqueued_at = time.time()
+            for m in filtered:
+                m.enqueued_at = enqueued_at
             self._pending[sid].extend(filtered)
 
             return [m.to_dict() for m in filtered]
@@ -207,6 +279,7 @@ class BridgeState:
         不存在的 id 静默忽略（幂等）。
         """
         async with self._lock(sid):
+            self._touch(sid)
             id_set = set(message_ids)
             pending = self._pending.get(sid, [])
             keep = [m for m in pending if m.id not in id_set]
@@ -220,6 +293,7 @@ class BridgeState:
     async def format_for_prompt(self, sid: str) -> str:
         """格式化本会话的 inbox 消息为 LLM prompt 文本（加锁读取）"""
         async with self._lock(sid):
+            self._touch(sid)
             msgs = list(self._inbox.get(sid, []))
         if not msgs:
             return ""
