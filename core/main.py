@@ -961,6 +961,16 @@ class TaleCore:
                 self._chat_context_buffer[key].insert(-1, entry)
             else:
                 self._chat_context_buffer[key].append(entry)
+
+        # 持久化路径：写入会话记忆，供下次 set_session 时 AI 感知
+        persistence = config_loader.bot.bot.persistence_enabled
+        if persistence and self.session_manager and self.chat and self.chat.current_sid:
+            # append_memory 需要 user+assistant 均非空，用占位保证配对完整性
+            self.session_manager.append_memory(
+                self.chat.current_sid,
+                {"role": "user", "content": notice},
+                {"role": "assistant", "content": "（文件上传失败通知已被记录）"},
+            )
         logger.info("已注入文件发送失败通知: %s", notice)
 
     @staticmethod
