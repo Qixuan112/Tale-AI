@@ -400,7 +400,7 @@ class AdapterManager:
         resolved = self.resolve_adapter_id(adapter_id)
         if not resolved:
             logger.info(f"No running adapter for: {adapter_id}")
-            return False
+            return {"success": False, "failed_files": []}
 
         adapter = self._adapters[resolved]
 
@@ -414,6 +414,7 @@ class AdapterManager:
                 file_attachments.append(FileAttachment(
                     name=f.get("name", "file"),
                     url=f.get("url", ""),
+                    path=f.get("path"),
                     size=f.get("size"),
                 ))
 

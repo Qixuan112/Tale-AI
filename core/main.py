@@ -376,6 +376,7 @@ class TaleCore:
             )
 
             content_data = event_data.get("content", {})
+            from .adapter.event import FileAttachment
             content = MessageContent(
                 text=content_data.get("text"),
                 images=content_data.get("images", []),
@@ -387,6 +388,16 @@ class TaleCore:
                 videos=content_data.get("videos", []),
                 voices=content_data.get("voices", []),
                 json_cards=content_data.get("json_cards", []),
+                files=[
+                    f if isinstance(f, FileAttachment) else FileAttachment(
+                        name=f.get("name", "file"),
+                        url=f.get("url", ""),
+                        path=f.get("path"),
+                        size=f.get("size"),
+                    )
+                    for f in content_data.get("files", [])
+                    if isinstance(f, (FileAttachment, dict))
+                ],
             )
 
             timestamp_str = event_data.get("timestamp")
@@ -416,7 +427,7 @@ class TaleCore:
         key = processed.group_id or processed.sender_id
         if not key:
             return
-        if not processed.text and not processed.images:
+        if not processed.text and not processed.images and not processed.files:
             return
         if key not in self._chat_context_buffer:
             self._chat_context_buffer[key] = []
@@ -426,6 +437,7 @@ class TaleCore:
             "text": processed.text,
             "time": time.strftime("%H:%M"),
             "images": list(getattr(processed, "images", []) or []),
+            "files": [{"name": f.name, "url": f.url, "size": f.size} for f in (getattr(processed, "files", []) or [])],
         })
         # 限制缓冲区大小，防止内存泄漏
         if len(self._chat_context_buffer[key]) > 100:
@@ -626,6 +638,9 @@ class TaleCore:
             extra_media.append(f"[收到 {len(processed.stickers)} 个动画表情]")
         if processed.videos:
             extra_media.append(f"[收到 {len(processed.videos)} 个视频]")
+        if processed.files:
+            file_names = ", ".join(f.name for f in processed.files[:5])
+            extra_media.append(f"[收到 {len(processed.files)} 个文件: {file_names}]")
         if extra_media:
             user_input += "\n" + " ".join(extra_media)
 

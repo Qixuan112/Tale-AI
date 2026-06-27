@@ -100,6 +100,7 @@ class ProcessedMessage:
             "videos": self.videos,
             "voices": self.voices,
             "json_cards": self.json_cards,
+            "files": [{"name": f.name, "url": f.url, "path": f.path, "size": f.size} for f in self.files],
             "group_id": self.group_id,
             "group_name": self.group_name,
             "decision": self.decision.value,

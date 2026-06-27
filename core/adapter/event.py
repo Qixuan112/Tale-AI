@@ -32,7 +32,8 @@ class EventType(Enum):
 class FileAttachment:
     """文件附件"""
     name: str
-    url: str
+    url: str = ""
+    path: Optional[str] = None
     size: Optional[str] = None
 
 
@@ -69,7 +70,7 @@ class MessageContent:
             "videos": self.videos,
             "voices": self.voices,
             "json_cards": self.json_cards,
-            "files": [{"name": f.name, "url": f.url, "size": f.size} for f in self.files],
+            "files": [{"name": f.name, "url": f.url, "path": f.path, "size": f.size} for f in self.files],
         }
 
 
