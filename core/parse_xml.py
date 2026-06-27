@@ -175,6 +175,18 @@ def _fallback_extract(data: str, error_msg: str) -> dict:
         else:
             result["messages"][-1].images.extend(image_urls)
 
+    # 尝试提取 <file>，附加到最后一条消息
+    file_pattern = re.compile(r'<file\s+([^>]+)/>', re.DOTALL)
+    for file_match in file_pattern.finditer(data):
+        attrs_str = file_match.group(1)
+        file_info = {"name": "file", "url": "", "path": ""}
+        for attr_match in re.finditer(r'(\w+)="([^"]*)"', attrs_str):
+            key, val = attr_match.group(1), attr_match.group(2)
+            if key in file_info:
+                file_info[key] = val
+        if result["messages"]:
+            result["messages"][-1].files.append(file_info)
+
     # 尝试提取 <act>
     act_pattern = re.compile(r'<act>\s*(.*?)\s*</act>', re.DOTALL)
     for m in act_pattern.findall(data):
@@ -231,8 +243,17 @@ def _parse_root(root: ET.Element) -> dict:
             elif tag == "image":
                 if value:  # URL 或本地路径
                     message.images.append(value)
+            elif tag == "file":
+                file_name = child.get("name", "file")
+                file_url = child.get("url", "")
+                file_path = child.get("path", "")
+                message.files.append({
+                    "name": file_name,
+                    "url": file_url,
+                    "path": file_path,
+                })
 
-        if message.elements or message.images:
+        if message.elements or message.images or message.files:
             result["messages"].append(message)
 
     # 解析 <act> 动作标签 → 发给 ToolLLM（支持多个）

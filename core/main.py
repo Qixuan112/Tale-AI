@@ -853,12 +853,13 @@ class TaleCore:
                     )
                     await self.bridge.ack(to_sid, [msg_id])
                     return
-                success = await self.adapter_bridge.send_message(
+                result = await self.adapter_bridge.send_message(
                     adapter_id=adapter_name,
                     target_id=target_id,
                     text=text,
                     is_group=(stype == "gm"),
                 )
+                success = result.get("success", False) if isinstance(result, dict) else bool(result)
                 logger.info("跨会话主动推送: %s → %s (success=%s)", from_sid, to_sid, success)
                 # 3. 推送成功后立即 ack，避免目标会话 consume 时重复注入
                 if success:
@@ -879,7 +880,7 @@ class TaleCore:
         inter_delay = getattr(config_loader.bot.bot, 'typing_inter_delay', 2.0)
         for idx, msg in enumerate(messages):
             reply_text = self._extract_message_text(msg)
-            if reply_text or msg.images:
+            if reply_text or msg.images or msg.files:
                 # 打字延迟：每条消息发送前等待，模拟真人逐条打字
                 # 纯图片消息（reply_text 为空）给一个基础延迟，避免瞬发像机器人
                 text_len = len(reply_text) if reply_text else 20
@@ -908,6 +909,7 @@ class TaleCore:
                     is_group=is_group,
                     at_targets=at_targets,
                     images=msg.images or None,
+                    files=msg.files or None,
                 )
                 # 句与句之间的额外停顿（最后一条不等待）
                 if idx < len(messages) - 1:
@@ -1222,6 +1224,7 @@ class TaleCore:
         is_group: bool = False,
         at_targets: Optional[list] = None,
         images: Optional[list] = None,
+        files: Optional[list] = None,
     ):
         """发送回复消息
 
@@ -1233,12 +1236,13 @@ class TaleCore:
             is_group: 是否为群消息
             at_targets: @目标列表（群聊时传入发送者ID以触发真实提醒）
             images: 图片 URL/路径列表（可选）
+            files: 文件附件列表（可选，FileAttachment 或 dict）
         """
-        if not self.adapter_bridge or (not reply and not images):
+        if not self.adapter_bridge or (not reply and not images and not files):
             return
 
         try:
-            success = await self.adapter_bridge.send_message(
+            send_kwargs = dict(
                 adapter_id=platform,
                 target_id=target_id,
                 text=reply,
@@ -1247,10 +1251,21 @@ class TaleCore:
                 is_group=is_group,
                 at_targets=at_targets,
             )
+            if files:
+                send_kwargs["files"] = files
+            result = await self.adapter_bridge.send_message(**send_kwargs)
+            if isinstance(result, dict):
+                success = result.get("success", False)
+                failed_files = result.get("failed_files", [])
+            else:
+                success = bool(result)
+                failed_files = []
             if success:
                 logger.info("发送成功 [%s] -> %s", platform, target_id)
             else:
                 logger.warning("发送失败 [%s] -> %s", platform, target_id)
+            if failed_files:
+                logger.warning("[文件发送失败] %s -> %s: %s", platform, target_id, failed_files)
         except Exception as e:
             logger.error("发送错误: %s", e)
 

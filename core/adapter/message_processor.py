@@ -17,7 +17,7 @@ from typing import Dict, Any, Optional, List, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 
-from .event import PlatformEvent, EventType, PlatformType
+from .event import PlatformEvent, EventType, PlatformType, FileAttachment
 
 
 class ResponseDecision(Enum):
@@ -54,6 +54,7 @@ class ProcessedMessage:
     videos: List[Dict[str, Any]] = field(default_factory=list)
     voices: List[Dict[str, Any]] = field(default_factory=list)
     json_cards: List[Dict[str, Any]] = field(default_factory=list)
+    files: List[FileAttachment] = field(default_factory=list)
 
     # 群组信息（如果是群消息）
     group_id: Optional[str] = None
@@ -221,6 +222,7 @@ class MessageProcessor:
             videos=event.content.videos,
             voices=event.content.voices,
             json_cards=event.content.json_cards,
+            files=event.content.files,
             group_id=event.group_id,
             group_name=event.group_name,
             raw_event=event.raw_event,
