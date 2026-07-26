@@ -149,6 +149,9 @@ def _fallback_extract(data: str, error_msg: str) -> dict:
     if re.search(r'<msg>\s*</msg>', data):
         result["skip_reply"] = True
 
+    # 兼容自闭合 <file .../> 与成对 <file ...></file> 两种形式
+    file_pattern = re.compile(r'<file\s+([^>]+?)\s*/?>(?:\s*</file>)?', re.DOTALL)
+
     # 尝试正则提取 <msg><text>...</text></msg>
     text_pattern = re.compile(r'<text>\s*(.*?)\s*</text>', re.DOTALL)
     matches = text_pattern.findall(data)
@@ -160,8 +163,9 @@ def _fallback_extract(data: str, error_msg: str) -> dict:
             result["messages"].append(msg)
     else:
         # 最终回退：将整个内容作为纯文本消息
+        # （剥离已识别的 <file> 标记，避免原始标签文本发给用户）
         msg = Message()
-        msg.add_element(Text(data.strip()))
+        msg.add_element(Text(file_pattern.sub('', data).strip()))
         result["messages"].append(msg)
 
     # 尝试提取 <image>（URL 或本地路径），附加到最后一条消息
@@ -176,7 +180,6 @@ def _fallback_extract(data: str, error_msg: str) -> dict:
             result["messages"][-1].images.extend(image_urls)
 
     # 尝试提取 <file>，附加到最后一条消息
-    file_pattern = re.compile(r'<file\s+([^>]+)/>', re.DOTALL)
     for file_match in file_pattern.finditer(data):
         attrs_str = file_match.group(1)
         file_info = {"name": "file", "url": "", "path": ""}
