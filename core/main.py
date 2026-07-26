@@ -1327,7 +1327,11 @@ class TaleCore:
             return failed_files
         except Exception as e:
             logger.error("发送错误: %s", e)
-            return []
+            # 异常时所有文件视为未送达，保证失败通知能触发
+            return [
+                (f.name if hasattr(f, "name") else f.get("name", "file"))
+                for f in (files or [])
+            ]
 
     async def start_adapters(self):
         """启动所有配置的适配器"""

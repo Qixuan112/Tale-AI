@@ -396,15 +396,8 @@ class AdapterManager:
         """
         from .event import MessageContent, FileAttachment
 
-        # 解析 adapter_id（支持实例名或 platform 类型）
-        resolved = self.resolve_adapter_id(adapter_id)
-        if not resolved:
-            logger.info(f"No running adapter for: {adapter_id}")
-            return {"success": False, "failed_files": []}
-
-        adapter = self._adapters[resolved]
-
         # 处理 files 参数：统一转为 FileAttachment 对象
+        # （先于 adapter 解析，保证任何失败路径都能报告未送达的文件）
         raw_files = kwargs.pop("files", None) or []
         file_attachments = []
         for f in raw_files:
@@ -417,6 +410,15 @@ class AdapterManager:
                     path=f.get("path"),
                     size=f.get("size"),
                 ))
+        pending_files = [f.name for f in file_attachments]
+
+        # 解析 adapter_id（支持实例名或 platform 类型）
+        resolved = self.resolve_adapter_id(adapter_id)
+        if not resolved:
+            logger.info(f"No running adapter for: {adapter_id}")
+            return {"success": False, "failed_files": pending_files}
+
+        adapter = self._adapters[resolved]
 
         content = MessageContent(
             text=text,
@@ -433,7 +435,7 @@ class AdapterManager:
             return {"success": bool(result), "failed_files": []}
         except Exception as e:
             logger.info(f"Error sending message via {resolved}: {e}")
-            return {"success": False, "failed_files": []}
+            return {"success": False, "failed_files": pending_files}
 
     async def broadcast(
         self,
