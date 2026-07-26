@@ -432,7 +432,14 @@ class AdapterManager:
             result = await adapter.send_message(target_id, content, **kwargs)
             if isinstance(result, dict):
                 return result
-            return {"success": bool(result), "failed_files": []}
+            # 返回 bool 的适配器（websocket/wechat_pc）不处理 content.files，
+            # 文件实际未送达，必须计入 failed_files 而非静默丢弃
+            if pending_files:
+                logger.warning(
+                    "Adapter %s 不支持文件发送，%d 个文件未送达: %s",
+                    resolved, len(pending_files), pending_files,
+                )
+            return {"success": bool(result), "failed_files": pending_files}
         except Exception as e:
             logger.info(f"Error sending message via {resolved}: {e}")
             return {"success": False, "failed_files": pending_files}
