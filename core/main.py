@@ -552,11 +552,16 @@ class TaleCore:
 
         for msg in recent:
             text = msg.get('text') or ''
-            if not text and msg.get('files'):
-                file_names = ", ".join(f.get('name', '') for f in msg['files'][:3])
+            file_names = ", ".join(f.get('name', '') for f in (msg.get('files') or [])[:3])
+            if text:
+                # 带文本的消息也要保留文件名，否则 AI 不知道曾有文件被分享
+                line = f"[{msg['sender']}] {text}".rstrip()
+                if file_names:
+                    line += f" [文件: {file_names}]"
+            elif file_names:
                 line = f"[{msg['sender']}] [文件: {file_names}]"
             else:
-                line = f"[{msg['sender']}] {text}".rstrip() if text else f"[{msg['sender']}] [图片]"
+                line = f"[{msg['sender']}] [图片]"
 
             # 历史消息有图片且 VLM 可用时自动识别
             if vlm_available and msg.get('images') and img_count < max_ctx_images:
