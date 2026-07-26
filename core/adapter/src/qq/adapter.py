@@ -511,7 +511,10 @@ class QQAdapter(BaseAdapter):
                         )
                         failed_files.append(file_att.name)
 
-            return {"success": True, "failed_files": failed_files}
+            # 纯文件消息且全部上传失败时不算成功（success 意味着有内容真正送达）
+            all_files_failed = bool(content.files) and len(failed_files) >= len(content.files)
+            success = bool(message_segments) or not all_files_failed
+            return {"success": success, "failed_files": failed_files}
 
         except Exception as e:
             logger.info(f"[QQ] Failed to send message: {e}")
