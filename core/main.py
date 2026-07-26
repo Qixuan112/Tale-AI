@@ -943,12 +943,15 @@ class TaleCore:
         """将文件发送失败信息注入 AI 上下文"""
         file_list = "、".join(failed_files[:5])
         notice = f"[系统通知] 文件发送失败：{file_list}"
-        # 写入上下文缓冲区（插入到当前消息之前，避免被 : -1 跳过）
+        persistence = config_loader.bot.bot.persistence_enabled
+        # 与 _store_to_context_buffer 相同的判定：持久化模式下 buffer 无人读取
+        # （use_ctx 恒为 False）且不经过截断，写入只会造成内存无限增长
+        use_buffer = not (persistence and self.session_manager)
+
+        # 写入上下文缓冲区（插入到当前消息之前，避免被 [:-1] 跳过）
         key = processed.group_id or processed.sender_id
-        if key:
-            if key not in self._chat_context_buffer or not self._chat_context_buffer[key]:
-                self._chat_context_buffer[key] = []
-            import time
+        if key and use_buffer:
+            entries = self._chat_context_buffer.setdefault(key, [])
             entry = {
                 "sender": "系统",
                 "text": notice,
@@ -956,14 +959,9 @@ class TaleCore:
                 "images": [],
                 "files": [],
             }
-            # 插入到最后一条（当前消息）之前，确保 _build_context_window 的 [:-1] 能读到
-            if self._chat_context_buffer[key]:
-                self._chat_context_buffer[key].insert(-1, entry)
-            else:
-                self._chat_context_buffer[key].append(entry)
+            entries.insert(max(len(entries) - 1, 0), entry)
 
         # 持久化路径：写入会话记忆，供下次 set_session 时 AI 感知
-        persistence = config_loader.bot.bot.persistence_enabled
         if persistence and self.session_manager and self.chat and self.chat.current_sid:
             # append_memory 需要 user+assistant 均非空，用占位保证配对完整性
             self.session_manager.append_memory(
