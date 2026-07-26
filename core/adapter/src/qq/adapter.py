@@ -441,14 +441,6 @@ class QQAdapter(BaseAdapter):
             # 从 kwargs 获取 is_group 参数
             is_group = kwargs.get("is_group", False)
 
-            # 构建 OneBot API 请求
-            if is_group:
-                api_action = "send_group_msg"
-                params = {"group_id": int(target_id), "message": message_segments}
-            else:
-                api_action = "send_private_msg"
-                params = {"user_id": int(target_id), "message": message_segments}
-
             if not self.client.websocket:
                 logger.warning("[QQ] send_message 失败: WebSocket 未连接 (target=%s)", target_id)
                 return {"success": False, "failed_files": []}
