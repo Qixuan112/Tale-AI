@@ -441,9 +441,12 @@ class QQAdapter(BaseAdapter):
             # 从 kwargs 获取 is_group 参数
             is_group = kwargs.get("is_group", False)
 
+            # 任何失败路径都要把未送达的文件报告给上层，否则失败通知不会触发
+            pending_files = [f.name for f in (content.files or [])]
+
             if not self.client.websocket:
                 logger.warning("[QQ] send_message 失败: WebSocket 未连接 (target=%s)", target_id)
-                return {"success": False, "failed_files": []}
+                return {"success": False, "failed_files": pending_files}
 
             # 正常消息发送（仅当有内容时）
             if message_segments:
@@ -460,13 +463,13 @@ class QQAdapter(BaseAdapter):
                         "[QQ] send_message 失败: 未收到响应 (target=%s, action=%s)",
                         target_id, api_action,
                     )
-                    return {"success": False, "failed_files": []}
+                    return {"success": False, "failed_files": pending_files}
                 if result.get("status") != "ok":
                     logger.warning(
                         "[QQ] send_message 失败: status=%s, retcode=%s (target=%s)",
                         result.get("status"), result.get("retcode", "unknown"), target_id,
                     )
-                    return {"success": False, "failed_files": []}
+                    return {"success": False, "failed_files": pending_files}
 
                 # 缓存已发送消息 ID（用于引用唤醒）
                 message_id = (result.get("data") or {}).get("message_id")
@@ -512,7 +515,10 @@ class QQAdapter(BaseAdapter):
 
         except Exception as e:
             logger.info(f"[QQ] Failed to send message: {e}")
-            return {"success": False, "failed_files": []}
+            return {
+                "success": False,
+                "failed_files": [f.name for f in (content.files or [])],
+            }
 
     # ── 追溯原文 ─────────────────────────────────────────────────────
 
