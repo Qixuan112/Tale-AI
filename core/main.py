@@ -883,7 +883,7 @@ class TaleCore:
                     text=text,
                     is_group=(stype == "gm"),
                 )
-                success = result.get("success", False) if isinstance(result, dict) else bool(result)
+                success = bool(result)
                 logger.info("跨会话主动推送: %s → %s (success=%s)", from_sid, to_sid, success)
                 # 3. 推送成功后立即 ack，避免目标会话 consume 时重复注入
                 if success:
@@ -1315,12 +1315,8 @@ class TaleCore:
             if files:
                 send_kwargs["files"] = files
             result = await self.adapter_bridge.send_message(**send_kwargs)
-            if isinstance(result, dict):
-                success = result.get("success", False)
-                failed_files = result.get("failed_files", [])
-            else:
-                success = bool(result)
-                failed_files = []
+            success = bool(result)
+            failed_files = result.failed_files
             if success:
                 logger.info("发送成功 [%s] -> %s", platform, target_id)
             else:

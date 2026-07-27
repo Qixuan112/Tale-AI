@@ -7,7 +7,7 @@ from pathlib import Path
 import asyncio
 
 from .base import BaseAdapter
-from .event import PlatformEvent, PlatformType
+from .event import PlatformEvent, PlatformType, SendResult
 from ..utils import get_logger
 
 logger = get_logger(__name__)
@@ -378,7 +378,7 @@ class AdapterManager:
         text: Optional[str] = None,
         images: Optional[List[str]] = None,
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> SendResult:
         """通过指定适配器发送消息
 
         支持通过实例名或 platform 类型查找适配器。
@@ -392,7 +392,7 @@ class AdapterManager:
             **kwargs: 其他参数（包括 files: List[FileAttachment | dict]）
 
         Returns:
-            发送是否成功
+            SendResult: 发送结果
         """
         from .event import MessageContent, FileAttachment
 
@@ -416,7 +416,7 @@ class AdapterManager:
         resolved = self.resolve_adapter_id(adapter_id)
         if not resolved:
             logger.info(f"No running adapter for: {adapter_id}")
-            return {"success": False, "failed_files": pending_files}
+            return SendResult(success=False, failed_files=pending_files)
 
         adapter = self._adapters[resolved]
 
@@ -429,20 +429,10 @@ class AdapterManager:
         )
 
         try:
-            result = await adapter.send_message(target_id, content, **kwargs)
-            if isinstance(result, dict):
-                return result
-            # 返回 bool 的适配器（websocket/wechat_pc）不处理 content.files，
-            # 文件实际未送达，必须计入 failed_files 而非静默丢弃
-            if pending_files:
-                logger.warning(
-                    "Adapter %s 不支持文件发送，%d 个文件未送达: %s",
-                    resolved, len(pending_files), pending_files,
-                )
-            return {"success": bool(result), "failed_files": pending_files}
+            return await adapter.send_message(target_id, content, **kwargs)
         except Exception as e:
             logger.info(f"Error sending message via {resolved}: {e}")
-            return {"success": False, "failed_files": pending_files}
+            return SendResult(success=False, failed_files=pending_files)
 
     async def broadcast(
         self,
@@ -450,7 +440,7 @@ class AdapterManager:
         target_id: Optional[str] = None,
         text: Optional[str] = None,
         **kwargs
-    ) -> Dict[str, bool]:
+    ) -> Dict[str, SendResult]:
         """广播消息到多个适配器
 
         Args:
@@ -460,10 +450,10 @@ class AdapterManager:
             **kwargs: 其他参数
 
         Returns:
-            各适配器发送结果的字典
+            各适配器发送结果的字典（adapter_id → SendResult）
         """
         adapters = target_adapters or self.list_running_adapters()
-        results = {}
+        results: Dict[str, SendResult] = {}
 
         for adapter_id in adapters:
             results[adapter_id] = await self.send_message(

@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, Callable, Awaitable
 
-from .event import PlatformType, PlatformEvent, MessageContent
+from .event import PlatformType, PlatformEvent, MessageContent, SendResult
 
 
 
@@ -29,7 +29,7 @@ class BaseAdapter(ABC):
                 # 断开连接
                 pass
 
-            async def send_message(self, target_id: str, content: MessageContent) -> bool:
+            async def send_message(self, target_id: str, content: MessageContent) -> SendResult:
                 # 发送消息
                 pass
 
@@ -101,15 +101,16 @@ class BaseAdapter(ABC):
         pass
 
     @abstractmethod
-    async def send_message(self, target_id: str, content: MessageContent) -> bool:
+    async def send_message(self, target_id: str, content: MessageContent, **kwargs) -> SendResult:
         """发送消息到指定目标
 
         Args:
             target_id: 目标ID（用户ID或群ID）
             content: 消息内容
+            **kwargs: 平台特定参数（is_group、at_targets 等）
 
         Returns:
-            bool: 发送是否成功
+            SendResult: 发送结果，包含 success 和 failed_files
         """
         pass
 

@@ -15,6 +15,7 @@ from core.adapter.event import (
     EventType,
     MessageContent,
     SenderInfo,
+    SendResult,
 )
 from ....utils import get_logger
 
@@ -252,7 +253,7 @@ class WebSocketAdapter(BaseAdapter):
         else:
             return self._parse_server_message(raw_event)
 
-    async def send_message(self, target_id: str, content: MessageContent, **kwargs) -> bool:
+    async def send_message(self, target_id: str, content: MessageContent, **kwargs) -> SendResult:
         """发送消息"""
         message = {
             "type": "message",
@@ -261,26 +262,36 @@ class WebSocketAdapter(BaseAdapter):
             "timestamp": datetime.now().isoformat()
         }
 
+        pending_files = [f.name for f in (content.files or [])]
+
         try:
+            sent = False
             if self.mode == "server":
                 # 服务端模式: 发送给指定客户端
                 if target_id in self._clients:
                     await self._clients[target_id].send(json.dumps(message))
-                    return True
+                    sent = True
                 else:
                     # 广播给所有客户端
                     for client in self._clients.values():
                         await client.send(json.dumps(message))
-                    return True
+                    sent = True
             else:
                 # 客户端模式: 发送给服务端
                 if self._ws:
                     await self._ws.send(json.dumps(message))
-                    return True
-            return False
+                    sent = True
+
+            if pending_files:
+                logger.warning(
+                    "[WebSocket] 不支持文件发送，%d 个文件未送达: %s",
+                    len(pending_files), pending_files,
+                )
+
+            return SendResult(success=sent, failed_files=pending_files)
         except Exception as e:
             logger.info(f"[WebSocket] Failed to send message: {e}")
-            return False
+            return SendResult(success=False, failed_files=pending_files)
 
     async def stop(self):
         """停止 WebSocket 适配器"""

@@ -12,6 +12,7 @@ from core.adapter.event import (
     MessageContent,
     SenderInfo,
     FileAttachment,
+    SendResult,
 )
 from ....utils import get_logger
 from .napcat_client import NapCatWebSocketClient
@@ -21,6 +22,13 @@ logger = get_logger(__name__)
 # 去重窗口大小（LRU 淘汰）
 _DEDUP_MAX = 1000
 _DEDUP_TRIM = 500
+
+
+def _read_file_b64(path: str) -> str:
+    """线程中执行的同步读 + base64 编码（供 asyncio.to_thread 调用）。"""
+    import base64
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode("utf-8")
 
 
 class QQAdapter(BaseAdapter):
@@ -334,71 +342,51 @@ class QQAdapter(BaseAdapter):
 
     # ── 消息发送 ──────────────────────────────────────────────────────
 
-    @staticmethod
-    def _normalize_image_file(img: str) -> str:
-        """归一化图片字段供 OneBot/NapCat 的 file 字段使用。
-
-        URL / base64:// / file:// 原样透传（http(s) URL 先过 SSRF 校验）；
-        本地路径读字节转 base64://（OneBot 原生），与 NapCat 是否同机/同文件系统解耦。
-        返回空串表示该图应跳过（不安全或读取失败）。
-        """
-        if not img:
-            return img
-        low = img.lower()
-        if low.startswith(("http://", "https://")):
-            from core.tools.network_safety import validate_url
-            err = validate_url(img)
-            if err:
-                logger.warning("[QQ] 拒绝不安全图片 URL: %s", err)
-                return ""
-            return img
-        if low.startswith(("base64://", "file://")):
-            return img
-        import base64
-        import os
-        if os.path.isfile(img):
-            try:
-                with open(img, "rb") as f:
-                    b64 = base64.b64encode(f.read()).decode("utf-8")
-                return f"base64://{b64}"
-            except Exception:
-                return ""
-        return img
+    # 本地文件读取上限（50 MB）——超过此大小直接跳过，避免内存暴涨和 WS 帧过大
+    _MAX_LOCAL_FILE_BYTES = 50 * 1024 * 1024
 
     @staticmethod
-    def _normalize_file(file_path: str) -> str:
-        """归一化文件路径/URL 供 OneBot 文件上传 API 使用。
+    async def _normalize_local_path(src: str, label: str) -> str:
+        """归一化本地路径 → base64:// URI，在线程中执行阻塞 I/O。
 
-        逻辑与 _normalize_image_file 一致：HTTP URL 做 SSRF 校验，
-        base64:// / file:// 原样透传，本地路径读字节转 base64://。
-        返回空串表示应跳过。
+        URL / base64:// / file:// 原样透传（HTTP URL 先做 SSRF 校验）。
+        本地路径存在且不超过大小上限时，在线程中读字节并编码为 base64。
+        返回空串表示该资源应跳过（不安全/过大/读取失败）。
         """
-        if not file_path:
-            return file_path
-        low = file_path.lower()
+        if not src:
+            return src
+        low = src.lower()
         if low.startswith(("http://", "https://")):
             from core.tools.network_safety import validate_url
-            err = validate_url(file_path)
+            err = validate_url(src)
             if err:
-                logger.warning("[QQ] 拒绝不安全文件 URL: %s", err)
+                logger.warning("[QQ] 拒绝不安全 %s URL: %s", label, err)
                 return ""
-            return file_path
+            return src
         if low.startswith(("base64://", "file://")):
-            return file_path
+            return src
         import base64
         import os
-        if os.path.isfile(file_path):
+        if os.path.isfile(src):
             try:
-                with open(file_path, "rb") as f:
-                    b64 = base64.b64encode(f.read()).decode("utf-8")
-                return f"base64://{b64}"
-            except Exception:
+                size = os.path.getsize(src)
+                if size > QQAdapter._MAX_LOCAL_FILE_BYTES:
+                    logger.warning(
+                        "[QQ] %s 超过 %d MB 上限，跳过: %s (%d bytes)",
+                        label, QQAdapter._MAX_LOCAL_FILE_BYTES // (1024 * 1024),
+                        src, size,
+                    )
+                    return ""
+                data = await asyncio.to_thread(_read_file_b64, src)
+                return f"base64://{data}"
+            except Exception as e:
+                logger.warning("[QQ] 读取 %s 失败: %s (%s)", label, src, e)
                 return ""
-        return file_path
+        return src
 
     async def send_message(
         self, target_id: str, content: MessageContent, **kwargs
-    ) -> bool:
+    ) -> SendResult:
         """发送消息（通过 NapCatWebSocketClient）"""
         try:
             # 构建消息
@@ -431,7 +419,7 @@ class QQAdapter(BaseAdapter):
                 )
 
             for img_url in content.images:
-                file_field = self._normalize_image_file(img_url)
+                file_field = await self._normalize_local_path(img_url, "图片")
                 if not file_field:
                     continue
                 message_segments.append(
@@ -446,7 +434,7 @@ class QQAdapter(BaseAdapter):
 
             if not self.client.websocket:
                 logger.warning("[QQ] send_message 失败: WebSocket 未连接 (target=%s)", target_id)
-                return {"success": False, "failed_files": pending_files}
+                return SendResult(success=False, failed_files=pending_files)
 
             # 正常消息发送（仅当有内容时）
             if message_segments:
@@ -463,13 +451,13 @@ class QQAdapter(BaseAdapter):
                         "[QQ] send_message 失败: 未收到响应 (target=%s, action=%s)",
                         target_id, api_action,
                     )
-                    return {"success": False, "failed_files": pending_files}
+                    return SendResult(success=False, failed_files=pending_files)
                 if result.get("status") != "ok":
                     logger.warning(
                         "[QQ] send_message 失败: status=%s, retcode=%s (target=%s)",
                         result.get("status"), result.get("retcode", "unknown"), target_id,
                     )
-                    return {"success": False, "failed_files": pending_files}
+                    return SendResult(success=False, failed_files=pending_files)
 
                 # 缓存已发送消息 ID（用于引用唤醒）
                 message_id = (result.get("data") or {}).get("message_id")
@@ -478,13 +466,15 @@ class QQAdapter(BaseAdapter):
 
                     sent_message_cache.add(str(message_id))
             elif not content.files:
-                return {"success": False, "failed_files": []}
+                return SendResult(success=False, failed_files=[])
 
             # 文件上传（独立 API，不走 message 段）
             failed_files = []
             if content.files:
                 for file_att in content.files:
-                    file_src = self._normalize_file(file_att.url or file_att.path or file_att.name)
+                    file_src = await self._normalize_local_path(
+                        file_att.url or file_att.path or file_att.name, "文件"
+                    )
                     if not file_src:
                         logger.warning("[QQ] 文件跳过（归一化失败）: %s", file_att.name)
                         failed_files.append(file_att.name)
@@ -514,14 +504,14 @@ class QQAdapter(BaseAdapter):
             # 纯文件消息且全部上传失败时不算成功（success 意味着有内容真正送达）
             all_files_failed = bool(content.files) and len(failed_files) >= len(content.files)
             success = bool(message_segments) or not all_files_failed
-            return {"success": success, "failed_files": failed_files}
+            return SendResult(success=success, failed_files=failed_files)
 
         except Exception as e:
             logger.info(f"[QQ] Failed to send message: {e}")
-            return {
-                "success": False,
-                "failed_files": [f.name for f in (content.files or [])],
-            }
+            return SendResult(
+                success=False,
+                failed_files=[f.name for f in (content.files or [])],
+            )
 
     # ── 追溯原文 ─────────────────────────────────────────────────────
 

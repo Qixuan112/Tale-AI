@@ -4,6 +4,20 @@ from enum import Enum
 from datetime import datetime
 
 
+@dataclass
+class SendResult:
+    """消息发送结果
+
+    所有适配器的 send_message 统一返回此类型，替代之前的 bool/dict 混乱契约。
+    truthiness 检查（if result:）等价于 result.success，避免非空 dict 恒为真的陷阱。
+    """
+    success: bool
+    failed_files: List[str] = field(default_factory=list)
+
+    def __bool__(self) -> bool:
+        return self.success
+
+
 class PlatformType(Enum):
     """平台类型枚举"""
     QQ = "qq"

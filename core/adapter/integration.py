@@ -7,7 +7,7 @@
 import asyncio
 from typing import Dict, Any, Optional, Callable, Awaitable
 
-from .event import PlatformEvent, EventType, MessageContent
+from .event import PlatformEvent, EventType, MessageContent, SendResult
 from .manager import AdapterManager
 from ..utils import get_logger
 
@@ -186,7 +186,7 @@ class AdapterEventBridge:
         text: Optional[str] = None,
         images: Optional[list] = None,
         **kwargs
-    ) -> bool:
+    ) -> SendResult:
         """通过指定适配器发送消息
 
         Args:
@@ -194,14 +194,14 @@ class AdapterEventBridge:
             target_id: 目标ID
             text: 文本内容
             images: 图片列表
-            **kwargs: 其他参数
+            **kwargs: 其他参数（含 files）
 
         Returns:
-            发送是否成功
+            SendResult: 发送结果
         """
         if not self.manager:
             logger.info("[AdapterBridge] Manager not initialized")
-            return False
+            return SendResult(success=False, failed_files=[])
 
         return await self.manager.send_message(
             adapter_id, target_id, text, images, **kwargs
@@ -214,7 +214,7 @@ class AdapterEventBridge:
         text: Optional[str] = None,
         images: Optional[list] = None,
         **kwargs
-    ) -> Dict[str, bool]:
+    ) -> Dict[str, SendResult]:
         """广播消息到多个适配器
 
         Args:
