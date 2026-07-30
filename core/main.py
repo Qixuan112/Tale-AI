@@ -562,6 +562,24 @@ class TaleCore:
 
         user_input += "，" .join(env_lines)
 
+        # ================================================================
+        # 注入今日日程（移出 system prompt 以启用 Anthropic 缓存）
+        # ================================================================
+        today_plan_text = ""
+        if self.chat:
+            try:
+                from .llm import get_planllm
+                planllm = get_planllm()
+                if planllm:
+                    planllm.ensure_today_plan()
+                    today_plan_text = planllm.get_today_plan_display()
+            except Exception as e:
+                logger.debug("获取 today_plan 失败: %s", e)
+
+        if today_plan_text:
+            user_input += f"\n\n## 你的今日日程\n{today_plan_text}"
+
+
         # 追加富媒体信息到 LLM 上下文
         extra_media = []
         if processed.voices:
