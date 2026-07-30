@@ -99,6 +99,9 @@ class TaleCore:
             # 启动时清理过期会话（7天以上）
             self.session_manager.cleanup_expired(days=7)
 
+        # 注册内置工具handlers（必须在 ToolRegistry 默认注册之后）
+        self._register_builtin_handlers()
+
         # 初始化跨会话消息桥接
         self.bridge = BridgeState()
 
@@ -125,6 +128,104 @@ class TaleCore:
         self._init_plugin_manager()
 
         logger.info("核心组件初始化完成")
+
+    def _register_builtin_handlers(self):
+        """注册内置工具的handlers到统一注册表"""
+        from .function_caller import register_handler
+        from .tools import browser, weather
+        from .utils.calculator import safe_calculate
+
+        # browser_open handler
+        def browser_open_handler(parameters: dict) -> dict:
+            url = parameters.get("url", "")
+            if url:
+                return browser.fetch_and_parse(url)
+            return {"status": "failed", "error": "缺少 url 参数"}
+
+        # browser_search handler
+        def browser_search_handler(parameters: dict) -> dict:
+            query = parameters.get("query", "")
+            engine = parameters.get("engine", "duckduckgo")
+            if query:
+                return browser.browser_search(query, engine)
+            return {"status": "failed", "error": "缺少 query 参数"}
+
+        # weather_query handler
+        def weather_query_handler(parameters: dict) -> dict:
+            city = parameters.get("city", "")
+            if city:
+                return weather.query(city)
+            return {"status": "failed", "error": "缺少 city 参数"}
+
+        # calculator handler
+        def calculator_handler(parameters: dict) -> dict:
+            expression = parameters.get("expression", "")
+            if expression:
+                return safe_calculate(expression)
+            return {"status": "failed", "error": "缺少 expression 参数"}
+
+        # generate_image handler
+        def generate_image_handler(parameters: dict) -> dict:
+            from .llm.image_gen import get_image_generator
+            prompt = parameters.get("prompt", "")
+            size = parameters.get("size", "1024x1024") or "1024x1024"
+            if not prompt:
+                return {"status": "failed", "error": "缺少 prompt 参数"}
+            image_url = get_image_generator().generate(prompt, size)
+            if image_url:
+                return {
+                    "status": "success",
+                    "image_url": image_url,
+                    "message": f"已生成图片，URL: {image_url}。请在回复中用 <image>{image_url}</image> 把这张图发给用户。",
+                }
+            return {"status": "failed", "error": "图片生成失败（可能未配置 image_gen provider）"}
+
+        # take_photo handler
+        def take_photo_handler(parameters: dict) -> dict:
+            from .llm.image_gen import get_image_generator
+            raw = parameters.get("prompt", "")
+            size = parameters.get("size", "1024x1024") or "1024x1024"
+            if not raw:
+                return {"status": "failed", "error": "缺少 prompt 参数"}
+            enriched = f"写实摄影风格，超清照片质感，电影级光影与细节，颜色真实自然，4K画质，景深效果，{raw}"
+            image_url = get_image_generator().generate(enriched, size)
+            if image_url:
+                return {
+                    "status": "success",
+                    "image_url": image_url,
+                    "message": f"已拍照成功，URL: {image_url}。请在回复中用 <image>{image_url}</image> 把这张照片发给用户。",
+                }
+            return {"status": "failed", "error": "拍照失败（可能未配置 image_gen provider）"}
+
+        # draw_picture handler
+        def draw_picture_handler(parameters: dict) -> dict:
+            from .llm.image_gen import get_image_generator
+            raw = parameters.get("prompt", "")
+            size = parameters.get("size", "1024x1024") or "1024x1024"
+            style = parameters.get("style", "") or ""
+            if not raw:
+                return {"status": "failed", "error": "缺少 prompt 参数"}
+            style_tag = f"{style}风格，" if style else ""
+            enriched = f"插画创作，{style_tag}富有艺术感与表现力，色彩丰富协调，画面生动有故事性，{raw}"
+            image_url = get_image_generator().generate(enriched, size)
+            if image_url:
+                return {
+                    "status": "success",
+                    "image_url": image_url,
+                    "message": f"已画好，URL: {image_url}。请在回复中用 <image>{image_url}</image> 把这张画发给用户。",
+                }
+            return {"status": "failed", "error": "画画失败（可能未配置 image_gen provider）"}
+
+        # Register all handlers
+        register_handler("browser_open", browser_open_handler)
+        register_handler("browser_search", browser_search_handler)
+        register_handler("weather_query", weather_query_handler)
+        register_handler("calculator", calculator_handler)
+        register_handler("generate_image", generate_image_handler)
+        register_handler("take_photo", take_photo_handler)
+        register_handler("draw_picture", draw_picture_handler)
+
+        logger.info("已注册 7 个内置工具handlers到统一注册表")
 
     def _init_chatllm(self):
         api_key = get_chat_api_key()

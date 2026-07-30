@@ -16,7 +16,10 @@ from .utils import get_logger
 
 logger = get_logger(__name__)
 
-# Plugin tool dispatch — populated by PluginManager
+# Handler registry — unified storage for all tool handlers
+_handler_registry: Dict[str, Callable] = {}
+
+# Plugin tool dispatch — populated by PluginManager (deprecated, use _handler_registry)
 _plugin_dispatch: Dict[str, Callable] = {}
 
 # 工具使用统计
@@ -56,14 +59,37 @@ def _record_tool_stat(func_name: str, success: bool, elapsed_ms: int):
         tool_stat["total_time_ms"] += elapsed_ms
 
 
+def register_handler(func_name: str, handler: Callable) -> None:
+    """
+    Register a tool handler.
+
+    This is the unified entry point for registering handlers for both
+    built-in and plugin tools. ToolRegistry calls this automatically
+    when a tool with a handler is registered.
+
+    Args:
+        func_name: Tool name
+        handler: Callable that accepts (parameters: dict) -> dict
+    """
+    _handler_registry[func_name] = handler
+
+
+def unregister_handler(func_name: str) -> None:
+    """Remove a tool handler from the registry."""
+    _handler_registry.pop(func_name, None)
+
+
 def register_plugin_handler(func_name: str, handler: Callable) -> None:
     """Register a plugin-provided tool handler. Called by PluginManager."""
     _plugin_dispatch[func_name] = handler
+    # Also register in unified registry
+    register_handler(func_name, handler)
 
 
 def _unregister_plugin_handler(func_name: str) -> None:
     """Remove a plugin-provided tool handler."""
     _plugin_dispatch.pop(func_name, None)
+    unregister_handler(func_name)
 
 
 # 兼容旧代码：从注册表动态生成 AVAILABLE_TOOLS
@@ -181,6 +207,15 @@ def _execute_function_impl(func_name: str, parameters: dict) -> dict:
         执行结果字典
     """
     try:
+        # Priority 1: Unified handler registry (new approach)
+        if func_name in _handler_registry:
+            try:
+                return _handler_registry[func_name](parameters)
+            except Exception as e:
+                logger.error("执行工具 %s 时出错: %s", func_name, e, exc_info=True)
+                return {"status": "failed", "error": str(e)}
+
+        # Priority 2: Backward compatibility — hardcoded handlers (to be migrated)
         if func_name == "browser_open":
             url = parameters.get("url", "")
             if url:
@@ -256,8 +291,8 @@ def _execute_function_impl(func_name: str, parameters: dict) -> dict:
                     "message": f"已画好，URL: {image_url}。请在回复中用 <image>{image_url}</image> 把这张画发给用户。",
                 }
             return {"status": "failed", "error": "画画失败（可能未配置 image_gen provider）"}
-        
-        # Plugin dispatch
+
+        # Priority 3: Plugin dispatch (deprecated, migrated to _handler_registry by register_plugin_handler)
         elif func_name in _plugin_dispatch:
             try:
                 return _plugin_dispatch[func_name](parameters)
