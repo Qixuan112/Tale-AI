@@ -10,6 +10,7 @@ from .spin_think import spinning_think
 from .bus import NextBus, bus
 from .llm import ChatLLM, get_planllm, ToolLLM, get_vlm_llm
 from .utils.cache import BoundedCache
+from .utils.id_sanitizer import IDSanitizer
 from .config.provide import (
     get_chat_api_key, get_chat_model, get_chat_url,
     get_plan_api_key, get_plan_model, get_plan_url,
@@ -73,6 +74,7 @@ class TaleCore:
         self._name_to_id = BoundedCache(maxsize=200, ttl=86400)
         self.session_manager: Optional[SessionManager] = None
         self.bridge: Optional[BridgeState] = None
+        self._id_sanitizer = IDSanitizer()  # ID脱敏器
         # 全局 ChatLLM 锁：保护单例 self.chat 的 self.messages/current_sid
         # 所有会话共享此锁，确保 set_session + chat 原子化，防跨会话串味
         self._chat_lock = asyncio.Lock()
@@ -540,12 +542,16 @@ class TaleCore:
         now = datetime.datetime.now()
         time_str = now.strftime("%Y-%m-%d %H:%M")
 
+        # ID脱敏：用户ID和群ID打码，防止AI泄露敏感信息
+        masked_sender_id = self._id_sanitizer.sanitize_user_id(processed.sender_id)
+
         env_lines = [
             f"\n[当前时间] {time_str}",
-            f"[消息元数据] 消息ID={processed.message_id}，发送者昵称={processed.sender_name}，发送者ID={processed.sender_id}",
+            f"[消息元数据] 消息ID={processed.message_id}，发送者昵称={processed.sender_name}，发送者标识符={masked_sender_id}",
         ]
         if processed.is_group_message:
-            env_lines.append(f"群ID={processed.group_id}")
+            masked_group_id = self._id_sanitizer.sanitize_group_id(processed.group_id)
+            env_lines.append(f"群标识符={masked_group_id}")
             if processed.group_name:
                 env_lines[-1] += f"，群名称={processed.group_name}"
             chat_type = "群聊"
@@ -569,11 +575,12 @@ class TaleCore:
             user_input += "\n" + " ".join(extra_media)
 
         # 维护昵称→ID 映射表（按群分组，供发送时解析 @ 用）
+        # 注意：这里存储的是打码后的ID，发送时需要还原
         if processed.sender_name and processed.sender_id:
             group_key = processed.group_id or "_private"
             # 写时复制模式：每次修改都触发 __setitem__，更新 TTL 和 LRU
             name_map = self._name_to_id.get(group_key, {})
-            name_map[processed.sender_name] = processed.sender_id
+            name_map[processed.sender_name] = masked_sender_id  # 存储打码ID
             self._name_to_id[group_key] = name_map  # 触发 __setitem__
 
         logger.info("处理 %s (%s): %s", processed.sender_name, processed.reason, processed.text)
@@ -834,6 +841,9 @@ class TaleCore:
                     for name in raw_at:
                         qq_id = "all" if name == "all" else name_map.get(name)
                         if qq_id:
+                            # 如果AI输出了打码ID（usr_xxx），还原为真实ID
+                            if self._id_sanitizer.is_masked_user_id(qq_id):
+                                qq_id = self._id_sanitizer.restore_user_id(qq_id)
                             at_list.append(qq_id)
                     if at_list:
                         at_targets = at_list
@@ -1244,6 +1254,7 @@ class TaleCore:
                 except Exception as e:
                     return {"status": "failed", "error": f"查询群成员失败: {e}"}
                 # 填充 _name_to_id（群成员映射，按群分组）
+                # 注意：存储打码后的ID，保持与消息元数据一致
                 group_key = group_id
                 # 写时复制模式：每次修改都触发 __setitem__，更新 TTL 和 LRU
                 name_map = self._name_to_id.get(group_key, {})
@@ -1251,7 +1262,8 @@ class TaleCore:
                     uid = m.get("user_id", "")
                     nick = m.get("nickname", "")
                     if uid and nick:
-                        name_map[nick] = uid
+                        masked_uid = self._id_sanitizer.sanitize_user_id(str(uid))
+                        name_map[nick] = masked_uid
                 self._name_to_id[group_key] = name_map  # 触发 __setitem__
                 if not members:
                     return {"status": "ok", "members": [], "message": "该群没有成员或查询失败"}
