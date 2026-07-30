@@ -197,15 +197,30 @@ def get_plan_url() -> str:
 
 
 def get_tool_api_key() -> str:
-    return os.getenv("TALE_TOOL_API_KEY") or config_loader.tool_api.get("api_key", "")
+    """获取 tool_llm API Key，为空时 fallback 到 plan_llm"""
+    key = os.getenv("TALE_TOOL_API_KEY") or config_loader.tool_api.get("api_key", "")
+    if not key:
+        # Fallback to plan_llm for backward compatibility
+        key = get_plan_api_key()
+    return key
 
 
 def get_tool_model() -> str:
-    return os.getenv("TALE_TOOL_MODEL") or config_loader.tool_api.get("model", "")
+    """获取 tool_llm Model，为空时 fallback 到 plan_llm"""
+    model = os.getenv("TALE_TOOL_MODEL") or config_loader.tool_api.get("model", "")
+    if not model:
+        # Fallback to plan_llm for backward compatibility
+        model = get_plan_model()
+    return model
 
 
 def get_tool_url() -> str:
-    return os.getenv("TALE_TOOL_URL") or config_loader.tool_api.get("url", "")
+    """获取 tool_llm Base URL，为空时 fallback 到 plan_llm"""
+    url = os.getenv("TALE_TOOL_URL") or config_loader.tool_api.get("url", "")
+    if not url:
+        # Fallback to plan_llm for backward compatibility
+        url = get_plan_url()
+    return url
 
 
 # ============ 向后兼容的模块级常量 ============
