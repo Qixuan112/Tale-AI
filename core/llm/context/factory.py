@@ -33,7 +33,7 @@ from .agent_context import AgentContext
 
 def create_chat_context(
     character_prompt: str,
-    dialogue_examples: List[Dict],
+    dialogue_examples: str,
     persona_additional_prompt: str = "",
 ) -> AgentContext:
     """Build default AgentContext for ChatLLM.
@@ -43,7 +43,7 @@ def create_chat_context(
 
     Args:
         character_prompt: Output of ``get_character_prompt()`` from provide.py.
-        dialogue_examples: Output of ``get_dialogue_examples()`` from provide.py.
+        dialogue_examples: Output of ``get_dialogue_examples()`` from provide.py (formatted string).
         persona_additional_prompt: Extra prompt from persona config.
     """
     context = AgentContext("chat")
@@ -63,14 +63,9 @@ def create_chat_context(
     ))
 
     if dialogue_examples:
-        examples_text = ""
-        for i, ex in enumerate(dialogue_examples[:3], 1):
-            examples_text += f"\n示例 {i}:\n"
-            examples_text += f'用户："{ex.get("user", "")}"\n'
-            examples_text += f'你："{ex.get("assistant", "")}"\n'
         context.add_section(PromptSection(
             name="dialogue_style_examples",
-            content="## 角色对话风格示例" + examples_text,
+            content="## 角色对话风格示例\n\n" + dialogue_examples,
             cacheable=True,
             order=3,
         ))

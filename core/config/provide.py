@@ -126,11 +126,12 @@ def get_character_prompt() -> str:
     return "\n".join(prompt_parts)
 
 
-def get_dialogue_examples() -> List[Dict[str, str]]:
-    """获取对话示例列表"""
+def get_dialogue_examples() -> str:
+    """获取对话示例（场景化格式）"""
     cfg = config_loader.persona
     examples = []
 
+    # 收集所有示例
     if cfg.character.dialogue_style_imitation:
         for item in cfg.character.dialogue_style_imitation:
             if isinstance(item, dict):
@@ -143,7 +144,28 @@ def get_dialogue_examples() -> List[Dict[str, str]]:
             if isinstance(example, dict):
                 examples.append(example)
 
-    return examples
+    if not examples:
+        return ""
+
+    # 转换为场景化格式
+    formatted_examples = []
+    for i, example in enumerate(examples, 1):
+        user_msg = example.get("user", "")
+        assistant_msg = example.get("assistant", "")
+
+        if not user_msg:
+            continue
+
+        # 规范化为场景格式（与内置示例风格一致）
+        formatted = f"""### 示例 {i}
+用户消息：{user_msg}
+你的回复：
+```xml
+{assistant_msg}
+```""".strip()
+        formatted_examples.append(formatted)
+
+    return "\n\n".join(formatted_examples)
 
 
 # ============ 便捷函数 ============
