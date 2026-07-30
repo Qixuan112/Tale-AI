@@ -12,6 +12,7 @@ from .llm import ChatLLM, get_planllm, ToolLLM, get_vlm_llm
 from .config.provide import (
     get_chat_api_key, get_chat_model, get_chat_url,
     get_plan_api_key, get_plan_model, get_plan_url,
+    get_tool_api_key, get_tool_model, get_tool_url,
 )
 from .config import MAX_SPLIT_COUNT
 from .config.provide import config_loader
@@ -30,6 +31,7 @@ from .adapter import (
 from .chat import SessionManager
 from .bridge import BridgeState
 from .utils import get_logger
+from .utils.cache import BoundedCache
 
 logger = get_logger(__name__)
 
@@ -68,8 +70,8 @@ class TaleCore:
         self._running = False
         self._shutdown_event: Optional[asyncio.Event] = None
         self._llm_executor = None
-        self._chat_context_buffer: Dict[str, list] = {}
-        self._name_to_id: Dict[str, Dict[str, str]] = {}
+        self._chat_context_buffer = BoundedCache(maxsize=200, ttl=7200)
+        self._name_to_id = BoundedCache(maxsize=200, ttl=86400)
         self.session_manager: Optional[SessionManager] = None
         self.bridge: Optional[BridgeState] = None
         # 全局 ChatLLM 锁：保护单例 self.chat 的 self.messages/current_sid
@@ -140,9 +142,9 @@ class TaleCore:
 
     @staticmethod
     def _init_toolllm():
-        api_key = get_plan_api_key()
-        model = get_plan_model()
-        url = get_plan_url()
+        api_key = get_tool_api_key()
+        model = get_tool_model()
+        url = get_tool_url()
         if not api_key:
             logger.warning("ToolLLM 未配置 API Key，请通过 WebUI 配置服务商")
             return None
@@ -242,13 +244,13 @@ class TaleCore:
 
         logger.debug("[平台消息] [%s] %s: %s", platform, sender_name, text)
 
-    async def _handle_private_message(self, event_data: dict):
+    async def _handle_private_message(self, event: PlatformEvent):
         """处理私聊消息"""
-        await self._process_message_event(event_data)
+        await self._process_message_event(event)
 
-    async def _handle_group_message(self, event_data: dict):
+    async def _handle_group_message(self, event: PlatformEvent):
         """处理群消息"""
-        await self._process_message_event(event_data)
+        await self._process_message_event(event)
 
     def _handle_qq_message(self, event_data: dict):
         """处理 QQ 特定消息"""
