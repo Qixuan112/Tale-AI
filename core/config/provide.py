@@ -158,11 +158,9 @@ def get_dialogue_examples() -> str:
 
         # 规范化为场景格式（与内置示例风格一致）
         formatted = f"""### 示例 {i}
-用户消息：{user_msg}
-你的回复：
-```xml
-{assistant_msg}
-```""".strip()
+用户："{user_msg}"
+
+{assistant_msg}""".strip()
         formatted_examples.append(formatted)
 
     return "\n\n".join(formatted_examples)
