@@ -164,10 +164,9 @@ async def test_images_field_preserved(event_bus, bridge, sample_event):
     await asyncio.sleep(0.01)
 
     assert len(received_data) == 1
-    data = received_data[0]
-    assert "content" in data
-    assert "images" in data["content"]
-    assert data["content"]["images"] == ["https://example.com/image1.jpg", "https://example.com/image2.jpg"]
+    event = received_data[0]
+    assert isinstance(event, PlatformEvent)
+    assert event.content.images == ["https://example.com/image1.jpg", "https://example.com/image2.jpg"]
 
 
 @pytest.mark.asyncio
@@ -186,9 +185,10 @@ async def test_reply_to_field_preserved(event_bus, bridge, sample_event):
     await asyncio.sleep(0.01)
 
     assert len(received_data) == 1
-    data = received_data[0]
-    assert data["content"]["reply_to"] == "msg999"
-    assert data["content"]["reply_text"] == "Previous message"
+    event = received_data[0]
+    assert isinstance(event, PlatformEvent)
+    assert event.content.reply_to == "msg999"
+    assert event.content.reply_text == "Previous message"
 
 
 @pytest.mark.asyncio
@@ -207,15 +207,16 @@ async def test_at_targets_field_preserved(event_bus, bridge, sample_event):
     await asyncio.sleep(0.01)
 
     assert len(received_data) == 1
-    data = received_data[0]
-    assert data["content"]["at_targets"] == ["bot456"]
+    event = received_data[0]
+    assert isinstance(event, PlatformEvent)
+    assert event.content.at_targets == ["bot456"]
 
 
 @pytest.mark.asyncio
 async def test_sender_extra_field_preserved(event_bus, bridge, sample_event):
     """验证 sender.extra 字段在传递过程中保留
 
-    预期：失败 - 当前实现不序列化 sender.extra
+    预期：通过 - 现在直接传递对象，所有字段都保留
     """
     received_data = []
 
@@ -227,18 +228,16 @@ async def test_sender_extra_field_preserved(event_bus, bridge, sample_event):
     await asyncio.sleep(0.01)
 
     assert len(received_data) == 1
-    data = received_data[0]
-    assert "sender" in data
-    # 这个断言应该失败 - sender.extra 未被序列化
-    assert "extra" in data["sender"], "sender.extra 字段应该被保留"
-    assert data["sender"]["extra"] == {"level": 10, "vip": True}
+    event = received_data[0]
+    assert isinstance(event, PlatformEvent)
+    assert event.sender.extra == {"level": 10, "vip": True}
 
 
 @pytest.mark.asyncio
 async def test_raw_content_field_preserved(event_bus, bridge, sample_event):
     """验证 content.raw_content 字段在传递过程中保留
 
-    预期：失败 - MessageContent.to_dict() 不包含 raw_content
+    预期：通过 - 现在直接传递对象，所有字段都保留
     """
     received_data = []
 
@@ -250,10 +249,9 @@ async def test_raw_content_field_preserved(event_bus, bridge, sample_event):
     await asyncio.sleep(0.01)
 
     assert len(received_data) == 1
-    data = received_data[0]
-    # 这个断言应该失败 - raw_content 未被序列化
-    assert "raw_content" in data["content"], "content.raw_content 字段应该被保留"
-    assert data["content"]["raw_content"] == {"original": "data"}
+    event = received_data[0]
+    assert isinstance(event, PlatformEvent)
+    assert event.content.raw_content == {"original": "data"}
 
 
 @pytest.mark.asyncio
@@ -283,9 +281,10 @@ async def test_group_info_preserved(event_bus, bridge):
     await asyncio.sleep(0.01)
 
     assert len(received_data) == 1
-    data = received_data[0]
-    assert data["group_id"] == "group789"
-    assert data["group_name"] == "TestGroup"
+    event = received_data[0]
+    assert isinstance(event, PlatformEvent)
+    assert event.group_id == "group789"
+    assert event.group_name == "TestGroup"
 
 
 # ==================== 3. 扩展性测试 (2个) ====================
@@ -393,11 +392,12 @@ async def test_qq_private_message_flow(event_bus, bridge, sample_event):
     assert "qq_message" in event_names
 
     # 验证所有事件携带相同的核心数据
-    for event_name, data in received_events:
-        assert data["platform"] == "qq"
-        assert data["event_type"] == "private_message"
-        assert data["sender"]["id"] == "user123"
-        assert data["message_id"] == "msg123"
+    for event_name, event in received_events:
+        assert isinstance(event, PlatformEvent)
+        assert event.platform.value == "qq"
+        assert event.event_type.value == "private_message"
+        assert event.sender.id == "user123"
+        assert event.message_id == "msg123"
 
 
 @pytest.mark.asyncio
@@ -438,9 +438,10 @@ async def test_qq_group_message_flow(event_bus, bridge):
     assert "qq_message" in event_names
 
     # 验证群聊特定字段
-    for event_name, data in received_events:
-        assert data["group_id"] == "group999"
-        assert data["group_name"] == "TestGroup"
+    for event_name, event in received_events:
+        assert isinstance(event, PlatformEvent)
+        assert event.group_id == "group999"
+        assert event.group_name == "TestGroup"
 
 
 @pytest.mark.asyncio
@@ -459,7 +460,9 @@ async def test_adapter_instance_tracking(event_bus, bridge, sample_event):
     await asyncio.sleep(0.01)
 
     assert len(received_data) == 1
-    assert received_data[0]["adapter_instance"] == "qq_bot_1"
+    event = received_data[0]
+    assert isinstance(event, PlatformEvent)
+    assert event.adapter_instance == "qq_bot_1"
 
     # 测试不同的 adapter_id
     received_data.clear()
@@ -467,7 +470,8 @@ async def test_adapter_instance_tracking(event_bus, bridge, sample_event):
     await asyncio.sleep(0.01)
 
     assert len(received_data) == 1
-    assert received_data[0]["adapter_instance"] == "qq_bot_2"
+    event = received_data[0]
+    assert event.adapter_instance == "qq_bot_2"
 
 
 @pytest.mark.asyncio
@@ -510,7 +514,7 @@ async def test_notice_event_no_platform_message(event_bus, bridge):
 
 @pytest.mark.asyncio
 async def test_required_fields_accessible(event_bus, bridge, sample_event):
-    """验证所有必需字段在序列化后可访问
+    """验证所有必需字段在对象传递后可访问
 
     预期：通过 - 确保现有代码依赖的字段都存在
     """
@@ -524,28 +528,34 @@ async def test_required_fields_accessible(event_bus, bridge, sample_event):
     await asyncio.sleep(0.01)
 
     assert len(received_data) == 1
-    data = received_data[0]
+    event = received_data[0]
+    assert isinstance(event, PlatformEvent)
 
     # 验证顶层必需字段
-    required_fields = [
-        "type", "platform", "event_type", "adapter_instance",
-        "sender", "content", "message_id", "timestamp", "raw_event"
-    ]
-    for field in required_fields:
-        assert field in data, f"必需字段 {field} 缺失"
+    assert hasattr(event, 'platform')
+    assert hasattr(event, 'event_type')
+    assert hasattr(event, 'adapter_instance')
+    assert hasattr(event, 'sender')
+    assert hasattr(event, 'content')
+    assert hasattr(event, 'message_id')
+    assert hasattr(event, 'timestamp')
+    assert hasattr(event, 'raw_event')
 
     # 验证 sender 子字段
-    sender_fields = ["id", "name", "avatar", "is_bot"]
-    for field in sender_fields:
-        assert field in data["sender"], f"sender.{field} 字段缺失"
+    assert hasattr(event.sender, 'id')
+    assert hasattr(event.sender, 'name')
+    assert hasattr(event.sender, 'avatar')
+    assert hasattr(event.sender, 'is_bot')
 
     # 验证 content 子字段
-    content_fields = ["text", "images", "at_targets", "reply_to", "reply_text"]
-    for field in content_fields:
-        assert field in data["content"], f"content.{field} 字段缺失"
+    assert hasattr(event.content, 'text')
+    assert hasattr(event.content, 'images')
+    assert hasattr(event.content, 'at_targets')
+    assert hasattr(event.content, 'reply_to')
+    assert hasattr(event.content, 'reply_text')
 
     # 验证值的正确性
-    assert data["platform"] == "qq"
-    assert data["event_type"] == "private_message"
-    assert data["sender"]["id"] == "user123"
-    assert data["content"]["text"] == "Hello World"
+    assert event.platform.value == "qq"
+    assert event.event_type.value == "private_message"
+    assert event.sender.id == "user123"
+    assert event.content.text == "Hello World"

@@ -37,53 +37,36 @@ class AdapterEventBridge:
     async def _on_platform_event(self, event: PlatformEvent, adapter_id: str = None):
         """处理平台事件
 
-        将 PlatformEvent 转换为内部事件并发布到事件总线。
+        直接传递 PlatformEvent 对象到事件总线。
 
         Args:
             event: 平台事件
             adapter_id: 来源适配器实例名
         """
-        # 构建内部事件数据
-        event_data = {
-            "type": "platform_message",
-            "platform": event.platform.value,
-            "event_type": event.event_type.value,
-            "adapter_instance": adapter_id,  # 记录来源适配器实例名
-            "sender": {
-                "id": event.sender.id,
-                "name": event.sender.name,
-                "avatar": event.sender.avatar,
-                "is_bot": event.sender.is_bot,
-            },
-            "content": event.content.to_dict(),
-            "message_id": event.message_id,
-            "group_id": event.group_id,
-            "group_name": event.group_name,
-            "timestamp": event.timestamp.isoformat(),
-            "raw_event": event.raw_event,
-        }
+        # 动态添加 adapter_instance 属性
+        event.adapter_instance = adapter_id
 
-        # 发布到事件总线
-        self._emit_to_bus("platform_message", event_data)
+        # 直接传递对象
+        self._emit_to_bus("platform_message", event)
 
         # 根据事件类型发布更具体的事件
         if event.event_type == EventType.PRIVATE_MESSAGE:
-            self._emit_to_bus("private_message", event_data)
+            self._emit_to_bus("private_message", event)
         elif event.event_type == EventType.GROUP_MESSAGE:
-            self._emit_to_bus("group_message", event_data)
+            self._emit_to_bus("group_message", event)
         elif event.event_type == EventType.NOTICE:
-            self._emit_to_bus("platform_notice", event_data)
+            self._emit_to_bus("platform_notice", event)
             return  # NOTICE 不需要再发平台特定事件
 
         # 发布平台特定事件
-        self._emit_to_bus(f"{event.platform.value}_message", event_data)
+        self._emit_to_bus(f"{event.platform.value}_message", event)
 
-    def _emit_to_bus(self, event_name: str, data: Dict[str, Any]):
+    def _emit_to_bus(self, event_name: str, data):
         """安全地发布事件到事件总线
 
         Args:
             event_name: 事件名称
-            data: 事件数据
+            data: 事件数据（PlatformEvent 对象或字典）
         """
         try:
             # EventBus 有 aemit 方法（异步，支持协程回调）
