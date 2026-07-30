@@ -1012,14 +1012,14 @@ class TaleCore:
                 f"这是第 {iteration} 次工具调用（最多允许 {max_steps} 次推理步骤）。"
                 f"你还有 {remaining} 次机会。\n"
                 f"如果任务已完成，请直接回复用户；如果还需要查询更多信息、执行更多操作，\n"
-                f"可以继续使用 <act>/<tool>/<plan> 标签。"
+                f"可以继续使用 <act>/<plan> 标签。"
             )
         else:
             return (
                 f"[Agent 第 {iteration}/{max_steps} 轮 — 最后一轮] {title}：\n"
                 f"{result}\n\n"
                 f"这是最后一轮推理。请根据已有信息给用户一个完整回复，"
-                f"不要再使用 <act>/<tool>/<plan> 标签。"
+                f"不要再使用 <act>/<plan> 标签。"
             )
 
     async def _execute_actions(self, actions: list) -> list:
