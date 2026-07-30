@@ -790,6 +790,13 @@ class TaleCore:
             parts = to_sid.split(":", 2)
             if len(parts) == 3 and self.adapter_bridge:
                 adapter_name, stype, target_id = parts
+
+                # 还原打码ID：AI可能输出 usr_1001 或 grp_1002，需要还原为真实ID
+                if target_id.startswith("usr_"):
+                    target_id = self._id_sanitizer.restore_user_id(target_id)
+                elif target_id.startswith("grp_"):
+                    target_id = self._id_sanitizer.restore_group_id(target_id)
+
                 # 校验 target_id 必须是纯数字（群号/QQ号），拒绝群名/占位符
                 if not target_id.isdigit():
                     logger.warning("跨会话 sid 的 id 非数字: %s", to_sid)
@@ -1305,10 +1312,21 @@ class TaleCore:
                     return {"status": "failed", "error": f"查询群列表失败: {e}"}
                 if not groups:
                     return {"status": "ok", "groups": [], "message": "机器人未加入任何群"}
+
+                # 对群ID打码，防止AI泄露真实群号
+                masked_groups = []
+                for group in groups:
+                    masked_group = group.copy()
+                    if "group_id" in masked_group:
+                        masked_group["group_id"] = self._id_sanitizer.sanitize_group_id(
+                            str(masked_group["group_id"])
+                        )
+                    masked_groups.append(masked_group)
+
                 return {
                     "status": "ok",
-                    "groups": groups,
-                    "message": f"机器人加入了 {len(groups)} 个群",
+                    "groups": masked_groups,
+                    "message": f"机器人加入了 {len(masked_groups)} 个群",
                 }
 
             register_plugin_handler("query_group_list", _run_query_group_list)

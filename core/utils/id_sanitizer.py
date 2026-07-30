@@ -15,6 +15,7 @@ class IDSanitizer:
         self._reverse_user = {}  # real_id -> usr_xxx
         self._reverse_group = {}  # real_id -> grp_xxx
         self._counter = 1000
+        self._max_counter = 9999  # 最大值，达到后循环复用
 
     def sanitize_user_id(self, real_id: str) -> str:
         """
@@ -36,6 +37,8 @@ class IDSanitizer:
 
         masked = f"usr_{self._counter}"
         self._counter += 1
+        if self._counter > self._max_counter:
+            self._counter = 1000  # 循环复用，避免无限增长
         self._user_map[masked] = real_id
         self._reverse_user[real_id] = masked
         return masked
@@ -60,6 +63,8 @@ class IDSanitizer:
 
         masked = f"grp_{self._counter}"
         self._counter += 1
+        if self._counter > self._max_counter:
+            self._counter = 1000  # 循环复用，避免无限增长
         self._group_map[masked] = real_id
         self._reverse_group[real_id] = masked
         return masked
