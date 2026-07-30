@@ -444,16 +444,12 @@ def get_chat_prompt() -> str:
 
     # 组合完整提示词
     full_prompt = character_prompt + "\n" + CHAT_BASE_TEMPLATE
-    
-    # 添加对话示例
+
+    # 添加对话示例（已格式化为场景化格式）
     examples = get_dialogue_examples()
     if examples:
-        full_prompt += "\n## 角色对话风格示例\n"
-        for i, ex in enumerate(examples[:3], 1):  # 最多显示3个示例
-            full_prompt += f"\n示例 {i}:\n"
-            full_prompt += f'用户："{ex.get("user", "")}"\n'
-            full_prompt += f'你："{ex.get("assistant", "")}"\n'
-    
+        full_prompt += "\n## 角色对话风格示例\n\n" + examples
+
     return full_prompt
 
 
