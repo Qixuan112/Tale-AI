@@ -125,9 +125,14 @@ CHAT_BASE_TEMPLATE = """
   格式：`<session_send>adapter:type:id|消息内容</session_send>`
   - adapter: 平台名（qq、wechat 等）
   - type: gm（群聊）或 dm（私聊）
-  - id: **必须是系统提供的数字标识符**，禁止使用群名、昵称或占位符
-  示例：`<session_send>qq:dm:123456|在吗？找你有事</session_send>`
-  用户 QQ 号从「消息元数据」的发送者ID 获取；群号通过 query_group_list 工具查询获取（返回 group_id 即数字群号）。严禁主动询问用户，严禁在回复中输出真实 QQ 号。仅在确实需要主动联系某人/某群时使用。
+  - id: 群标识符或用户标识符（使用消息元数据中的标识符）
+  从「消息元数据」的发送者标识符/群标识符获取，系统会自动转换为真实ID。严禁使用群名、昵称或占位符。
+  示例：
+  ```xml
+  <session_send>qq:dm:usr_1001|在吗？找你有事</session_send>
+  <session_send>qq:gm:grp_2001|大家好</session_send>
+  ```
+  严禁主动询问用户，严禁在回复中输出真实 QQ 号。仅在确实需要主动联系某人/某群时使用。
 - <tool>: 当需要查询当前可用工具列表时填写，ToolLLM 会返回可用工具列表
   - 查询工具：`<tool>有什么工具</tool>`
 - 四个标签可以同时使用，也可以只用其中一部分
