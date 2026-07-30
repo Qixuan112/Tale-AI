@@ -12,6 +12,7 @@ from .llm import ChatLLM, get_planllm, ToolLLM, get_vlm_llm
 from .config.provide import (
     get_chat_api_key, get_chat_model, get_chat_url,
     get_plan_api_key, get_plan_model, get_plan_url,
+    get_tool_api_key, get_tool_model, get_tool_url,
 )
 from .config import MAX_SPLIT_COUNT
 from .config.provide import config_loader
@@ -140,9 +141,9 @@ class TaleCore:
 
     @staticmethod
     def _init_toolllm():
-        api_key = get_plan_api_key()
-        model = get_plan_model()
-        url = get_plan_url()
+        api_key = get_tool_api_key()
+        model = get_tool_model()
+        url = get_tool_url()
         if not api_key:
             logger.warning("ToolLLM 未配置 API Key，请通过 WebUI 配置服务商")
             return None
