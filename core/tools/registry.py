@@ -117,6 +117,16 @@ class ToolRegistry:
         )
         self.register(
             ToolDefinition(
+                name="generate_image",
+                description="生成图片——根据描述生成一张图片",
+                parameters=[
+                    ToolParameter("prompt", "想要生成的图片描述"),
+                    ToolParameter("size", "图片尺寸，默认 1024x1024", required=False, default="1024x1024"),
+                ],
+            )
+        )
+        self.register(
+            ToolDefinition(
                 name="draw_picture",
                 description="画画/创作——画一张插画或艺术作品，富有创意与风格",
                 parameters=[
@@ -128,12 +138,19 @@ class ToolRegistry:
         )
 
     def register(self, tool: ToolDefinition) -> None:
-        """注册一个工具"""
+        """注册一个工具（包含handler）"""
         self._tools[tool.name] = tool
+        # 如果工具有handler，同时注册到function_caller
+        if tool.handler:
+            from core.function_caller import register_handler
+            register_handler(tool.name, tool.handler)
 
     def unregister(self, name: str) -> None:
         """移除一个工具的定义（插件卸载时调用）"""
         self._tools.pop(name, None)
+        # 同时移除handler
+        from core.function_caller import unregister_handler
+        unregister_handler(name)
 
     def get(self, name: str) -> Optional[ToolDefinition]:
         """获取工具定义"""
