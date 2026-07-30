@@ -1329,6 +1329,40 @@ class TaleCore:
                 )
             )
 
+            # 注册工具统计诊断工具
+            def _run_tool_stats(parameters):
+                from core.function_caller import get_tool_stats
+                stats = get_tool_stats()
+
+                # 格式化输出
+                lines = [f"总调用次数: {stats['total_calls']}"]
+                lines.append(f"成功: {stats['success_count']}, 失败: {stats['failure_count']}")
+
+                if stats['by_tool']:
+                    lines.append("\n工具统计:")
+                    for tool_name, tool_stat in sorted(stats['by_tool'].items(),
+                                                       key=lambda x: x[1]['calls'],
+                                                       reverse=True):
+                        avg_time = tool_stat['total_time_ms'] / tool_stat['calls'] if tool_stat['calls'] > 0 else 0
+                        lines.append(f"  {tool_name}: {tool_stat['calls']}次调用, "
+                                    f"成功{tool_stat['success']}次, "
+                                    f"失败{tool_stat['failure']}次, "
+                                    f"平均{avg_time:.0f}ms")
+                else:
+                    lines.append("\n暂无工具调用记录")
+
+                return {"status": "success", "result": "\n".join(lines)}
+
+            register_plugin_handler("tool_stats", _run_tool_stats)
+
+            get_registry().register(
+                ToolDefinition(
+                    name="tool_stats",
+                    description="查询工具使用统计，包括调用次数、成功率、平均耗时等。无需参数。",
+                    parameters=[],
+                )
+            )
+
             # 刷新 ToolLLM 的工具定义列表（必须在所有工具注册之后）
             if self.toolllm is not None:
                 self.toolllm.rebuild_tool_definitions()
