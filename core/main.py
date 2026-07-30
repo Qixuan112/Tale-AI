@@ -234,46 +234,45 @@ class TaleCore:
         except Exception as e:
             logger.warning("插件管理器初始化失败（不影响核心运行）: %s", e)
 
-    def _handle_platform_message(self, event_data: dict):
+    def _handle_platform_message(self, event: PlatformEvent):
         """处理平台消息事件（调试用）"""
-        platform = event_data.get("platform", "unknown")
-        sender_name = event_data.get("sender", {}).get("name", "Unknown")
-        content = event_data.get("content", {})
-        text = content.get("text", "")
+        platform = event.platform.value
+        sender_name = event.sender.name
+        text = event.content.text or ""
 
         logger.debug("[平台消息] [%s] %s: %s", platform, sender_name, text)
 
-    async def _handle_private_message(self, event_data: dict):
+    async def _handle_private_message(self, event: PlatformEvent):
         """处理私聊消息"""
-        await self._process_message_event(event_data)
+        await self._process_message_event(event)
 
-    async def _handle_group_message(self, event_data: dict):
+    async def _handle_group_message(self, event: PlatformEvent):
         """处理群消息"""
-        await self._process_message_event(event_data)
+        await self._process_message_event(event)
 
-    def _handle_qq_message(self, event_data: dict):
+    def _handle_qq_message(self, event: PlatformEvent):
         """处理 QQ 特定消息"""
         # 可以在这里添加 QQ 特定的处理逻辑
         pass
 
-    async def _handle_platform_notice(self, event_data: dict):
+    async def _handle_platform_notice(self, event: PlatformEvent):
         """处理平台通知事件（戳一戳、入群、禁言等）"""
         try:
-            text = event_data.get("content", {}).get("text", "")
+            text = event.content.text or ""
             if text:
                 logger.info("[通知] %s", text)
         except Exception as e:
             logger.debug("[通知] 处理通知事件时出错: %s", e)
 
-    async def _handle_wechat_moments_message(self, event_data: dict):
+    async def _handle_wechat_moments_message(self, event: PlatformEvent):
         """处理微信朋友圈消息
 
         朋友圈动态走 `wechat_moments_message` 通道到达事件总线，
         此处将朋友圈事件转换为消息处理流程，让 LLM 层能感知朋友圈动态。
         """
-        await self._process_moments_event(event_data)
+        await self._process_moments_event(event)
 
-    async def _process_moments_event(self, event_data: dict):
+    async def _process_moments_event(self, event: PlatformEvent):
         """处理微信朋友圈动态事件
 
         朋友圈动态来自 WeChat PC 适配器的轮询，此处将其作为
@@ -286,14 +285,12 @@ class TaleCore:
         - raw_event.media_type: 媒体类型（如有）
         """
         try:
-            platform = event_data.get("platform", "wechat_moments")
-            sender = event_data.get("sender", {})
-            content = event_data.get("content", {})
-            text = content.get("text", "")
-            sender_name = sender.get("name", "Unknown")
+            platform = event.platform.value
+            sender_name = event.sender.name
+            text = event.content.text or ""
 
             # 从 raw_event 提取额外结构化信息
-            raw = event_data.get("raw_event", {})
+            raw = event.raw_event or {}
             timestamp = raw.get("timestamp", "") if isinstance(raw, dict) else ""
             media_type = raw.get("media_type", "") if isinstance(raw, dict) else ""
 
@@ -323,24 +320,19 @@ class TaleCore:
         except Exception as e:
             logger.error("[朋友圈] 处理朋友圈事件时出错: %s", e, exc_info=True)
 
-    async def _process_message_event(self, event_data: dict):
+    async def _process_message_event(self, event: PlatformEvent):
         """处理消息事件（使用 MessageProcessor 进行决策）
 
         Args:
-            event_data: 事件数据（来自 AdapterEventBridge）
+            event: PlatformEvent 对象
         """
-        # 1. 从事件数据重建 PlatformEvent（简化版本）
-        platform_event = self._reconstruct_platform_event(event_data)
-        if not platform_event:
-            return
+        # 1. 获取来源适配器实例名（同类多实例时精确路由到正确的那个）
+        adapter_instance = getattr(event, 'adapter_instance', None)
 
-        # 2. 获取来源适配器实例名（同类多实例时精确路由到正确的那个）
-        adapter_instance = event_data.get("adapter_instance")
+        # 2. 使用 MessageProcessor 处理消息
+        processed = self.message_processor.process(event)
 
-        # 3. 使用 MessageProcessor 处理消息
-        processed = self.message_processor.process(platform_event)
-
-        # 3.5 将消息存入上下文缓冲区（无论决策如何都记录）
+        # 3. 将消息存入上下文缓冲区（无论决策如何都记录）
         self._store_to_context_buffer(processed)
 
         # 4. 根据决策处理
@@ -351,62 +343,6 @@ class TaleCore:
         else:
             # IGNORE - 忽略，但可以记录日志
             pass
-
-    def _reconstruct_platform_event(self, event_data: dict) -> Optional[PlatformEvent]:
-        """从事件数据重建 PlatformEvent
-
-        Args:
-            event_data: 事件数据
-
-        Returns:
-            PlatformEvent 或 None
-        """
-        try:
-            from .adapter.event import PlatformType, EventType, MessageContent, SenderInfo
-            from datetime import datetime
-
-            platform = PlatformType(event_data.get("platform", "unknown"))
-            event_type = EventType(event_data.get("event_type", "unknown"))
-
-            sender_data = event_data.get("sender", {})
-            sender = SenderInfo(
-                id=sender_data.get("id", ""),
-                name=sender_data.get("name", "Unknown"),
-                avatar=sender_data.get("avatar"),
-                is_bot=sender_data.get("is_bot", False),
-            )
-
-            content_data = event_data.get("content", {})
-            content = MessageContent(
-                text=content_data.get("text"),
-                images=content_data.get("images", []),
-                at_targets=content_data.get("at_targets", []),
-                reply_to=content_data.get("reply_to"),
-                reply_text=content_data.get("reply_text"),
-                faces=content_data.get("faces", []),
-                stickers=content_data.get("stickers", []),
-                videos=content_data.get("videos", []),
-                voices=content_data.get("voices", []),
-                json_cards=content_data.get("json_cards", []),
-            )
-
-            timestamp_str = event_data.get("timestamp")
-            timestamp = datetime.fromisoformat(timestamp_str) if timestamp_str else datetime.now()
-
-            return PlatformEvent(
-                platform=platform,
-                event_type=event_type,
-                sender=sender,
-                content=content,
-                message_id=event_data.get("message_id"),
-                group_id=event_data.get("group_id"),
-                group_name=event_data.get("group_name"),
-                timestamp=timestamp,
-                raw_event=event_data.get("raw_event", {}),
-            )
-        except Exception as e:
-            logger.error("重建 PlatformEvent 失败: %s", e)
-            return None
 
     def _store_to_context_buffer(self, processed: ProcessedMessage):
         """将消息存入上下文缓冲区，用于滑动窗口上下文。"""
