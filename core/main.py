@@ -9,6 +9,7 @@ from typing import Optional, Callable, Any, List, Dict
 from .spin_think import spinning_think
 from .bus import NextBus, bus
 from .llm import ChatLLM, get_planllm, ToolLLM, get_vlm_llm
+from .utils.cache import BoundedCache
 from .config.provide import (
     get_chat_api_key, get_chat_model, get_chat_url,
     get_plan_api_key, get_plan_model, get_plan_url,
@@ -68,8 +69,8 @@ class TaleCore:
         self._running = False
         self._shutdown_event: Optional[asyncio.Event] = None
         self._llm_executor = None
-        self._chat_context_buffer: Dict[str, list] = {}
-        self._name_to_id: Dict[str, Dict[str, str]] = {}
+        self._chat_context_buffer = BoundedCache(maxsize=200, ttl=7200)
+        self._name_to_id = BoundedCache(maxsize=200, ttl=86400)
         self.session_manager: Optional[SessionManager] = None
         self.bridge: Optional[BridgeState] = None
         # 全局 ChatLLM 锁：保护单例 self.chat 的 self.messages/current_sid
