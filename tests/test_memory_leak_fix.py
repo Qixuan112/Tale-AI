@@ -245,33 +245,26 @@ def test_context_buffer_with_files_stored(core):
 # 测试组 2: name_to_id 泄漏 (3 个)
 # ============================================================================
 
-@pytest.mark.asyncio
-async def test_name_to_id_unbounded_500_groups(core, mock_config):
+def test_name_to_id_unbounded_500_groups(core):
     """测试 500 群的 name_to_id 无界增长"""
-    # Mock _handle_respond_message 的依赖
-    core.chat = Mock()
-    core.adapter_bridge = Mock()
-    core.adapter_bridge.send_message = Mock(return_value=asyncio.coroutine(lambda: True)())
+    # 模拟 500 个群各有 10 个用户发言
+    for group_idx in range(500):
+        group_id = f"group_{group_idx:04d}"
+        for user_idx in range(10):
+            msg = create_processed_message(
+                group_id=group_id,
+                sender_id=f"qq_{user_idx:04d}",
+                sender_name=f"用户{user_idx}",
+                text="test",
+                decision=ResponseDecision.RESPOND,
+            )
 
-    with patch.object(core, '_call_chatllm', return_value=asyncio.coroutine(lambda: "<msg><text>ok</text></msg>")()) as mock_chat:
-        # 模拟 500 个群各有 10 个用户发言
-        for group_idx in range(500):
-            group_id = f"group_{group_idx:04d}"
-            for user_idx in range(10):
-                msg = create_processed_message(
-                    group_id=group_id,
-                    sender_id=f"qq_{user_idx:04d}",
-                    sender_name=f"用户{user_idx}",
-                    text="test",
-                    decision=ResponseDecision.RESPOND,
-                )
-
-                # 直接调用 name_to_id 更新逻辑（模拟 _handle_respond_message 中的代码）
-                if msg.sender_name and msg.sender_id:
-                    group_key = msg.group_id or "_private"
-                    if group_key not in core._name_to_id:
-                        core._name_to_id[group_key] = {}
-                    core._name_to_id[group_key][msg.sender_name] = msg.sender_id
+            # 直接调用 name_to_id 更新逻辑（模拟 _handle_respond_message 中的代码）
+            if msg.sender_name and msg.sender_id:
+                group_key = msg.group_id or "_private"
+                if group_key not in core._name_to_id:
+                    core._name_to_id[group_key] = {}
+                core._name_to_id[group_key][msg.sender_name] = msg.sender_id
 
     # 验证无界增长：500 个群全部存在
     assert len(core._name_to_id) == 500
