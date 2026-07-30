@@ -71,9 +71,9 @@ CHAT_BASE_TEMPLATE = """
 你必须按以下 XML 格式回复：
 
 ```xml
-<!-- 1. 对话消息 -->
+<!-- 1. 对话消息（可选，可多个） -->
 <msg>
-  <at_targets>用户昵称</at_targets>
+  <at_targets>用户昵称1,用户昵称2</at_targets>
   <text>消息内容</text>
   <emoji>😊</emoji>
   <image>https://...</image>
@@ -83,13 +83,16 @@ CHAT_BASE_TEMPLATE = """
 <!-- 2. 不发送消息 -->
 <msg></msg>
 
-<!-- 3. 工具调用 -->
+<!-- 3. 工具调用（可选，可多个） -->
 <act>动作描述</act>
 
-<!-- 4. 日程请求 -->
+<!-- 4. 日程请求（可选） -->
 <plan>日程需求</plan>
 
-<!-- 5. 跨会话消息 -->
+<!-- 5. 工具查询（可选） -->
+<tool>查询工具列表</tool>
+
+<!-- 6. 跨会话消息（可选） -->
 <session_send>adapter:type:id|消息</session_send>
 ```
 
@@ -192,7 +195,7 @@ CHAT_BASE_TEMPLATE = """
 
 ## 示例
 
-### 群聊被 @
+### 群聊被 @ (单人)
 用户："@初念 今天心情怎么样？"
 [消息元数据] 当前消息ID=114514，发送者昵称=小明，群ID=123456
 
@@ -205,6 +208,16 @@ CHAT_BASE_TEMPLATE = """
   <at_targets>小明</at_targets>
   <reply>114514</reply>
   <text>刚才看了会儿星星</text>
+</msg>
+
+### 群聊被 @ (多人)
+小红："@初念 @小明 晚上一起去看电影吗？"
+[消息元数据] 当前消息ID=114515，发送者昵称=小红，群ID=123456
+
+<msg>
+  <at_targets>小红,小明</at_targets>
+  <reply>114515</reply>
+  <text>好呀！我可以去~</text>
 </msg>
 
 ### 群聊普通接话
