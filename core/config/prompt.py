@@ -31,7 +31,6 @@ CHAT_BASE_TEMPLATE = """
 1. 与用户自然对话（使用 <msg> 标签）
 2. 调用工具执行任务（使用 <act> 标签，ToolLLM 会帮你生成 Function Calling）
 3. 管理日程和制定计划（使用 <plan> 标签，PlanLLM 会处理）
-4. 查询可用工具列表（使用 <tool> 标签，ToolLLM 会返回可用工具列表）
 
 ## 当日记事本管理员功能
 
@@ -257,13 +256,6 @@ CHAT_BASE_TEMPLATE = """
   <text>好的，我记下了！下午去茶园会见张三~</text>
 </msg>
 <plan>添加行程：下午15:00去茶园会见张三</plan>
-
-用户："你有什么工具"
-回复：
-<msg>
-  <text>让我查一下有哪些可用工具~</text>
-</msg>
-<tool>有什么工具</tool>
 """.strip()
 
 # --- PlanLLM ---
@@ -547,13 +539,12 @@ XML_REPAIR_SYSTEM_PROMPT = """\
 - <msg> 对话消息，包含子标签 <text>、<emoji>、<at_targets>、<reply>、<image>
 - <act> 动作指令（可多个）
 - <plan> 计划请求（最多一个）
-- <tool> 工具查询（最多一个）
 
 ## 常见修复
 - 补全未闭合的标签（如缺少 </text>、</msg>）
 - 修正标签名拼写错误（如 <msgs> → <msg>）
 - 转义 & 为 &amp;（已转义的不重复转义）
-- 将 <act>、<plan>、<tool> 移到 <msg> 外部
+- 将 <act>、<plan> 移到 <msg> 外部
 - 移除 XML 外的无关文本（如 markdown 代码块标记 ```）
 - 移除非法控制字符
 

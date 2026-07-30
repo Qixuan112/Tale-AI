@@ -1018,7 +1018,7 @@ class TaleCore:
     @staticmethod
     def _has_tool_content(parsed: dict, raw_reply: str = "") -> bool:
         """检查解析结果中是否还有待处理的工具/动作/计划/FC 内容"""
-        if parsed.get("actions") or parsed.get("tool") or parsed.get("plan"):
+        if parsed.get("actions") or parsed.get("plan"):
             return True
         if raw_reply and parse_function_call(raw_reply) is not None:
             return True
@@ -1108,25 +1108,7 @@ class TaleCore:
                 else:
                     result_parts.append(("动作执行失败", "所有工具执行均失败，请告知用户。"))
 
-            # Phase C: <tool> 标签
-            if current_parsed.get("tool"):
-                # ToolLLM 未配置 API Key 时为 None，跳过工具阶段并告知用户
-                if self.toolllm is None:
-                    logger.warning("[Agent %d/%d] ToolLLM 未初始化，跳过工具查询", iteration, max_steps)
-                    result_parts.append(("工具不可用", "工具能力未配置，无法查询可用工具列表，请告知用户。"))
-                else:
-                    logger.info("[Agent %d/%d] 查询工具列表", iteration, max_steps)
-                    tools_result = self.toolllm.query_tools()
-                    first_reply = self._extract_reply_text(current_parsed)
-                    tool_content = (
-                        f'你刚才对用户说："{first_reply}"\n\n'
-                        f"现在我已经获取到可用工具列表：\n{tools_result}\n\n"
-                        f"请介绍这些工具的功能。"
-                    )
-                    result_parts.append(("可用工具列表", tool_content))
-                    _emit_once("tools_queried", tools_result)
-
-            # Phase D: <plan> 标签
+            # Phase C: <plan> 标签
             if current_parsed.get("plan"):
                 logger.info("[Agent %d/%d] 制定计划", iteration, max_steps)
                 plan_result = await get_planllm().generate_async(current_parsed["plan"])
@@ -1192,18 +1174,18 @@ class TaleCore:
                 f"这是第 {iteration} 次工具调用（最多允许 {max_steps} 次推理步骤）。"
                 f"你还有 {remaining} 次机会。\n"
                 f"如果任务已完成，请直接回复用户；如果还需要查询更多信息、执行更多操作，\n"
-                f"可以继续使用 <act>/<tool>/<plan> 标签。"
+                f"可以继续使用 <act>/<plan> 标签。"
             )
         else:
             return (
                 f"[Agent 第 {iteration}/{max_steps} 轮 — 最后一轮] {title}：\n"
                 f"{result}\n\n"
                 f"这是最后一轮推理。请根据已有信息给用户一个完整回复，"
-                f"不要再使用 <act>/<tool>/<plan> 标签。"
+                f"不要再使用 <act>/<plan> 标签。"
             )
 
     async def _execute_actions(self, actions: list) -> list:
-        """执行动作列表，返回所有执行结果"""
+        """执行动作列表，返回所有执行结果。工具不存在时自动返回可用工具列表。"""
         results = []
         # ToolLLM 未配置 API Key 时为 None，无法生成 Function Calling，直接降级
         if self.toolllm is None:
@@ -1229,6 +1211,20 @@ class TaleCore:
                     execute_function, func_call["name"], func_call["parameters"]
                 )
                 logger.info("执行结果: %s", tool_result)
+
+                # 工具执行失败时，检查是否为"未知的函数"错误，自动返回工具列表
+                if isinstance(tool_result, dict) and tool_result.get("status") == "failed":
+                    error_msg = tool_result.get("error", "")
+                    if "未知的函数" in error_msg:
+                        logger.info("工具不存在，返回可用工具列表")
+                        tools_list = self.toolllm.query_tools()
+                        tool_result = {
+                            "status": "failed",
+                            "error": error_msg,
+                            "available_tools": tools_list,
+                            "message": f"工具不存在。当前可用工具：\n{tools_list}"
+                        }
+
                 results.append(tool_result)
             else:
                 logger.warning("无法解析 Function Calling")
