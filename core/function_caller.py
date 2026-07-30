@@ -3,7 +3,11 @@ Function Calling 执行器 - 解析和执行工具调用
 """
 import json
 import re
+import time
+from functools import wraps
 from typing import Callable, Dict
+from collections import defaultdict
+from threading import Lock
 
 from .tools import browser
 from .tools.registry import get_registry, get_tools_list, format_tools_for_chatllm
@@ -17,6 +21,42 @@ _handler_registry: Dict[str, Callable] = {}
 
 # Plugin tool dispatch — populated by PluginManager (deprecated, use _handler_registry)
 _plugin_dispatch: Dict[str, Callable] = {}
+
+# 工具使用统计
+_tool_stats = {
+    "total_calls": 0,
+    "success_count": 0,
+    "failure_count": 0,
+    "by_tool": defaultdict(lambda: {"calls": 0, "success": 0, "failure": 0, "total_time_ms": 0})
+}
+_stats_lock = Lock()
+
+
+def get_tool_stats() -> dict:
+    """获取工具使用统计"""
+    with _stats_lock:
+        # 转换 defaultdict 为普通 dict
+        return {
+            "total_calls": _tool_stats["total_calls"],
+            "success_count": _tool_stats["success_count"],
+            "failure_count": _tool_stats["failure_count"],
+            "by_tool": {k: dict(v) for k, v in _tool_stats["by_tool"].items()}
+        }
+
+
+def _record_tool_stat(func_name: str, success: bool, elapsed_ms: int):
+    """记录工具统计"""
+    with _stats_lock:
+        _tool_stats["total_calls"] += 1
+        if success:
+            _tool_stats["success_count"] += 1
+        else:
+            _tool_stats["failure_count"] += 1
+
+        tool_stat = _tool_stats["by_tool"][func_name]
+        tool_stat["calls"] += 1
+        tool_stat["success" if success else "failure"] += 1
+        tool_stat["total_time_ms"] += elapsed_ms
 
 
 def register_handler(func_name: str, handler: Callable) -> None:
@@ -112,6 +152,52 @@ def parse_function_call(response_text: str) -> dict:
 def execute_function(func_name: str, parameters: dict) -> dict:
     """
     执行指定的函数
+
+    Args:
+        func_name: 函数名
+        parameters: 参数字典
+
+    Returns:
+        执行结果字典
+    """
+    start_time = time.time()
+    logger.info(f"[Tool] 开始执行: {func_name}", extra={
+        "tool_name": func_name,
+        "parameters": parameters
+    })
+
+    try:
+        result = _execute_function_impl(func_name, parameters)
+        elapsed = time.time() - start_time
+        elapsed_ms = int(elapsed * 1000)
+
+        status = result.get("status", "unknown")
+        success = status == "success"
+        logger.info(f"[Tool] 完成: {func_name} ({elapsed:.2f}s)", extra={
+            "tool_name": func_name,
+            "status": status,
+            "elapsed_ms": elapsed_ms
+        })
+
+        _record_tool_stat(func_name, success, elapsed_ms)
+        return result
+
+    except Exception as e:
+        elapsed = time.time() - start_time
+        elapsed_ms = int(elapsed * 1000)
+        logger.error(f"[Tool] 失败: {func_name} ({elapsed:.2f}s)", extra={
+            "tool_name": func_name,
+            "error": str(e),
+            "elapsed_ms": elapsed_ms
+        }, exc_info=True)
+
+        _record_tool_stat(func_name, False, elapsed_ms)
+        return {"status": "failed", "error": str(e)}
+
+
+def _execute_function_impl(func_name: str, parameters: dict) -> dict:
+    """
+    执行指定的函数（内部实现）
 
     Args:
         func_name: 函数名

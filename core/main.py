@@ -10,6 +10,7 @@ from .spin_think import spinning_think
 from .bus import NextBus, bus
 from .llm import ChatLLM, get_planllm, ToolLLM, get_vlm_llm
 from .utils.cache import BoundedCache
+from .utils.id_sanitizer import IDSanitizer
 from .config.provide import (
     get_chat_api_key, get_chat_model, get_chat_url,
     get_plan_api_key, get_plan_model, get_plan_url,
@@ -74,6 +75,7 @@ class TaleCore:
         self._name_to_id = BoundedCache(maxsize=200, ttl=86400)
         self.session_manager: Optional[SessionManager] = None
         self.bridge: Optional[BridgeState] = None
+        self._id_sanitizer = IDSanitizer()  # ID脱敏器
         # 全局 ChatLLM 锁：保护单例 self.chat 的 self.messages/current_sid
         # 所有会话共享此锁，确保 set_session + chat 原子化，防跨会话串味
         self._chat_lock = asyncio.Lock()
@@ -617,12 +619,12 @@ class TaleCore:
             adapter_instance: 来源适配器实例名，用于同类多实例精确路由
         """
         # ================================================================
-        # 格式化用户消息（参考 KiraAI 格式）
+        # 格式化用户消息（结构化格式）
         # ================================================================
         # 平台
         platform_name = processed.platform.value if processed.platform else adapter_instance or "unknown"
 
-        # 构建消息头：[At xxx] [Reply xxx] 内容
+        # 构建消息主体：[At xxx] [Reply xxx] 内容
         msg_parts = []
         if processed.at_targets:
             for at_id in processed.at_targets:
@@ -633,49 +635,67 @@ class TaleCore:
             else:
                 msg_parts.append(f"[Reply {processed.reply_to}]")
         msg_parts.append(processed.text or "")
-        user_input = " ".join(msg_parts)
+        user_text = " ".join(msg_parts)
 
         # ================================================================
-        # 注入时间和环境元数据
+        # 构建结构化上下文（分段清晰）
         # ================================================================
         import datetime
         now = datetime.datetime.now()
         time_str = now.strftime("%Y-%m-%d %H:%M")
 
-        env_lines = [
-            f"\n[当前时间] {time_str}",
-            f"[消息元数据] 消息ID={processed.message_id}，发送者昵称={processed.sender_name}，发送者ID={processed.sender_id}",
-        ]
+        # ID脱敏：用户ID和群ID打码，防止AI泄露敏感信息
+        masked_sender_id = self._id_sanitizer.sanitize_user_id(processed.sender_id)
+
+        sections = []
+
+        # 1. 时间信息
+        sections.append(f"[当前时间] {time_str}")
+
+        # 2. 消息元数据（使用列表格式 + ID脱敏）
+        metadata_lines = ["[消息元数据]"]
+        metadata_lines.append(f"- 消息ID: {processed.message_id}")
+        metadata_lines.append(f"- 发送者: {processed.sender_name} ({masked_sender_id})")
         if processed.is_group_message:
-            env_lines.append(f"群ID={processed.group_id}")
+            masked_group_id = self._id_sanitizer.sanitize_group_id(processed.group_id)
             if processed.group_name:
-                env_lines[-1] += f"，群名称={processed.group_name}"
+                metadata_lines.append(f"- 群组: {processed.group_name} ({masked_group_id})")
+            else:
+                metadata_lines.append(f"- 群组ID: {masked_group_id}")
             chat_type = "群聊"
         else:
             chat_type = "私聊"
-        env_lines.append(f"[环境] 平台={platform_name}，聊天类型={chat_type}")
+        sections.append("\n".join(metadata_lines))
 
-        user_input += "，" .join(env_lines)
+        # 3. 环境信息
+        env_lines = ["[环境信息]"]
+        env_lines.append(f"- 平台: {platform_name}")
+        env_lines.append(f"- 类型: {chat_type}")
+        sections.append("\n".join(env_lines))
 
-        # 追加富媒体信息到 LLM 上下文
+        # 4. 富媒体信息
         extra_media = []
         if processed.voices:
-            extra_media.append(f"[收到 {len(processed.voices)} 条语音消息]")
+            extra_media.append(f"- 语音消息: {len(processed.voices)} 条")
         if processed.faces:
-            extra_media.append(f"[收到 {len(processed.faces)} 个QQ表情]")
+            extra_media.append(f"- QQ表情: {len(processed.faces)} 个")
         if processed.stickers:
-            extra_media.append(f"[收到 {len(processed.stickers)} 个动画表情]")
+            extra_media.append(f"- 动画表情: {len(processed.stickers)} 个")
         if processed.videos:
-            extra_media.append(f"[收到 {len(processed.videos)} 个视频]")
+            extra_media.append(f"- 视频: {len(processed.videos)} 个")
         if extra_media:
-            user_input += "\n" + " ".join(extra_media)
+            sections.append("[附件信息]\n" + "\n".join(extra_media))
+
+        # user_input 初始值（稍后会追加图片识别、上下文、跨会话消息等）
+        user_input = "\n\n".join(sections)
 
         # 维护昵称→ID 映射表（按群分组，供发送时解析 @ 用）
+        # 注意：这里存储的是打码后的ID，发送时需要还原
         if processed.sender_name and processed.sender_id:
             group_key = processed.group_id or "_private"
             # 写时复制模式：每次修改都触发 __setitem__，更新 TTL 和 LRU
             name_map = self._name_to_id.get(group_key, {})
-            name_map[processed.sender_name] = processed.sender_id
+            name_map[processed.sender_name] = masked_sender_id  # 存储打码ID
             self._name_to_id[group_key] = name_map  # 触发 __setitem__
 
         logger.info("处理 %s (%s): %s", processed.sender_name, processed.reason, processed.text)
@@ -702,22 +722,23 @@ class TaleCore:
                     self.chat.set_session(sid, load_history=session_enabled)
                 # ── 跨会话消息注入（consume inbox） ──
                 inbox_msgs = []
+                cross_session_text = ""
+                accessible_sessions_text = ""
                 if sid and self.bridge:
                     inbox_msgs = await self.bridge.consume(sid)
-                    inbox_text_parts = []
-                    for m in inbox_msgs:
-                        inbox_text_parts.append(
-                            f"[来自 {m['from_sid']} 的跨会话消息] {m['content'][:200]}"
-                        )
                     if inbox_msgs:
-                        user_input = "\n".join(inbox_text_parts) + "\n\n---\n\n" + user_input
+                        inbox_lines = ["[来自其他会话的消息]"]
+                        for m in inbox_msgs:
+                            inbox_lines.append(f"- 来自 {m['from_sid']}: {m['content'][:200]}")
+                        cross_session_text = "\n".join(inbox_lines)
                     # 注入可通信会话列表（最多 5 个）
                     accessible = self.bridge.list_accessible(sid)
                     if accessible:
-                        sess_list = "、".join(accessible)
-                        user_input += f"\n[可通信会话] {sess_list}"
+                        sess_list = ", ".join(accessible)
+                        accessible_sessions_text = f"[可通信会话] {sess_list}"
 
                 # 有图片时直接用 VLM 识别，结果注入上下文供 ChatLLM 感知
+                image_recognition_text = ""
                 if processed.images:
                     try:
                         vlm_llm = get_vlm_llm()
@@ -742,13 +763,14 @@ class TaleCore:
                             )
                         if vlm_result:
                             logger.info("VLM 图片识别结果: %s", vlm_result[:200])
-                            user_input = f"{user_input}\n\n[图片识别结果]\n{vlm_result}"
+                            image_recognition_text = f"[图片识别结果]\n{vlm_result}"
                     except Exception as e:
                         logger.warning("VLM 图片识别失败: %s", e)
 
                 # 追加滑动上下文窗口
                 # persist_content = 拼接历史前的 user_input（纯净用户消息，用于落库）
-                persist_content = user_input
+                # 注意：persist_content 需要在最终组装前保存基础内容
+                context_text = ""
                 use_ctx = bool(processed.text and not (
                     persistence and self.session_manager and sid and session_enabled
                 ))
@@ -758,8 +780,36 @@ class TaleCore:
                         ctx = await self._build_context_window(processed, ctx_window_cfg.chat_context_window)
                         if ctx:
                             logger.debug("追加上下文窗口 (%d 条)", ctx_window_cfg.chat_context_window)
-                            user_input = f"以下是最近的聊天记录：\n{ctx}\n\n---\n{user_input}"
+                            context_text = f"---\n以下是最近的聊天记录：\n{ctx}\n---"
                 # set_session 已通过 self.messages 结构化加载历史，无需额外拼接
+
+                # ================================================================
+                # 最终组装：按优先级排列各个段落
+                # ================================================================
+                final_sections = [user_input]  # 基础元数据（时间、消息、环境）
+
+                # 附加信息按重要性排列
+                if image_recognition_text:
+                    final_sections.append(image_recognition_text)
+
+                if context_text:
+                    final_sections.append(context_text)
+
+                # 当前用户消息作为重点（放在明显位置）
+                final_sections.append(f"## 当前消息\n{user_text}")
+
+                # 跨会话消息作为补充信息
+                if cross_session_text:
+                    final_sections.append(cross_session_text)
+
+                if accessible_sessions_text:
+                    final_sections.append(accessible_sessions_text)
+
+                # 组装最终输入
+                user_input = "\n\n".join(final_sections)
+
+                # persist_content 用于落库，只包含核心消息内容
+                persist_content = user_text
 
                 # 首次调用不落库（save_to_session=False），最终回复在最后统一持久化
                 # 避免工具调用轮次和最终回复双重写入
@@ -885,6 +935,13 @@ class TaleCore:
             parts = to_sid.split(":", 2)
             if len(parts) == 3 and self.adapter_bridge:
                 adapter_name, stype, target_id = parts
+
+                # 还原打码ID：AI可能输出 usr_1001 或 grp_1002，需要还原为真实ID
+                if target_id.startswith("usr_"):
+                    target_id = self._id_sanitizer.restore_user_id(target_id)
+                elif target_id.startswith("grp_"):
+                    target_id = self._id_sanitizer.restore_group_id(target_id)
+
                 # 校验 target_id 必须是纯数字（群号/QQ号），拒绝群名/占位符
                 if not target_id.isdigit():
                     logger.warning("跨会话 sid 的 id 非数字: %s", to_sid)
@@ -936,6 +993,9 @@ class TaleCore:
                     for name in raw_at:
                         qq_id = "all" if name == "all" else name_map.get(name)
                         if qq_id:
+                            # 如果AI输出了打码ID（usr_xxx），还原为真实ID
+                            if self._id_sanitizer.is_masked_user_id(qq_id):
+                                qq_id = self._id_sanitizer.restore_user_id(qq_id)
                             at_list.append(qq_id)
                     if at_list:
                         at_targets = at_list
@@ -1346,6 +1406,7 @@ class TaleCore:
                 except Exception as e:
                     return {"status": "failed", "error": f"查询群成员失败: {e}"}
                 # 填充 _name_to_id（群成员映射，按群分组）
+                # 注意：存储打码后的ID，保持与消息元数据一致
                 group_key = group_id
                 # 写时复制模式：每次修改都触发 __setitem__，更新 TTL 和 LRU
                 name_map = self._name_to_id.get(group_key, {})
@@ -1353,7 +1414,8 @@ class TaleCore:
                     uid = m.get("user_id", "")
                     nick = m.get("nickname", "")
                     if uid and nick:
-                        name_map[nick] = uid
+                        masked_uid = self._id_sanitizer.sanitize_user_id(str(uid))
+                        name_map[nick] = masked_uid
                 self._name_to_id[group_key] = name_map  # 触发 __setitem__
                 if not members:
                     return {"status": "ok", "members": [], "message": "该群没有成员或查询失败"}
@@ -1395,10 +1457,21 @@ class TaleCore:
                     return {"status": "failed", "error": f"查询群列表失败: {e}"}
                 if not groups:
                     return {"status": "ok", "groups": [], "message": "机器人未加入任何群"}
+
+                # 对群ID打码，防止AI泄露真实群号
+                masked_groups = []
+                for group in groups:
+                    masked_group = group.copy()
+                    if "group_id" in masked_group:
+                        masked_group["group_id"] = self._id_sanitizer.sanitize_group_id(
+                            str(masked_group["group_id"])
+                        )
+                    masked_groups.append(masked_group)
+
                 return {
                     "status": "ok",
-                    "groups": groups,
-                    "message": f"机器人加入了 {len(groups)} 个群",
+                    "groups": masked_groups,
+                    "message": f"机器人加入了 {len(masked_groups)} 个群",
                 }
 
             register_plugin_handler("query_group_list", _run_query_group_list)
@@ -1426,6 +1499,40 @@ class TaleCore:
                 ToolDefinition(
                     name="query_group_list",
                     description="获取机器人加入的所有群聊列表，返回群号和群名称。无需参数。",
+                    parameters=[],
+                )
+            )
+
+            # 注册工具统计诊断工具
+            def _run_tool_stats(parameters):
+                from core.function_caller import get_tool_stats
+                stats = get_tool_stats()
+
+                # 格式化输出
+                lines = [f"总调用次数: {stats['total_calls']}"]
+                lines.append(f"成功: {stats['success_count']}, 失败: {stats['failure_count']}")
+
+                if stats['by_tool']:
+                    lines.append("\n工具统计:")
+                    for tool_name, tool_stat in sorted(stats['by_tool'].items(),
+                                                       key=lambda x: x[1]['calls'],
+                                                       reverse=True):
+                        avg_time = tool_stat['total_time_ms'] / tool_stat['calls'] if tool_stat['calls'] > 0 else 0
+                        lines.append(f"  {tool_name}: {tool_stat['calls']}次调用, "
+                                    f"成功{tool_stat['success']}次, "
+                                    f"失败{tool_stat['failure']}次, "
+                                    f"平均{avg_time:.0f}ms")
+                else:
+                    lines.append("\n暂无工具调用记录")
+
+                return {"status": "success", "result": "\n".join(lines)}
+
+            register_plugin_handler("tool_stats", _run_tool_stats)
+
+            get_registry().register(
+                ToolDefinition(
+                    name="tool_stats",
+                    description="查询工具使用统计，包括调用次数、成功率、平均耗时等。无需参数。",
                     parameters=[],
                 )
             )

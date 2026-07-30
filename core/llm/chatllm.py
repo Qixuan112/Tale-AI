@@ -65,8 +65,8 @@ class ChatLLM:
         except Exception:
             pass
 
-        # Add dynamic plan section that injects today's schedule
-        self._add_plan_section()
+        # today_plan 已移至 user_input 注入，不再占用 system prompt（启用缓存）
+        # self._add_plan_section()
 
         # Initialize RAG knowledge base flag
         self._rag_enabled = False
@@ -108,7 +108,11 @@ class ChatLLM:
             self.messages = new_head + self.messages[cut:]
 
     def _add_plan_section(self):
-        """Add a dynamic PromptSection that injects today's plan into the system prompt."""
+        """Add a dynamic PromptSection that injects today's plan into the system prompt.
+
+        DEPRECATED: today_plan 已移至 user_input 注入以启用 Anthropic 缓存。
+        保留此方法仅为兼容性，实际不再调用。
+        """
         def _get_plan_content():
             from . import get_planllm
             try:
@@ -128,9 +132,14 @@ class ChatLLM:
         ))
 
     def refresh_plan(self):
-        """Refresh the plan section content and rebuild system messages."""
-        self._add_plan_section()
-        self.refresh_context()
+        """Refresh the plan section content and rebuild system messages.
+
+        DEPRECATED: today_plan 已移至 user_input 注入，不再存在于 system prompt。
+        保留此方法仅为兼容性，实际不再需要调用。
+        """
+        # self._add_plan_section()
+        # self.refresh_context()
+        pass
 
     def _on_config_reloaded(self):
         """配置重载后热更新 API 客户端和角色上下文。"""
@@ -151,7 +160,8 @@ class ChatLLM:
                 dialogue_examples=get_dialogue_examples(),
                 persona_additional_prompt=config_loader.persona.additional_prompt,
             )
-            self._add_plan_section()
+            # today_plan 已移至 user_input 注入，不再重建 system prompt section
+            # self._add_plan_section()
             self.refresh_context()
             logger.info("ChatLLM: 配置已热更新")
 
