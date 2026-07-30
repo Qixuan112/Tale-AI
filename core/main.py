@@ -419,18 +419,20 @@ class TaleCore:
             return
         if not processed.text and not processed.images:
             return
-        if key not in self._chat_context_buffer:
-            self._chat_context_buffer[key] = []
+
+        # 写时复制模式：每次修改都触发 __setitem__，更新 TTL 和 LRU
         import time
-        self._chat_context_buffer[key].append({
+        buffer = self._chat_context_buffer.get(key, [])
+        buffer.append({
             "sender": processed.sender_name,
             "text": processed.text,
             "time": time.strftime("%H:%M"),
             "images": list(getattr(processed, "images", []) or []),
         })
         # 限制缓冲区大小，防止内存泄漏
-        if len(self._chat_context_buffer[key]) > 100:
-            self._chat_context_buffer[key] = self._chat_context_buffer[key][-100:]
+        if len(buffer) > 100:
+            buffer = buffer[-100:]
+        self._chat_context_buffer[key] = buffer  # 触发 __setitem__
 
     def _get_chat_lock(self) -> asyncio.Lock:
         return self._chat_lock
@@ -633,9 +635,10 @@ class TaleCore:
         # 维护昵称→ID 映射表（按群分组，供发送时解析 @ 用）
         if processed.sender_name and processed.sender_id:
             group_key = processed.group_id or "_private"
-            if group_key not in self._name_to_id:
-                self._name_to_id[group_key] = {}
-            self._name_to_id[group_key][processed.sender_name] = processed.sender_id
+            # 写时复制模式：每次修改都触发 __setitem__，更新 TTL 和 LRU
+            name_map = self._name_to_id.get(group_key, {})
+            name_map[processed.sender_name] = processed.sender_id
+            self._name_to_id[group_key] = name_map  # 触发 __setitem__
 
         logger.info("处理 %s (%s): %s", processed.sender_name, processed.reason, processed.text)
 
@@ -1306,13 +1309,14 @@ class TaleCore:
                     return {"status": "failed", "error": f"查询群成员失败: {e}"}
                 # 填充 _name_to_id（群成员映射，按群分组）
                 group_key = group_id
-                if group_key not in self._name_to_id:
-                    self._name_to_id[group_key] = {}
+                # 写时复制模式：每次修改都触发 __setitem__，更新 TTL 和 LRU
+                name_map = self._name_to_id.get(group_key, {})
                 for m in members:
                     uid = m.get("user_id", "")
                     nick = m.get("nickname", "")
                     if uid and nick:
-                        self._name_to_id[group_key][nick] = uid
+                        name_map[nick] = uid
+                self._name_to_id[group_key] = name_map  # 触发 __setitem__
                 if not members:
                     return {"status": "ok", "members": [], "message": "该群没有成员或查询失败"}
                 return {

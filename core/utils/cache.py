@@ -91,6 +91,25 @@ class BoundedCache:
             self._cleanup_expired()
             return iter(list(self._cache.keys()))
 
+    def _touch(self, key):
+        """
+        Manually refresh TTL timestamp and LRU position for a key.
+
+        Use this when modifying mutable values in-place (e.g., list.append, dict[k]=v)
+        to ensure TTL and LRU are updated correctly.
+
+        Args:
+            key: The key to touch
+
+        Raises:
+            KeyError: If key is not in cache
+        """
+        with self._lock:
+            if key not in self._cache:
+                raise KeyError(key)
+            self._timestamps[key] = time.time()
+            self._cache.move_to_end(key)
+
     def _cleanup_expired(self):
         """Remove expired entries based on TTL."""
         if self._ttl is None:
