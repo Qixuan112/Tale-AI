@@ -97,7 +97,7 @@ class AdapterManager:
                 adapter_id = manifest.get("id") or adapter_id
                 cls._manifests[adapter_id] = manifest
             except Exception as e:
-                logger.info(f"Failed to load manifest for {adapter_id}: {e}")
+                logger.error(f"Failed to load manifest for {adapter_id}: {e}")
                 continue
 
             # 读取 schema（可选）
@@ -106,7 +106,7 @@ class AdapterManager:
                     with open(schema_path, 'r', encoding='utf-8') as f:
                         cls._schemas[adapter_id] = json.load(f)
                 except Exception as e:
-                    logger.info(f"Failed to load schema for {adapter_id}: {e}")
+                    logger.error(f"Failed to load schema for {adapter_id}: {e}")
                     cls._schemas[adapter_id] = []
             else:
                 cls._schemas[adapter_id] = []
@@ -162,7 +162,7 @@ class AdapterManager:
                         logger.info(f"  ✗ No adapter class found in: {adapter_id}")
 
                 except Exception as e:
-                    logger.info(f"  ✗ Failed to load adapter {adapter_id}: {e}")
+                    logger.error(f"  ✗ Failed to load adapter {adapter_id}: {e}")
 
         logger.info(f"Adapter scan complete. Found {len(cls._registry)} adapter(s).")
 

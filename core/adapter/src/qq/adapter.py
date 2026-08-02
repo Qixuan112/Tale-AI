@@ -436,7 +436,7 @@ class QQAdapter(BaseAdapter):
             return True
 
         except Exception as e:
-            logger.info(f"[QQ] Failed to send message: {e}")
+            logger.error(f"[QQ] Failed to send message: {e}")
             return False
 
     # ── 追溯原文 ─────────────────────────────────────────────────────
