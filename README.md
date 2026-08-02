@@ -1,5 +1,5 @@
 <p align="center">
-  <h1>Tale</h1>
+  <h1>TaleAI</h1>
   <p><em>AI That Lives a Life of Its Own</em></p>
 </p>
 
@@ -49,11 +49,6 @@ User Input → ChatLLM (intent) → PlanLLM (plan) / ToolLLM (tools)
 ```
 
 ---
-
-## Reference
-
-This project's design was partially inspired by [KiraAI](https://github.com/xxynet/KiraAI), a modular AI chatbot framework.
-
 ### Third-Party Code
 
 | Component | License | Description |

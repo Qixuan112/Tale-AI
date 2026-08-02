@@ -9,6 +9,8 @@ from typing import Optional, Callable, Any, List, Dict
 from .spin_think import spinning_think
 from .bus import NextBus, bus
 from .llm import ChatLLM, get_planllm, ToolLLM, get_vlm_llm
+from .utils.cache import BoundedCache
+from .utils.id_sanitizer import IDSanitizer
 from .config.provide import (
     get_chat_api_key, get_chat_model, get_chat_url,
     get_plan_api_key, get_plan_model, get_plan_url,
@@ -74,6 +76,7 @@ class TaleCore:
         self._name_to_id = BoundedCache(maxsize=200, ttl=86400)
         self.session_manager: Optional[SessionManager] = None
         self.bridge: Optional[BridgeState] = None
+        self._id_sanitizer = IDSanitizer()  # ID脱敏器
         # 全局 ChatLLM 锁：保护单例 self.chat 的 self.messages/current_sid
         # 所有会话共享此锁，确保 set_session + chat 原子化，防跨会话串味
         self._chat_lock = asyncio.Lock()
@@ -96,6 +99,9 @@ class TaleCore:
             )
             # 启动时清理过期会话（7天以上）
             self.session_manager.cleanup_expired(days=7)
+
+        # 注册内置工具handlers（必须在 ToolRegistry 默认注册之后）
+        self._register_builtin_handlers()
 
         # 初始化跨会话消息桥接
         self.bridge = BridgeState()
@@ -123,6 +129,104 @@ class TaleCore:
         self._init_plugin_manager()
 
         logger.info("核心组件初始化完成")
+
+    def _register_builtin_handlers(self):
+        """注册内置工具的handlers到统一注册表"""
+        from .function_caller import register_handler
+        from .tools import browser, weather
+        from .utils.calculator import safe_calculate
+
+        # browser_open handler
+        def browser_open_handler(parameters: dict) -> dict:
+            url = parameters.get("url", "")
+            if url:
+                return browser.fetch_and_parse(url)
+            return {"status": "failed", "error": "缺少 url 参数"}
+
+        # browser_search handler
+        def browser_search_handler(parameters: dict) -> dict:
+            query = parameters.get("query", "")
+            engine = parameters.get("engine", "duckduckgo")
+            if query:
+                return browser.browser_search(query, engine)
+            return {"status": "failed", "error": "缺少 query 参数"}
+
+        # weather_query handler
+        def weather_query_handler(parameters: dict) -> dict:
+            city = parameters.get("city", "")
+            if city:
+                return weather.query(city)
+            return {"status": "failed", "error": "缺少 city 参数"}
+
+        # calculator handler
+        def calculator_handler(parameters: dict) -> dict:
+            expression = parameters.get("expression", "")
+            if expression:
+                return safe_calculate(expression)
+            return {"status": "failed", "error": "缺少 expression 参数"}
+
+        # generate_image handler
+        def generate_image_handler(parameters: dict) -> dict:
+            from .llm.image_gen import get_image_generator
+            prompt = parameters.get("prompt", "")
+            size = parameters.get("size", "1024x1024") or "1024x1024"
+            if not prompt:
+                return {"status": "failed", "error": "缺少 prompt 参数"}
+            image_url = get_image_generator().generate(prompt, size)
+            if image_url:
+                return {
+                    "status": "success",
+                    "image_url": image_url,
+                    "message": f"已生成图片，URL: {image_url}。请在回复中用 <image>{image_url}</image> 把这张图发给用户。",
+                }
+            return {"status": "failed", "error": "图片生成失败（可能未配置 image_gen provider）"}
+
+        # take_photo handler
+        def take_photo_handler(parameters: dict) -> dict:
+            from .llm.image_gen import get_image_generator
+            raw = parameters.get("prompt", "")
+            size = parameters.get("size", "1024x1024") or "1024x1024"
+            if not raw:
+                return {"status": "failed", "error": "缺少 prompt 参数"}
+            enriched = f"写实摄影风格，超清照片质感，电影级光影与细节，颜色真实自然，4K画质，景深效果，{raw}"
+            image_url = get_image_generator().generate(enriched, size)
+            if image_url:
+                return {
+                    "status": "success",
+                    "image_url": image_url,
+                    "message": f"已拍照成功，URL: {image_url}。请在回复中用 <image>{image_url}</image> 把这张照片发给用户。",
+                }
+            return {"status": "failed", "error": "拍照失败（可能未配置 image_gen provider）"}
+
+        # draw_picture handler
+        def draw_picture_handler(parameters: dict) -> dict:
+            from .llm.image_gen import get_image_generator
+            raw = parameters.get("prompt", "")
+            size = parameters.get("size", "1024x1024") or "1024x1024"
+            style = parameters.get("style", "") or ""
+            if not raw:
+                return {"status": "failed", "error": "缺少 prompt 参数"}
+            style_tag = f"{style}风格，" if style else ""
+            enriched = f"插画创作，{style_tag}富有艺术感与表现力，色彩丰富协调，画面生动有故事性，{raw}"
+            image_url = get_image_generator().generate(enriched, size)
+            if image_url:
+                return {
+                    "status": "success",
+                    "image_url": image_url,
+                    "message": f"已画好，URL: {image_url}。请在回复中用 <image>{image_url}</image> 把这张画发给用户。",
+                }
+            return {"status": "failed", "error": "画画失败（可能未配置 image_gen provider）"}
+
+        # Register all handlers
+        register_handler("browser_open", browser_open_handler)
+        register_handler("browser_search", browser_search_handler)
+        register_handler("weather_query", weather_query_handler)
+        register_handler("calculator", calculator_handler)
+        register_handler("generate_image", generate_image_handler)
+        register_handler("take_photo", take_photo_handler)
+        register_handler("draw_picture", draw_picture_handler)
+
+        logger.info("已注册 7 个内置工具handlers到统一注册表")
 
     def _init_chatllm(self):
         api_key = get_chat_api_key()
@@ -235,12 +339,11 @@ class TaleCore:
         except Exception as e:
             logger.warning("插件管理器初始化失败（不影响核心运行）: %s", e)
 
-    def _handle_platform_message(self, event_data: dict):
+    def _handle_platform_message(self, event: PlatformEvent):
         """处理平台消息事件（调试用）"""
-        platform = event_data.get("platform", "unknown")
-        sender_name = event_data.get("sender", {}).get("name", "Unknown")
-        content = event_data.get("content", {})
-        text = content.get("text", "")
+        platform = event.platform.value
+        sender_name = event.sender.name
+        text = event.content.text or ""
 
         logger.debug("[平台消息] [%s] %s: %s", platform, sender_name, text)
 
@@ -252,29 +355,29 @@ class TaleCore:
         """处理群消息"""
         await self._process_message_event(event)
 
-    def _handle_qq_message(self, event_data: dict):
+    def _handle_qq_message(self, event: PlatformEvent):
         """处理 QQ 特定消息"""
         # 可以在这里添加 QQ 特定的处理逻辑
         pass
 
-    async def _handle_platform_notice(self, event_data: dict):
+    async def _handle_platform_notice(self, event: PlatformEvent):
         """处理平台通知事件（戳一戳、入群、禁言等）"""
         try:
-            text = event_data.get("content", {}).get("text", "")
+            text = event.content.text or ""
             if text:
                 logger.info("[通知] %s", text)
         except Exception as e:
             logger.debug("[通知] 处理通知事件时出错: %s", e)
 
-    async def _handle_wechat_moments_message(self, event_data: dict):
+    async def _handle_wechat_moments_message(self, event: PlatformEvent):
         """处理微信朋友圈消息
 
         朋友圈动态走 `wechat_moments_message` 通道到达事件总线，
         此处将朋友圈事件转换为消息处理流程，让 LLM 层能感知朋友圈动态。
         """
-        await self._process_moments_event(event_data)
+        await self._process_moments_event(event)
 
-    async def _process_moments_event(self, event_data: dict):
+    async def _process_moments_event(self, event: PlatformEvent):
         """处理微信朋友圈动态事件
 
         朋友圈动态来自 WeChat PC 适配器的轮询，此处将其作为
@@ -287,14 +390,12 @@ class TaleCore:
         - raw_event.media_type: 媒体类型（如有）
         """
         try:
-            platform = event_data.get("platform", "wechat_moments")
-            sender = event_data.get("sender", {})
-            content = event_data.get("content", {})
-            text = content.get("text", "")
-            sender_name = sender.get("name", "Unknown")
+            platform = event.platform.value
+            sender_name = event.sender.name
+            text = event.content.text or ""
 
             # 从 raw_event 提取额外结构化信息
-            raw = event_data.get("raw_event", {})
+            raw = event.raw_event or {}
             timestamp = raw.get("timestamp", "") if isinstance(raw, dict) else ""
             media_type = raw.get("media_type", "") if isinstance(raw, dict) else ""
 
@@ -324,24 +425,19 @@ class TaleCore:
         except Exception as e:
             logger.error("[朋友圈] 处理朋友圈事件时出错: %s", e, exc_info=True)
 
-    async def _process_message_event(self, event_data: dict):
+    async def _process_message_event(self, event: PlatformEvent):
         """处理消息事件（使用 MessageProcessor 进行决策）
 
         Args:
-            event_data: 事件数据（来自 AdapterEventBridge）
+            event: PlatformEvent 对象
         """
-        # 1. 从事件数据重建 PlatformEvent（简化版本）
-        platform_event = self._reconstruct_platform_event(event_data)
-        if not platform_event:
-            return
+        # 1. 获取来源适配器实例名（同类多实例时精确路由到正确的那个）
+        adapter_instance = getattr(event, 'adapter_instance', None)
 
-        # 2. 获取来源适配器实例名（同类多实例时精确路由到正确的那个）
-        adapter_instance = event_data.get("adapter_instance")
+        # 2. 使用 MessageProcessor 处理消息
+        processed = self.message_processor.process(event)
 
-        # 3. 使用 MessageProcessor 处理消息
-        processed = self.message_processor.process(platform_event)
-
-        # 3.5 将消息存入上下文缓冲区（无论决策如何都记录）
+        # 3. 将消息存入上下文缓冲区（无论决策如何都记录）
         self._store_to_context_buffer(processed)
 
         # 4. 根据决策处理
@@ -431,10 +527,11 @@ class TaleCore:
             return
         if not processed.text and not processed.images and not processed.files:
             return
-        if key not in self._chat_context_buffer:
-            self._chat_context_buffer[key] = []
+
+        # 写时复制模式：每次修改都触发 __setitem__，更新 TTL 和 LRU
         import time
-        self._chat_context_buffer[key].append({
+        buffer = self._chat_context_buffer.get(key, [])
+        buffer.append({
             "sender": processed.sender_name,
             "text": processed.text,
             "time": time.strftime("%H:%M"),
@@ -442,8 +539,9 @@ class TaleCore:
             "files": [{"name": f.name, "url": f.url, "size": f.size} for f in (getattr(processed, "files", []) or [])],
         })
         # 限制缓冲区大小，防止内存泄漏
-        if len(self._chat_context_buffer[key]) > 100:
-            self._chat_context_buffer[key] = self._chat_context_buffer[key][-100:]
+        if len(buffer) > 100:
+            buffer = buffer[-100:]
+        self._chat_context_buffer[key] = buffer  # 触发 __setitem__
 
     def _get_chat_lock(self) -> asyncio.Lock:
         return self._chat_lock
@@ -599,12 +697,12 @@ class TaleCore:
             adapter_instance: 来源适配器实例名，用于同类多实例精确路由
         """
         # ================================================================
-        # 格式化用户消息（参考 KiraAI 格式）
+        # 格式化用户消息（结构化格式）
         # ================================================================
         # 平台
         platform_name = processed.platform.value if processed.platform else adapter_instance or "unknown"
 
-        # 构建消息头：[At xxx] [Reply xxx] 内容
+        # 构建消息主体：[At xxx] [Reply xxx] 内容
         msg_parts = []
         if processed.at_targets:
             for at_id in processed.at_targets:
@@ -615,52 +713,71 @@ class TaleCore:
             else:
                 msg_parts.append(f"[Reply {processed.reply_to}]")
         msg_parts.append(processed.text or "")
-        user_input = " ".join(msg_parts)
+        user_text = " ".join(msg_parts)
 
         # ================================================================
-        # 注入时间和环境元数据
+        # 构建结构化上下文（分段清晰）
         # ================================================================
         import datetime
         now = datetime.datetime.now()
         time_str = now.strftime("%Y-%m-%d %H:%M")
 
-        env_lines = [
-            f"\n[当前时间] {time_str}",
-            f"[消息元数据] 消息ID={processed.message_id}，发送者昵称={processed.sender_name}，发送者ID={processed.sender_id}",
-        ]
+        # ID脱敏：用户ID和群ID打码，防止AI泄露敏感信息
+        masked_sender_id = self._id_sanitizer.sanitize_user_id(processed.sender_id)
+
+        sections = []
+
+        # 1. 时间信息
+        sections.append(f"[当前时间] {time_str}")
+
+        # 2. 消息元数据（使用列表格式 + ID脱敏）
+        metadata_lines = ["[消息元数据]"]
+        metadata_lines.append(f"- 消息ID: {processed.message_id}")
+        metadata_lines.append(f"- 发送者: {processed.sender_name} ({masked_sender_id})")
         if processed.is_group_message:
-            env_lines.append(f"群ID={processed.group_id}")
+            masked_group_id = self._id_sanitizer.sanitize_group_id(processed.group_id)
             if processed.group_name:
-                env_lines[-1] += f"，群名称={processed.group_name}"
+                metadata_lines.append(f"- 群组: {processed.group_name} ({masked_group_id})")
+            else:
+                metadata_lines.append(f"- 群组ID: {masked_group_id}")
             chat_type = "群聊"
         else:
             chat_type = "私聊"
-        env_lines.append(f"[环境] 平台={platform_name}，聊天类型={chat_type}")
+        sections.append("\n".join(metadata_lines))
 
-        user_input += "，" .join(env_lines)
+        # 3. 环境信息
+        env_lines = ["[环境信息]"]
+        env_lines.append(f"- 平台: {platform_name}")
+        env_lines.append(f"- 类型: {chat_type}")
+        sections.append("\n".join(env_lines))
 
-        # 追加富媒体信息到 LLM 上下文
+        # 4. 富媒体信息
         extra_media = []
         if processed.voices:
-            extra_media.append(f"[收到 {len(processed.voices)} 条语音消息]")
+            extra_media.append(f"- 语音消息: {len(processed.voices)} 条")
         if processed.faces:
-            extra_media.append(f"[收到 {len(processed.faces)} 个QQ表情]")
+            extra_media.append(f"- QQ表情: {len(processed.faces)} 个")
         if processed.stickers:
-            extra_media.append(f"[收到 {len(processed.stickers)} 个动画表情]")
+            extra_media.append(f"- 动画表情: {len(processed.stickers)} 个")
         if processed.videos:
-            extra_media.append(f"[收到 {len(processed.videos)} 个视频]")
+            extra_media.append(f"- 视频: {len(processed.videos)} 个")
         if processed.files:
             file_names = ", ".join(f.name for f in processed.files[:5])
-            extra_media.append(f"[收到 {len(processed.files)} 个文件: {file_names}]")
+            extra_media.append(f"- 文件: {len(processed.files)} 个 ({file_names})")
         if extra_media:
-            user_input += "\n" + " ".join(extra_media)
+            sections.append("[附件信息]\n" + "\n".join(extra_media))
+
+        # user_input 初始值（稍后会追加图片识别、上下文、跨会话消息等）
+        user_input = "\n\n".join(sections)
 
         # 维护昵称→ID 映射表（按群分组，供发送时解析 @ 用）
+        # 注意：这里存储的是打码后的ID，发送时需要还原
         if processed.sender_name and processed.sender_id:
             group_key = processed.group_id or "_private"
-            if group_key not in self._name_to_id:
-                self._name_to_id[group_key] = {}
-            self._name_to_id[group_key][processed.sender_name] = processed.sender_id
+            # 写时复制模式：每次修改都触发 __setitem__，更新 TTL 和 LRU
+            name_map = self._name_to_id.get(group_key, {})
+            name_map[processed.sender_name] = masked_sender_id  # 存储打码ID
+            self._name_to_id[group_key] = name_map  # 触发 __setitem__
 
         logger.info("处理 %s (%s): %s", processed.sender_name, processed.reason, processed.text)
 
@@ -686,22 +803,23 @@ class TaleCore:
                     self.chat.set_session(sid, load_history=session_enabled)
                 # ── 跨会话消息注入（consume inbox） ──
                 inbox_msgs = []
+                cross_session_text = ""
+                accessible_sessions_text = ""
                 if sid and self.bridge:
                     inbox_msgs = await self.bridge.consume(sid)
-                    inbox_text_parts = []
-                    for m in inbox_msgs:
-                        inbox_text_parts.append(
-                            f"[来自 {m['from_sid']} 的跨会话消息] {m['content'][:200]}"
-                        )
                     if inbox_msgs:
-                        user_input = "\n".join(inbox_text_parts) + "\n\n---\n\n" + user_input
+                        inbox_lines = ["[来自其他会话的消息]"]
+                        for m in inbox_msgs:
+                            inbox_lines.append(f"- 来自 {m['from_sid']}: {m['content'][:200]}")
+                        cross_session_text = "\n".join(inbox_lines)
                     # 注入可通信会话列表（最多 5 个）
                     accessible = self.bridge.list_accessible(sid)
                     if accessible:
-                        sess_list = "、".join(accessible)
-                        user_input += f"\n[可通信会话] {sess_list}"
+                        sess_list = ", ".join(accessible)
+                        accessible_sessions_text = f"[可通信会话] {sess_list}"
 
                 # 有图片时直接用 VLM 识别，结果注入上下文供 ChatLLM 感知
+                image_recognition_text = ""
                 if processed.images:
                     try:
                         vlm_llm = get_vlm_llm()
@@ -726,13 +844,14 @@ class TaleCore:
                             )
                         if vlm_result:
                             logger.info("VLM 图片识别结果: %s", vlm_result[:200])
-                            user_input = f"{user_input}\n\n[图片识别结果]\n{vlm_result}"
+                            image_recognition_text = f"[图片识别结果]\n{vlm_result}"
                     except Exception as e:
                         logger.warning("VLM 图片识别失败: %s", e)
 
                 # 追加滑动上下文窗口
                 # persist_content = 拼接历史前的 user_input（纯净用户消息，用于落库）
-                persist_content = user_input
+                # 注意：persist_content 需要在最终组装前保存基础内容
+                context_text = ""
                 use_ctx = bool(processed.text and not (
                     persistence and self.session_manager and sid and session_enabled
                 ))
@@ -742,8 +861,36 @@ class TaleCore:
                         ctx = await self._build_context_window(processed, ctx_window_cfg.chat_context_window)
                         if ctx:
                             logger.debug("追加上下文窗口 (%d 条)", ctx_window_cfg.chat_context_window)
-                            user_input = f"以下是最近的聊天记录：\n{ctx}\n\n---\n{user_input}"
+                            context_text = f"---\n以下是最近的聊天记录：\n{ctx}\n---"
                 # set_session 已通过 self.messages 结构化加载历史，无需额外拼接
+
+                # ================================================================
+                # 最终组装：按优先级排列各个段落
+                # ================================================================
+                final_sections = [user_input]  # 基础元数据（时间、消息、环境）
+
+                # 附加信息按重要性排列
+                if image_recognition_text:
+                    final_sections.append(image_recognition_text)
+
+                if context_text:
+                    final_sections.append(context_text)
+
+                # 当前用户消息作为重点（放在明显位置）
+                final_sections.append(f"## 当前消息\n{user_text}")
+
+                # 跨会话消息作为补充信息
+                if cross_session_text:
+                    final_sections.append(cross_session_text)
+
+                if accessible_sessions_text:
+                    final_sections.append(accessible_sessions_text)
+
+                # 组装最终输入
+                user_input = "\n\n".join(final_sections)
+
+                # persist_content 用于落库，只包含核心消息内容
+                persist_content = user_text
 
                 # 首次调用不落库（save_to_session=False），最终回复在最后统一持久化
                 # 避免工具调用轮次和最终回复双重写入
@@ -869,6 +1016,13 @@ class TaleCore:
             parts = to_sid.split(":", 2)
             if len(parts) == 3 and self.adapter_bridge:
                 adapter_name, stype, target_id = parts
+
+                # 还原打码ID：AI可能输出 usr_1001 或 grp_1002，需要还原为真实ID
+                if target_id.startswith("usr_"):
+                    target_id = self._id_sanitizer.restore_user_id(target_id)
+                elif target_id.startswith("grp_"):
+                    target_id = self._id_sanitizer.restore_group_id(target_id)
+
                 # 校验 target_id 必须是纯数字（群号/QQ号），拒绝群名/占位符
                 if not target_id.isdigit():
                     logger.warning("跨会话 sid 的 id 非数字: %s", to_sid)
@@ -922,6 +1076,9 @@ class TaleCore:
                     for name in raw_at:
                         qq_id = "all" if name == "all" else name_map.get(name)
                         if qq_id:
+                            # 如果AI输出了打码ID（usr_xxx），还原为真实ID
+                            if self._id_sanitizer.is_masked_user_id(qq_id):
+                                qq_id = self._id_sanitizer.restore_user_id(qq_id)
                             at_list.append(qq_id)
                     if at_list:
                         at_targets = at_list
@@ -981,7 +1138,7 @@ class TaleCore:
     @staticmethod
     def _has_tool_content(parsed: dict, raw_reply: str = "") -> bool:
         """检查解析结果中是否还有待处理的工具/动作/计划/FC 内容"""
-        if parsed.get("actions") or parsed.get("tool") or parsed.get("plan"):
+        if parsed.get("actions") or parsed.get("plan"):
             return True
         if raw_reply and parse_function_call(raw_reply) is not None:
             return True
@@ -1071,25 +1228,7 @@ class TaleCore:
                 else:
                     result_parts.append(("动作执行失败", "所有工具执行均失败，请告知用户。"))
 
-            # Phase C: <tool> 标签
-            if current_parsed.get("tool"):
-                # ToolLLM 未配置 API Key 时为 None，跳过工具阶段并告知用户
-                if self.toolllm is None:
-                    logger.warning("[Agent %d/%d] ToolLLM 未初始化，跳过工具查询", iteration, max_steps)
-                    result_parts.append(("工具不可用", "工具能力未配置，无法查询可用工具列表，请告知用户。"))
-                else:
-                    logger.info("[Agent %d/%d] 查询工具列表", iteration, max_steps)
-                    tools_result = self.toolllm.query_tools()
-                    first_reply = self._extract_reply_text(current_parsed)
-                    tool_content = (
-                        f'你刚才对用户说："{first_reply}"\n\n'
-                        f"现在我已经获取到可用工具列表：\n{tools_result}\n\n"
-                        f"请介绍这些工具的功能。"
-                    )
-                    result_parts.append(("可用工具列表", tool_content))
-                    _emit_once("tools_queried", tools_result)
-
-            # Phase D: <plan> 标签
+            # Phase C: <plan> 标签
             if current_parsed.get("plan"):
                 logger.info("[Agent %d/%d] 制定计划", iteration, max_steps)
                 plan_result = await get_planllm().generate_async(current_parsed["plan"])
@@ -1155,18 +1294,18 @@ class TaleCore:
                 f"这是第 {iteration} 次工具调用（最多允许 {max_steps} 次推理步骤）。"
                 f"你还有 {remaining} 次机会。\n"
                 f"如果任务已完成，请直接回复用户；如果还需要查询更多信息、执行更多操作，\n"
-                f"可以继续使用 <act>/<tool>/<plan> 标签。"
+                f"可以继续使用 <act>/<plan> 标签。"
             )
         else:
             return (
                 f"[Agent 第 {iteration}/{max_steps} 轮 — 最后一轮] {title}：\n"
                 f"{result}\n\n"
                 f"这是最后一轮推理。请根据已有信息给用户一个完整回复，"
-                f"不要再使用 <act>/<tool>/<plan> 标签。"
+                f"不要再使用 <act>/<plan> 标签。"
             )
 
     async def _execute_actions(self, actions: list) -> list:
-        """执行动作列表，返回所有执行结果"""
+        """执行动作列表，返回所有执行结果。工具不存在时自动返回可用工具列表。"""
         results = []
         # ToolLLM 未配置 API Key 时为 None，无法生成 Function Calling，直接降级
         if self.toolllm is None:
@@ -1192,6 +1331,20 @@ class TaleCore:
                     execute_function, func_call["name"], func_call["parameters"]
                 )
                 logger.info("执行结果: %s", tool_result)
+
+                # 工具执行失败时，检查是否为"未知的函数"错误，自动返回工具列表
+                if isinstance(tool_result, dict) and tool_result.get("status") == "failed":
+                    error_msg = tool_result.get("error", "")
+                    if "未知的函数" in error_msg:
+                        logger.info("工具不存在，返回可用工具列表")
+                        tools_list = self.toolllm.query_tools()
+                        tool_result = {
+                            "status": "failed",
+                            "error": error_msg,
+                            "available_tools": tools_list,
+                            "message": f"工具不存在。当前可用工具：\n{tools_list}"
+                        }
+
                 results.append(tool_result)
             else:
                 logger.warning("无法解析 Function Calling")
@@ -1384,14 +1537,17 @@ class TaleCore:
                 except Exception as e:
                     return {"status": "failed", "error": f"查询群成员失败: {e}"}
                 # 填充 _name_to_id（群成员映射，按群分组）
+                # 注意：存储打码后的ID，保持与消息元数据一致
                 group_key = group_id
-                if group_key not in self._name_to_id:
-                    self._name_to_id[group_key] = {}
+                # 写时复制模式：每次修改都触发 __setitem__，更新 TTL 和 LRU
+                name_map = self._name_to_id.get(group_key, {})
                 for m in members:
                     uid = m.get("user_id", "")
                     nick = m.get("nickname", "")
                     if uid and nick:
-                        self._name_to_id[group_key][nick] = uid
+                        masked_uid = self._id_sanitizer.sanitize_user_id(str(uid))
+                        name_map[nick] = masked_uid
+                self._name_to_id[group_key] = name_map  # 触发 __setitem__
                 if not members:
                     return {"status": "ok", "members": [], "message": "该群没有成员或查询失败"}
                 return {
@@ -1432,10 +1588,21 @@ class TaleCore:
                     return {"status": "failed", "error": f"查询群列表失败: {e}"}
                 if not groups:
                     return {"status": "ok", "groups": [], "message": "机器人未加入任何群"}
+
+                # 对群ID打码，防止AI泄露真实群号
+                masked_groups = []
+                for group in groups:
+                    masked_group = group.copy()
+                    if "group_id" in masked_group:
+                        masked_group["group_id"] = self._id_sanitizer.sanitize_group_id(
+                            str(masked_group["group_id"])
+                        )
+                    masked_groups.append(masked_group)
+
                 return {
                     "status": "ok",
-                    "groups": groups,
-                    "message": f"机器人加入了 {len(groups)} 个群",
+                    "groups": masked_groups,
+                    "message": f"机器人加入了 {len(masked_groups)} 个群",
                 }
 
             register_plugin_handler("query_group_list", _run_query_group_list)
@@ -1463,6 +1630,40 @@ class TaleCore:
                 ToolDefinition(
                     name="query_group_list",
                     description="获取机器人加入的所有群聊列表，返回群号和群名称。无需参数。",
+                    parameters=[],
+                )
+            )
+
+            # 注册工具统计诊断工具
+            def _run_tool_stats(parameters):
+                from core.function_caller import get_tool_stats
+                stats = get_tool_stats()
+
+                # 格式化输出
+                lines = [f"总调用次数: {stats['total_calls']}"]
+                lines.append(f"成功: {stats['success_count']}, 失败: {stats['failure_count']}")
+
+                if stats['by_tool']:
+                    lines.append("\n工具统计:")
+                    for tool_name, tool_stat in sorted(stats['by_tool'].items(),
+                                                       key=lambda x: x[1]['calls'],
+                                                       reverse=True):
+                        avg_time = tool_stat['total_time_ms'] / tool_stat['calls'] if tool_stat['calls'] > 0 else 0
+                        lines.append(f"  {tool_name}: {tool_stat['calls']}次调用, "
+                                    f"成功{tool_stat['success']}次, "
+                                    f"失败{tool_stat['failure']}次, "
+                                    f"平均{avg_time:.0f}ms")
+                else:
+                    lines.append("\n暂无工具调用记录")
+
+                return {"status": "success", "result": "\n".join(lines)}
+
+            register_plugin_handler("tool_stats", _run_tool_stats)
+
+            get_registry().register(
+                ToolDefinition(
+                    name="tool_stats",
+                    description="查询工具使用统计，包括调用次数、成功率、平均耗时等。无需参数。",
                     parameters=[],
                 )
             )

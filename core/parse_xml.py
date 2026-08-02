@@ -140,7 +140,6 @@ def _fallback_extract(data: str, error_msg: str) -> dict:
         "action": None,
         "actions": [],
         "plan": None,
-        "tool": None,
         "parse_error": error_msg,
         "skip_reply": False,
     }
@@ -202,11 +201,6 @@ def _fallback_extract(data: str, error_msg: str) -> dict:
     if plan_match:
         result["plan"] = plan_match.group(1).strip()
 
-    # 尝试提取 <tool>
-    tool_match = re.search(r'<tool>\s*(.*?)\s*</tool>', data, re.DOTALL)
-    if tool_match:
-        result["tool"] = tool_match.group(1).strip()
-
     return result
 
 
@@ -217,7 +211,6 @@ def _parse_root(root: ET.Element) -> dict:
         "action": None,
         "actions": [],
         "plan": None,
-        "tool": None,
         "skip_reply": False,  # AI 使用 <msg></msg> 表示不发送消息
         "session_sends": [],  # 跨会话消息 <session_send>
     }
@@ -274,12 +267,6 @@ def _parse_root(root: ET.Element) -> dict:
     if plan_elem is not None:
         plan_text = plan_elem.text.strip() if plan_elem.text else ""
         result["plan"] = plan_text.replace("<!--", "").replace("-->", "").strip()
-
-    # 解析 <tool> 工具查询标签 → 查询可用工具列表
-    tool_elem = root.find("tool")
-    if tool_elem is not None:
-        tool_text = tool_elem.text.strip() if tool_elem.text else ""
-        result["tool"] = tool_text.replace("<!--", "").replace("-->", "").strip()
 
     # 解析 <session_send> 跨会话消息标签（支持多个）
     for ss_elem in root.findall("session_send"):
