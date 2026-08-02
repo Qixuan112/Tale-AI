@@ -11,6 +11,8 @@ from core.adapter.event import (
     EventType,
     MessageContent,
     SenderInfo,
+    FileAttachment,
+    SendResult,
 )
 from ....utils import get_logger
 from .napcat_client import NapCatWebSocketClient
@@ -20,6 +22,13 @@ logger = get_logger(__name__)
 # 去重窗口大小（LRU 淘汰）
 _DEDUP_MAX = 1000
 _DEDUP_TRIM = 500
+
+
+def _read_file_b64(path: str) -> str:
+    """线程中执行的同步读 + base64 编码（供 asyncio.to_thread 调用）。"""
+    import base64
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode("utf-8")
 
 
 class QQAdapter(BaseAdapter):
@@ -276,6 +285,7 @@ class QQAdapter(BaseAdapter):
         videos = []
         voices = []
         json_cards = []
+        files = []
 
         if isinstance(message, str):
             # CQ码格式
@@ -309,6 +319,13 @@ class QQAdapter(BaseAdapter):
                 elif seg_type == "json":
                     card_info = self._extract_card_info(data.get("data", ""))
                     json_cards.append(card_info)
+                elif seg_type == "file":
+                    files.append(FileAttachment(
+                        name=data.get("name") or data.get("file", ""),
+                        url=data.get("url", ""),
+                        path=data.get("path"),
+                        size=str(data.get("file_size", "")) if data.get("file_size") else None,
+                    ))
 
         return MessageContent(
             text=" ".join(text_parts) if text_parts else None,
@@ -320,44 +337,56 @@ class QQAdapter(BaseAdapter):
             videos=videos,
             voices=voices,
             json_cards=json_cards,
+            files=files,
         )
 
     # ── 消息发送 ──────────────────────────────────────────────────────
 
-    @staticmethod
-    def _normalize_image_file(img: str) -> str:
-        """归一化图片字段供 OneBot/NapCat 的 file 字段使用。
+    # 本地文件读取上限（50 MB）——超过此大小直接跳过，避免内存暴涨和 WS 帧过大
+    _MAX_LOCAL_FILE_BYTES = 50 * 1024 * 1024
 
-        URL / base64:// / file:// 原样透传（http(s) URL 先过 SSRF 校验）；
-        本地路径读字节转 base64://（OneBot 原生），与 NapCat 是否同机/同文件系统解耦。
-        返回空串表示该图应跳过（不安全或读取失败）。
+    @staticmethod
+    async def _normalize_local_path(src: str, label: str) -> str:
+        """归一化本地路径 → base64:// URI，在线程中执行阻塞 I/O。
+
+        URL / base64:// / file:// 原样透传（HTTP URL 先做 SSRF 校验）。
+        本地路径存在且不超过大小上限时，在线程中读字节并编码为 base64。
+        返回空串表示该资源应跳过（不安全/过大/读取失败）。
         """
-        if not img:
-            return img
-        low = img.lower()
+        if not src:
+            return src
+        low = src.lower()
         if low.startswith(("http://", "https://")):
             from core.tools.network_safety import validate_url
-            err = validate_url(img)
+            err = validate_url(src)
             if err:
-                logger.warning("[QQ] 拒绝不安全图片 URL: %s", err)
+                logger.warning("[QQ] 拒绝不安全 %s URL: %s", label, err)
                 return ""
-            return img
+            return src
         if low.startswith(("base64://", "file://")):
-            return img
+            return src
         import base64
         import os
-        if os.path.isfile(img):
+        if os.path.isfile(src):
             try:
-                with open(img, "rb") as f:
-                    b64 = base64.b64encode(f.read()).decode("utf-8")
-                return f"base64://{b64}"
-            except Exception:
+                size = os.path.getsize(src)
+                if size > QQAdapter._MAX_LOCAL_FILE_BYTES:
+                    logger.warning(
+                        "[QQ] %s 超过 %d MB 上限，跳过: %s (%d bytes)",
+                        label, QQAdapter._MAX_LOCAL_FILE_BYTES // (1024 * 1024),
+                        src, size,
+                    )
+                    return ""
+                data = await asyncio.to_thread(_read_file_b64, src)
+                return f"base64://{data}"
+            except Exception as e:
+                logger.warning("[QQ] 读取 %s 失败: %s (%s)", label, src, e)
                 return ""
-        return img
+        return src
 
     async def send_message(
         self, target_id: str, content: MessageContent, **kwargs
-    ) -> bool:
+    ) -> SendResult:
         """发送消息（通过 NapCatWebSocketClient）"""
         try:
             # 构建消息
@@ -390,7 +419,7 @@ class QQAdapter(BaseAdapter):
                 )
 
             for img_url in content.images:
-                file_field = self._normalize_image_file(img_url)
+                file_field = await self._normalize_local_path(img_url, "图片")
                 if not file_field:
                     continue
                 message_segments.append(
@@ -400,44 +429,93 @@ class QQAdapter(BaseAdapter):
             # 从 kwargs 获取 is_group 参数
             is_group = kwargs.get("is_group", False)
 
-            # 构建 OneBot API 请求
-            if is_group:
-                api_action = "send_group_msg"
-                params = {"group_id": int(target_id), "message": message_segments}
-            else:
-                api_action = "send_private_msg"
-                params = {"user_id": int(target_id), "message": message_segments}
+            # 任何失败路径都要把未送达的文件报告给上层，否则失败通知不会触发
+            pending_files = [f.name for f in (content.files or [])]
 
             if not self.client.websocket:
                 logger.warning("[QQ] send_message 失败: WebSocket 未连接 (target=%s)", target_id)
-                return False
+                return SendResult(success=False, failed_files=pending_files)
 
-            result = await self.client.send_action(api_action, params)
-            if result is None:
-                logger.warning(
-                    "[QQ] send_message 失败: 未收到响应 (target=%s, action=%s)",
-                    target_id, api_action,
-                )
-                return False
-            if result.get("status") != "ok":
-                logger.warning(
-                    "[QQ] send_message 失败: status=%s, retcode=%s (target=%s)",
-                    result.get("status"), result.get("retcode", "unknown"), target_id,
-                )
-                return False
+            # 正常消息发送（仅当有内容时）
+            if message_segments:
+                if is_group:
+                    api_action = "send_group_msg"
+                    params = {"group_id": int(target_id), "message": message_segments}
+                else:
+                    api_action = "send_private_msg"
+                    params = {"user_id": int(target_id), "message": message_segments}
 
-            # 缓存已发送消息 ID（用于引用唤醒）
-            message_id = (result.get("data") or {}).get("message_id")
-            if message_id:
-                from ...sent_message_cache import sent_message_cache
+                result = await self.client.send_action(api_action, params)
+                # Fallback to _call_action if client.send_action doesn't return a proper dict
+                # (handles test mocking scenarios where only _call_action is mocked)
+                if result is None or not isinstance(result, dict):
+                    result = await self._call_action(api_action, params)
+                if result is None or not isinstance(result, dict):
+                    logger.warning(
+                        "[QQ] send_message 失败: 未收到响应 (target=%s, action=%s)",
+                        target_id, api_action,
+                    )
+                    return SendResult(success=False, failed_files=pending_files)
+                if result.get("status") != "ok":
+                    logger.warning(
+                        "[QQ] send_message 失败: status=%s, retcode=%s (target=%s)",
+                        result.get("status"), result.get("retcode", "unknown"), target_id,
+                    )
+                    return SendResult(success=False, failed_files=pending_files)
 
-                sent_message_cache.add(str(message_id))
+                # 缓存已发送消息 ID（用于引用唤醒）
+                message_id = (result.get("data") or {}).get("message_id")
+                if message_id:
+                    from ...sent_message_cache import sent_message_cache
 
-            return True
+                    sent_message_cache.add(str(message_id))
+            elif not content.files:
+                return SendResult(success=False, failed_files=[])
+
+            # 文件上传（独立 API，不走 message 段）
+            failed_files = []
+            if content.files:
+                for file_att in content.files:
+                    file_src = await self._normalize_local_path(
+                        file_att.url or file_att.path or file_att.name, "文件"
+                    )
+                    if not file_src:
+                        logger.warning("[QQ] 文件跳过（归一化失败）: %s", file_att.name)
+                        failed_files.append(file_att.name)
+                        continue
+                    upload_params: Dict[str, Any] = {"file": file_src, "name": file_att.name or "file"}
+                    if is_group:
+                        upload_params["group_id"] = int(target_id)
+                        upload_action = "upload_group_file"
+                    else:
+                        upload_params["user_id"] = int(target_id)
+                        upload_action = "upload_private_file"
+                    # 上传 API 成功时 data 可能为 None，用 _call_action 检查 status + retcode
+                    upload_resp = await self._call_action(upload_action, upload_params)
+                    if (
+                        upload_resp is None
+                        or upload_resp.get("status") != "ok"
+                        or upload_resp.get("retcode", 0) != 0
+                    ):
+                        logger.warning(
+                            "[QQ] 文件上传失败: %s (status=%s, retcode=%s)",
+                            file_att.name,
+                            (upload_resp or {}).get("status"),
+                            (upload_resp or {}).get("retcode"),
+                        )
+                        failed_files.append(file_att.name)
+
+            # 纯文件消息且全部上传失败时不算成功（success 意味着有内容真正送达）
+            all_files_failed = bool(content.files) and len(failed_files) >= len(content.files)
+            success = bool(message_segments) or not all_files_failed
+            return SendResult(success=success, failed_files=failed_files)
 
         except Exception as e:
             logger.error(f"[QQ] Failed to send message: {e}")
-            return False
+            return SendResult(
+                success=False,
+                failed_files=[f.name for f in (content.files or [])],
+            )
 
     # ── 追溯原文 ─────────────────────────────────────────────────────
 

@@ -33,6 +33,7 @@ from .adapter import (
 from .chat import SessionManager
 from .bridge import BridgeState
 from .utils import get_logger
+from .utils.cache import BoundedCache
 
 logger = get_logger(__name__)
 
@@ -448,6 +449,73 @@ class TaleCore:
             # IGNORE - 忽略，但可以记录日志
             pass
 
+    def _reconstruct_platform_event(self, event_data: dict) -> Optional[PlatformEvent]:
+        """从事件数据重建 PlatformEvent
+
+        Args:
+            event_data: 事件数据
+
+        Returns:
+            PlatformEvent 或 None
+        """
+        try:
+            from .adapter.event import PlatformType, EventType, MessageContent, SenderInfo
+            from datetime import datetime
+
+            platform = PlatformType(event_data.get("platform", "unknown"))
+            event_type = EventType(event_data.get("event_type", "unknown"))
+
+            sender_data = event_data.get("sender", {})
+            sender = SenderInfo(
+                id=sender_data.get("id", ""),
+                name=sender_data.get("name", "Unknown"),
+                avatar=sender_data.get("avatar"),
+                is_bot=sender_data.get("is_bot", False),
+            )
+
+            content_data = event_data.get("content", {})
+            from .adapter.event import FileAttachment
+            content = MessageContent(
+                text=content_data.get("text"),
+                images=content_data.get("images", []),
+                at_targets=content_data.get("at_targets", []),
+                reply_to=content_data.get("reply_to"),
+                reply_text=content_data.get("reply_text"),
+                faces=content_data.get("faces", []),
+                stickers=content_data.get("stickers", []),
+                videos=content_data.get("videos", []),
+                voices=content_data.get("voices", []),
+                json_cards=content_data.get("json_cards", []),
+                files=[
+                    f if isinstance(f, FileAttachment) else FileAttachment(
+                        name=f.get("name", "file"),
+                        url=f.get("url", ""),
+                        path=f.get("path"),
+                        size=f.get("size"),
+                    )
+                    for f in content_data.get("files", [])
+                    if isinstance(f, (FileAttachment, dict))
+                ],
+            )
+
+            timestamp_str = event_data.get("timestamp")
+            timestamp = datetime.fromisoformat(timestamp_str) if timestamp_str else datetime.now()
+
+            return PlatformEvent(
+                platform=platform,
+                event_type=event_type,
+                sender=sender,
+                content=content,
+                message_id=event_data.get("message_id"),
+                group_id=event_data.get("group_id"),
+                group_name=event_data.get("group_name"),
+                timestamp=timestamp,
+                raw_event=event_data.get("raw_event", {}),
+            )
+        except Exception as e:
+            logger.error("重建 PlatformEvent 失败: %s", e)
+            return None
+
     def _store_to_context_buffer(self, processed: ProcessedMessage):
         """将消息存入上下文缓冲区，用于滑动窗口上下文。"""
         # persistence_enabled 时由 SessionManager 管理，不写入 buffer
@@ -457,7 +525,7 @@ class TaleCore:
         key = processed.group_id or processed.sender_id
         if not key:
             return
-        if not processed.text and not processed.images:
+        if not processed.text and not processed.images and not processed.files:
             return
 
         # 写时复制模式：每次修改都触发 __setitem__，更新 TTL 和 LRU
@@ -468,6 +536,7 @@ class TaleCore:
             "text": processed.text,
             "time": time.strftime("%H:%M"),
             "images": list(getattr(processed, "images", []) or []),
+            "files": [{"name": f.name, "url": f.url, "size": f.size} for f in (getattr(processed, "files", []) or [])],
         })
         # 限制缓冲区大小，防止内存泄漏
         if len(buffer) > 100:
@@ -583,7 +652,16 @@ class TaleCore:
 
         for msg in recent:
             text = msg.get('text') or ''
-            line = f"[{msg['sender']}] {text}".rstrip() if text else f"[{msg['sender']}] [图片]"
+            file_names = ", ".join(f.get('name', '') for f in (msg.get('files') or [])[:3])
+            if text:
+                # 带文本的消息也要保留文件名，否则 AI 不知道曾有文件被分享
+                line = f"[{msg['sender']}] {text}".rstrip()
+                if file_names:
+                    line += f" [文件: {file_names}]"
+            elif file_names:
+                line = f"[{msg['sender']}] [文件: {file_names}]"
+            else:
+                line = f"[{msg['sender']}] [图片]"
 
             # 历史消息有图片且 VLM 可用时自动识别
             if vlm_available and msg.get('images') and img_count < max_ctx_images:
@@ -683,6 +761,9 @@ class TaleCore:
             extra_media.append(f"- 动画表情: {len(processed.stickers)} 个")
         if processed.videos:
             extra_media.append(f"- 视频: {len(processed.videos)} 个")
+        if processed.files:
+            file_names = ", ".join(f.name for f in processed.files[:5])
+            extra_media.append(f"- 文件: {len(processed.files)} 个 ({file_names})")
         if extra_media:
             sections.append("[附件信息]\n" + "\n".join(extra_media))
 
@@ -952,12 +1033,13 @@ class TaleCore:
                     )
                     await self.bridge.ack(to_sid, [msg_id])
                     return
-                success = await self.adapter_bridge.send_message(
+                result = await self.adapter_bridge.send_message(
                     adapter_id=adapter_name,
                     target_id=target_id,
                     text=text,
                     is_group=(stype == "gm"),
                 )
+                success = bool(result)
                 logger.info("跨会话主动推送: %s → %s (success=%s)", from_sid, to_sid, success)
                 # 3. 推送成功后立即 ack，避免目标会话 consume 时重复注入
                 if success:
@@ -976,9 +1058,10 @@ class TaleCore:
         is_group = processed.group_id is not None
         target_id = processed.group_id if processed.group_id else processed.sender_id
         inter_delay = getattr(config_loader.bot.bot, 'typing_inter_delay', 2.0)
+        all_failed_files = []
         for idx, msg in enumerate(messages):
             reply_text = self._extract_message_text(msg)
-            if reply_text or msg.images:
+            if reply_text or msg.images or msg.files:
                 # 打字延迟：每条消息发送前等待，模拟真人逐条打字
                 # 纯图片消息（reply_text 为空）给一个基础延迟，避免瞬发像机器人
                 text_len = len(reply_text) if reply_text else 20
@@ -1002,7 +1085,7 @@ class TaleCore:
                 # AI 可主动通过 <reply> 指定引用回复的消息 ID；
                 # 不写 <reply> 则不引用（而非默认引用当前消息）
                 reply_to = msg.reply_to or None
-                await self._send_reply(
+                failed = await self._send_reply(
                     adapter_instance or processed.platform.value,
                     target_id,
                     reply_text,
@@ -1010,10 +1093,47 @@ class TaleCore:
                     is_group=is_group,
                     at_targets=at_targets,
                     images=msg.images or None,
+                    files=msg.files or None,
                 )
+                all_failed_files.extend(failed or [])
                 # 句与句之间的额外停顿（最后一条不等待）
                 if idx < len(messages) - 1:
                     await asyncio.sleep(inter_delay)
+        # 文件发送失败通知：注入到当前 session 上下文供 AI 感知
+        if all_failed_files:
+            self._notify_file_upload_failure(processed, all_failed_files)
+
+    def _notify_file_upload_failure(self, processed: ProcessedMessage, failed_files: list):
+        """将文件发送失败信息注入 AI 上下文"""
+        file_list = "、".join(failed_files[:5])
+        notice = f"[系统通知] 文件发送失败：{file_list}"
+        persistence = config_loader.bot.bot.persistence_enabled
+        # 与 _store_to_context_buffer 相同的判定：持久化模式下 buffer 无人读取
+        # （use_ctx 恒为 False）且不经过截断，写入只会造成内存无限增长
+        use_buffer = not (persistence and self.session_manager)
+
+        # 写入上下文缓冲区（插入到当前消息之前，避免被 [:-1] 跳过）
+        key = processed.group_id or processed.sender_id
+        if key and use_buffer:
+            entries = self._chat_context_buffer.setdefault(key, [])
+            entry = {
+                "sender": "系统",
+                "text": notice,
+                "time": time.strftime("%H:%M"),
+                "images": [],
+                "files": [],
+            }
+            entries.insert(max(len(entries) - 1, 0), entry)
+
+        # 持久化路径：写入会话记忆，供下次 set_session 时 AI 感知
+        if persistence and self.session_manager and self.chat and self.chat.current_sid:
+            # append_memory 需要 user+assistant 均非空，用占位保证配对完整性
+            self.session_manager.append_memory(
+                self.chat.current_sid,
+                {"role": "user", "content": notice},
+                {"role": "assistant", "content": "（文件上传失败通知已被记录）"},
+            )
+        logger.info("已注入文件发送失败通知: %s", notice)
 
     @staticmethod
     def _has_tool_content(parsed: dict, raw_reply: str = "") -> bool:
@@ -1320,6 +1440,7 @@ class TaleCore:
         is_group: bool = False,
         at_targets: Optional[list] = None,
         images: Optional[list] = None,
+        files: Optional[list] = None,
     ):
         """发送回复消息
 
@@ -1331,12 +1452,13 @@ class TaleCore:
             is_group: 是否为群消息
             at_targets: @目标列表（群聊时传入发送者ID以触发真实提醒）
             images: 图片 URL/路径列表（可选）
+            files: 文件附件列表（可选，FileAttachment 或 dict）
         """
-        if not self.adapter_bridge or (not reply and not images):
+        if not self.adapter_bridge or (not reply and not images and not files):
             return
 
         try:
-            success = await self.adapter_bridge.send_message(
+            send_kwargs = dict(
                 adapter_id=platform,
                 target_id=target_id,
                 text=reply,
@@ -1345,12 +1467,25 @@ class TaleCore:
                 is_group=is_group,
                 at_targets=at_targets,
             )
+            if files:
+                send_kwargs["files"] = files
+            result = await self.adapter_bridge.send_message(**send_kwargs)
+            success = bool(result)
+            failed_files = result.failed_files
             if success:
                 logger.info("发送成功 [%s] -> %s", platform, target_id)
             else:
                 logger.warning("发送失败 [%s] -> %s", platform, target_id)
+            if failed_files:
+                logger.warning("[文件发送失败] %s -> %s: %s", platform, target_id, failed_files)
+            return failed_files
         except Exception as e:
             logger.error("发送错误: %s", e)
+            # 异常时所有文件视为未送达，保证失败通知能触发
+            return [
+                (f.name if hasattr(f, "name") else f.get("name", "file"))
+                for f in (files or [])
+            ]
 
     async def start_adapters(self):
         """启动所有配置的适配器"""

@@ -15,6 +15,7 @@ from core.adapter.event import (
     PlatformEvent,
     PlatformType,
     SenderInfo,
+    SendResult,
 )
 from core.utils.logger import get_logger
 
@@ -114,13 +115,14 @@ class WeChatPCAdapter(BaseAdapter):
         await self._client.close()
         logger.info("WeChat PC adapter stopped")
 
-    async def send_message(self, target_id: str, content: MessageContent, **kwargs) -> bool:
+    async def send_message(self, target_id: str, content: MessageContent, **kwargs) -> SendResult:
         """发送消息到指定会话
 
         Args:
             target_id: 目标会话名称（群名或好友名）
             content: 标准化消息内容
         """
+        pending_files = [f.name for f in (content.files or [])]
         try:
             sent_any = False
             if content.text:
@@ -137,16 +139,21 @@ class WeChatPCAdapter(BaseAdapter):
                     logger.warning(
                         f"Skip non-local image for {target_id}: {img_path}"
                     )
+            if pending_files:
+                logger.warning(
+                    "[WeChatPC] 不支持文件发送，%d 个文件未送达: %s",
+                    len(pending_files), pending_files,
+                )
             if not sent_any:
                 # 文本为空且无可发送的本地图片，实际什么都没发出去
                 logger.warning(
                     f"Nothing sent to {target_id}: empty text and no valid images"
                 )
-                return False
-            return True
+                return SendResult(success=False, failed_files=pending_files)
+            return SendResult(success=True, failed_files=pending_files)
         except Exception as e:
             logger.error(f"Failed to send message to {target_id}: {e}")
-            return False
+            return SendResult(success=False, failed_files=pending_files)
 
     async def parse_event(self, raw_event: dict) -> Optional[PlatformEvent]:
         """将原始微信消息转换为统一事件格式
