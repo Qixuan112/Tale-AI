@@ -25,8 +25,8 @@
 ## Quick Start
 
 ```bash
-git clone https://github.com/Qixuan112/Tale_ai.git
-cd Tale_ai
+git clone https://github.com/Qixuan112/Tale-AI.git
+cd Tale-AI
 pip install -r requirements.txt
 python main.py              # Start core + WebUI → http://127.0.0.1:32456
 ```
@@ -65,6 +65,6 @@ User Input → ChatLLM (intent) → PlanLLM (plan) / ToolLLM (tools)
 ---
 
 <p align="center">
-  <a href="https://github.com/Qixuan112/Tale_ai">GitHub</a> ·
-  <a href="https://github.com/Qixuan112/Tale_ai/issues">Issues</a>
+  <a href="https://github.com/Qixuan112/Tale-AI">GitHub</a> ·
+  <a href="https://github.com/Qixuan112/Tale-AI/issues">Issues</a>
 </p>

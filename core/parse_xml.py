@@ -142,6 +142,7 @@ def _fallback_extract(data: str, error_msg: str) -> dict:
         "plan": None,
         "parse_error": error_msg,
         "skip_reply": False,
+        "session_sends": [],
     }
 
     # 检测 <msg></msg>

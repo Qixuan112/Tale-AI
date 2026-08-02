@@ -215,84 +215,7 @@ def _execute_function_impl(func_name: str, parameters: dict) -> dict:
                 logger.error("执行工具 %s 时出错: %s", func_name, e, exc_info=True)
                 return {"status": "failed", "error": str(e)}
 
-        # Priority 2: Backward compatibility — hardcoded handlers (to be migrated)
-        if func_name == "browser_open":
-            url = parameters.get("url", "")
-            if url:
-                result = browser.fetch_and_parse(url)
-                return result
-            return {"status": "failed", "error": "缺少 url 参数"}
-
-        elif func_name == "browser_search":
-            query = parameters.get("query", "")
-            engine = parameters.get("engine", "duckduckgo")
-            if query:
-                return browser.browser_search(query, engine)
-            return {"status": "failed", "error": "缺少 query 参数"}
-        
-        elif func_name == "weather_query":
-            from .tools import weather
-            city = parameters.get("city", "")
-            if city:
-                return weather.query(city)
-            return {"status": "failed", "error": "缺少 city 参数"}
-        
-        elif func_name == "calculator":
-            expression = parameters.get("expression", "")
-            if expression:
-                return safe_calculate(expression)
-            return {"status": "failed", "error": "缺少 expression 参数"}
-
-        elif func_name == "generate_image":
-            from .llm.image_gen import get_image_generator
-            prompt = parameters.get("prompt", "")
-            size = parameters.get("size", "1024x1024") or "1024x1024"
-            if not prompt:
-                return {"status": "failed", "error": "缺少 prompt 参数"}
-            image_url = get_image_generator().generate(prompt, size)
-            if image_url:
-                return {
-                    "status": "success",
-                    "image_url": image_url,
-                    "message": f"已生成图片，URL: {image_url}。请在回复中用 <image>{image_url}</image> 把这张图发给用户。",
-                }
-            return {"status": "failed", "error": "图片生成失败（可能未配置 image_gen provider）"}
-
-        elif func_name == "take_photo":
-            from .llm.image_gen import get_image_generator
-            raw = parameters.get("prompt", "")
-            size = parameters.get("size", "1024x1024") or "1024x1024"
-            if not raw:
-                return {"status": "failed", "error": "缺少 prompt 参数"}
-            enriched = f"写实摄影风格，超清照片质感，电影级光影与细节，颜色真实自然，4K画质，景深效果，{raw}"
-            image_url = get_image_generator().generate(enriched, size)
-            if image_url:
-                return {
-                    "status": "success",
-                    "image_url": image_url,
-                    "message": f"已拍照成功，URL: {image_url}。请在回复中用 <image>{image_url}</image> 把这张照片发给用户。",
-                }
-            return {"status": "failed", "error": "拍照失败（可能未配置 image_gen provider）"}
-
-        elif func_name == "draw_picture":
-            from .llm.image_gen import get_image_generator
-            raw = parameters.get("prompt", "")
-            size = parameters.get("size", "1024x1024") or "1024x1024"
-            style = parameters.get("style", "") or ""
-            if not raw:
-                return {"status": "failed", "error": "缺少 prompt 参数"}
-            style_tag = f"{style}风格，" if style else ""
-            enriched = f"插画创作，{style_tag}富有艺术感与表现力，色彩丰富协调，画面生动有故事性，{raw}"
-            image_url = get_image_generator().generate(enriched, size)
-            if image_url:
-                return {
-                    "status": "success",
-                    "image_url": image_url,
-                    "message": f"已画好，URL: {image_url}。请在回复中用 <image>{image_url}</image> 把这张画发给用户。",
-                }
-            return {"status": "failed", "error": "画画失败（可能未配置 image_gen provider）"}
-
-        # Priority 3: Plugin dispatch (deprecated, migrated to _handler_registry by register_plugin_handler)
+        # Priority 2: Plugin dispatch (deprecated, migrated to _handler_registry by register_plugin_handler)
         elif func_name in _plugin_dispatch:
             try:
                 return _plugin_dispatch[func_name](parameters)
@@ -301,7 +224,7 @@ def _execute_function_impl(func_name: str, parameters: dict) -> dict:
 
         else:
             return {"status": "failed", "error": f"未知的函数: {func_name}"}
-            
+
     except Exception as e:
         logger.error("执行函数 %s 时出错: %s", func_name, e, exc_info=True)
         return {"status": "failed", "error": str(e)}

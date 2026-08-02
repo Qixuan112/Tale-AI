@@ -35,9 +35,6 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from pathlib import Path
 from typing import Optional
 
-from core.utils import get_logger
-logger = get_logger(__name__)
-
 from flask import Flask, render_template, jsonify, request, Response, session, redirect
 
 # 把项目根目录加入路径，确保能导入 core
@@ -53,7 +50,7 @@ from core.main import get_core, get_main_event_loop
 from core.tools.registry import get_registry
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
-app.config['JSON_AS_ASCII'] = False
+app.json.ensure_ascii = False
 app.add_template_global(lambda x: x, '_')
 def _load_secret_key() -> str:
     """Load persistent secret key from file, generating if needed."""
