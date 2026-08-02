@@ -88,7 +88,7 @@ class AdapterEventBridge:
             else:
                 self.event_bus.emit(event_name, data)
         except Exception as e:
-            logger.info(f"[AdapterBridge] Error emitting event {event_name}: {e}")
+            logger.error(f"[AdapterBridge] Error emitting event {event_name}: {e}")
 
     def initialize(self):
         """初始化适配器管理器并加载配置"""
@@ -103,7 +103,7 @@ class AdapterEventBridge:
         try:
             self.event_bus.on("config_reloaded", self._sync_adapter_configs)
         except Exception as e:
-            logger.info("[AdapterBridge] 注册 config_reloaded 监听失败: %s", e)
+            logger.error("[AdapterBridge] 注册 config_reloaded 监听失败: %s", e)
 
         return self.manager
 
@@ -172,7 +172,7 @@ class AdapterEventBridge:
             else:
                 logger.info(f"[AdapterBridge] Failed to start {adapter_id} adapter")
         except Exception as e:
-            logger.info(f"[AdapterBridge] Error starting {adapter_id} adapter: {e}")
+            logger.error(f"[AdapterBridge] Error starting {adapter_id} adapter: {e}")
 
     def _sync_adapter_configs(self):
         """配置热重载后同步适配器状态（同步入口，派发异步任务）
@@ -181,7 +181,8 @@ class AdapterEventBridge:
         """
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(self._do_sync_adapter_configs())
+            task = loop.create_task(self._do_sync_adapter_configs())
+            task.add_done_callback(lambda t: t.exception() and logger.error("[AdapterBridge] 配置同步失败: %s", t.exception()))
         except RuntimeError:
             logger.info("[AdapterBridge] 无运行中的事件循环，跳过适配器同步")
 
@@ -197,7 +198,7 @@ class AdapterEventBridge:
         try:
             platforms_data = self.config_loader._load_yaml("config/platforms.yaml")
         except Exception as e:
-            logger.info("[AdapterBridge] 读取 platforms.yaml 失败: %s", e)
+            logger.error("[AdapterBridge] 读取 platforms.yaml 失败: %s", e)
             return
 
         # 构建最新配置映射：instance_name -> (config_dict, adapter_type)

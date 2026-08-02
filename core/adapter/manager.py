@@ -235,14 +235,14 @@ class AdapterManager:
         """
         if adapter_id in self._adapters:
             msg = f"Adapter {adapter_id} is already running"
-            logger.info(msg)
+            logger.error(msg)
             raise ValueError(msg)
 
         actual_type = adapter_type or adapter_id
         adapter_class = self.get_adapter_class(actual_type)
         if not adapter_class:
             msg = f"Adapter {actual_type} not found"
-            logger.info(msg)
+            logger.error(msg)
             raise ValueError(msg)
 
         # 创建适配器实例
@@ -276,7 +276,7 @@ class AdapterManager:
         """
         adapter = self._adapters.get(adapter_id)
         if not adapter:
-            logger.info(f"Adapter {adapter_id} is not running")
+            logger.error(f"Adapter {adapter_id} is not running")
             return False
 
         try:
@@ -294,7 +294,7 @@ class AdapterManager:
             logger.info(f"Stopped adapter: {adapter_id}")
             return True
         except Exception as e:
-            logger.info(f"Error stopping adapter {adapter_id}: {e}")
+            logger.error(f"Error stopping adapter {adapter_id}: {e}")
             return False
 
     async def stop_all(self):
@@ -317,7 +317,7 @@ class AdapterManager:
         try:
             return await self.start_adapter(adapter_id, adapter_config, adapter_type=adapter_type)
         except Exception as e:
-            logger.info("重启适配器 %s 失败: %s", adapter_id, e)
+            logger.error("重启适配器 %s 失败: %s", adapter_id, e)
             return False
 
     def get_adapter(self, adapter_id: str) -> Optional[BaseAdapter]:
@@ -406,7 +406,7 @@ class AdapterManager:
         try:
             return await adapter.send_message(target_id, content, **kwargs)
         except Exception as e:
-            logger.info(f"Error sending message via {resolved}: {e}")
+            logger.error(f"Error sending message via {resolved}: {e}")
             return False
 
     async def broadcast(
