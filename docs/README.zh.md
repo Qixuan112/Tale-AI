@@ -46,12 +46,6 @@ python main.py              # 启动核心服务 + WebUI → http://127.0.0.1:32
            WebUI (Flask) → 仪表盘 · 聊天 · 配置 · 日志
 ```
 
----
-
-## 参考
-
-本项目部分设计参考了 [KiraAI](https://github.com/xxynet/KiraAI)，一个模块化 AI 聊天机器人框架。
-
 ### 第三方代码
 
 | 组件 | 许可证 | 说明 |
