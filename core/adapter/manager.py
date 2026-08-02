@@ -7,7 +7,7 @@ from pathlib import Path
 import asyncio
 
 from .base import BaseAdapter
-from .event import PlatformEvent, PlatformType
+from .event import PlatformEvent, PlatformType, SendResult
 from ..utils import get_logger
 
 logger = get_logger(__name__)
@@ -378,7 +378,7 @@ class AdapterManager:
         text: Optional[str] = None,
         images: Optional[List[str]] = None,
         **kwargs
-    ) -> bool:
+    ) -> SendResult:
         """通过指定适配器发送消息
 
         支持通过实例名或 platform 类型查找适配器。
@@ -389,18 +389,34 @@ class AdapterManager:
             target_id: 目标ID（用户ID或群ID）
             text: 文本内容
             images: 图片URL列表
-            **kwargs: 其他参数
+            **kwargs: 其他参数（包括 files: List[FileAttachment | dict]）
 
         Returns:
-            发送是否成功
+            SendResult: 发送结果
         """
-        from .event import MessageContent
+        from .event import MessageContent, FileAttachment
+
+        # 处理 files 参数：统一转为 FileAttachment 对象
+        # （先于 adapter 解析，保证任何失败路径都能报告未送达的文件）
+        raw_files = kwargs.pop("files", None) or []
+        file_attachments = []
+        for f in raw_files:
+            if isinstance(f, FileAttachment):
+                file_attachments.append(f)
+            elif isinstance(f, dict):
+                file_attachments.append(FileAttachment(
+                    name=f.get("name", "file"),
+                    url=f.get("url", ""),
+                    path=f.get("path"),
+                    size=f.get("size"),
+                ))
+        pending_files = [f.name for f in file_attachments]
 
         # 解析 adapter_id（支持实例名或 platform 类型）
         resolved = self.resolve_adapter_id(adapter_id)
         if not resolved:
             logger.info(f"No running adapter for: {adapter_id}")
-            return False
+            return SendResult(success=False, failed_files=pending_files)
 
         adapter = self._adapters[resolved]
 
@@ -409,13 +425,14 @@ class AdapterManager:
             images=images or [],
             at_targets=kwargs.get("at_targets") or [],
             reply_to=kwargs.get("reply_to"),
+            files=file_attachments,
         )
 
         try:
             return await adapter.send_message(target_id, content, **kwargs)
         except Exception as e:
             logger.info(f"Error sending message via {resolved}: {e}")
-            return False
+            return SendResult(success=False, failed_files=pending_files)
 
     async def broadcast(
         self,
@@ -423,7 +440,7 @@ class AdapterManager:
         target_id: Optional[str] = None,
         text: Optional[str] = None,
         **kwargs
-    ) -> Dict[str, bool]:
+    ) -> Dict[str, SendResult]:
         """广播消息到多个适配器
 
         Args:
@@ -433,10 +450,10 @@ class AdapterManager:
             **kwargs: 其他参数
 
         Returns:
-            各适配器发送结果的字典
+            各适配器发送结果的字典（adapter_id → SendResult）
         """
         adapters = target_adapters or self.list_running_adapters()
-        results = {}
+        results: Dict[str, SendResult] = {}
 
         for adapter_id in adapters:
             results[adapter_id] = await self.send_message(
