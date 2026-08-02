@@ -15,7 +15,7 @@ logger = get_logger(__name__)
 AVAILABLE_TOOLS = [
     {"name": t.name, "description": t.description,
      "parameters": {p.name: p.description for p in t.parameters}}
-    for t in __import__('core.tools.registry', fromlist=['get_registry']).get_registry().list_tools()
+    for t in get_registry().list_tools()
 ]
 
 
