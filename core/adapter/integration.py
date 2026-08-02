@@ -78,7 +78,7 @@ class AdapterEventBridge:
             else:
                 self.event_bus.emit(event_name, data)
         except Exception as e:
-            logger.info(f"[AdapterBridge] Error emitting event {event_name}: {e}")
+            logger.error(f"[AdapterBridge] Error emitting event {event_name}: {e}")
 
     def initialize(self):
         """初始化适配器管理器并加载配置"""
@@ -158,9 +158,9 @@ class AdapterEventBridge:
             if success:
                 logger.info(f"[AdapterBridge] {adapter_id} adapter started successfully")
             else:
-                logger.info(f"[AdapterBridge] Failed to start {adapter_id} adapter")
+                logger.error(f"[AdapterBridge] Failed to start {adapter_id} adapter")
         except Exception as e:
-            logger.info(f"[AdapterBridge] Error starting {adapter_id} adapter: {e}")
+            logger.error(f"[AdapterBridge] Error starting {adapter_id} adapter: {e}")
 
     async def send_message(
         self,
