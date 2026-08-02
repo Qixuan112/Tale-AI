@@ -1,7 +1,6 @@
 """会话管理器
 
 将会话历史持久化到 JSON 文件，支持自动轮转、过期清理。
-参考 KiraAI core/chat/session_manager.py 设计，精简适配 Tale-AI 架构。
 
 线程安全：WebUI 与 bot 同进程共享，所有公开方法通过单一全局 RLock 串行化，
 持久化用唯一临时文件 + os.replace 原子替换。
