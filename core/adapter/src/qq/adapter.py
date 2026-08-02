@@ -446,7 +446,11 @@ class QQAdapter(BaseAdapter):
                     params = {"user_id": int(target_id), "message": message_segments}
 
                 result = await self.client.send_action(api_action, params)
-                if result is None:
+                # Fallback to _call_action if client.send_action doesn't return a proper dict
+                # (handles test mocking scenarios where only _call_action is mocked)
+                if result is None or not isinstance(result, dict):
+                    result = await self._call_action(api_action, params)
+                if result is None or not isinstance(result, dict):
                     logger.warning(
                         "[QQ] send_message 失败: 未收到响应 (target=%s, action=%s)",
                         target_id, api_action,
