@@ -152,7 +152,7 @@ class BaseAdapter(ABC):
         Args:
             error_msg: 错误信息
         """
-        logger.info(f"[{self.platform.value}] Adapter error: {error_msg}")
+        logger.error(f"[{self.platform.value}] Adapter error: {error_msg}")
 
     def get_config(self, key: str, default: Any = None) -> Any:
         """获取配置项

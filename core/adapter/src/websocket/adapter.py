@@ -106,7 +106,7 @@ class WebSocketAdapter(BaseAdapter):
             self._ws = await websockets.connect(self.url)
             logger.info(f"[WebSocket] Connected to {self.url}")
         except Exception as e:
-            logger.info(f"[WebSocket] Connection failed: {e}")
+            logger.error(f"[WebSocket] Connection failed: {e}")
             if self.auto_reconnect:
                 self._schedule_reconnect()
 
@@ -148,9 +148,9 @@ class WebSocketAdapter(BaseAdapter):
                     if event:
                         await self.emit_event(event)
                 except json.JSONDecodeError:
-                    logger.info(f"[WebSocket] Invalid JSON from {client_id}: {message}")
+                    logger.error(f"[WebSocket] Invalid JSON from {client_id}: {message}")
                 except Exception as e:
-                    logger.info(f"[WebSocket] Error handling message from {client_id}: {e}")
+                    logger.error(f"[WebSocket] Error handling message from {client_id}: {e}")
         except websockets.exceptions.ConnectionClosed:
             logger.info(f"[WebSocket] Client disconnected: {client_id}")
         finally:
@@ -181,7 +181,7 @@ class WebSocketAdapter(BaseAdapter):
                     logger.info("[WebSocket] Receive loop cancelled")
                     break
                 except Exception as e:
-                    logger.info(f"[WebSocket] Error in receive loop: {e}")
+                    logger.error(f"[WebSocket] Error in receive loop: {e}")
                     await asyncio.sleep(1)
         except asyncio.CancelledError:
             logger.info("[WebSocket] Receive loop cancelled (outer)")
