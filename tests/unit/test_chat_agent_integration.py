@@ -113,7 +113,7 @@ def mock_config_loader():
     class _Loader:
         bot = _BotConfig()
 
-    with patch("core.main.config_loader", _Loader()):
+    with patch("core.config.provide.config_loader", _Loader()):
         yield
 
 
