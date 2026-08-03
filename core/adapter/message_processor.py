@@ -35,12 +35,12 @@ class ProcessedMessage:
     """
     # 基本信息
     platform: PlatformType
-    event_type: EventType
-    message_id: Optional[str]
+    event_type: Optional[EventType] = None
+    message_id: Optional[str] = None
 
     # 发送者信息
-    sender_id: str
-    sender_name: str
+    sender_id: str = ""
+    sender_name: str = ""
     is_bot: bool = False
 
     # 内容信息
@@ -67,15 +67,25 @@ class ProcessedMessage:
     # 原始事件（用于调试和扩展）
     raw_event: Dict[str, Any] = field(default_factory=dict)
 
-    @property
-    def is_group_message(self) -> bool:
-        """是否为群消息"""
-        return self.group_id is not None
+    # 是否为群消息（可选字段，未提供时自动从group_id推断）
+    is_group_message: Optional[bool] = None
+
+    def __post_init__(self):
+        """初始化后处理：自动推断is_group_message和event_type"""
+        if self.is_group_message is None:
+            self.is_group_message = self.group_id is not None
+
+        # 如果event_type未提供，从is_group_message推断
+        if self.event_type is None:
+            if self.is_group_message:
+                self.event_type = EventType.GROUP_MESSAGE
+            else:
+                self.event_type = EventType.PRIVATE_MESSAGE
 
     @property
     def is_private_message(self) -> bool:
         """是否为私聊消息"""
-        return self.group_id is None
+        return not self.is_group_message
 
     def is_at_target(self, target_id: str) -> bool:
         """是否@了指定目标"""
