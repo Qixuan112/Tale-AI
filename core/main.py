@@ -9,6 +9,7 @@ from typing import Optional, Callable, Any, List, Dict
 from .spin_think import spinning_think
 from .bus import NextBus, bus
 from .llm import ChatLLM, get_planllm, ToolLLM, get_vlm_llm
+from .llm.provider import provider_manager
 from .utils.cache import BoundedCache
 from .utils.id_sanitizer import IDSanitizer
 from .config.provide import (
@@ -50,6 +51,61 @@ def calculate_split_interval(text_length: int) -> float:
     return round(delay, 2)
 
 
+class ChatLLMAdapter:
+    """把 ChatLLM 适配为 ChatAgent 需要的 provider 接口（#183 集成）
+
+    ChatAgent 调用 `provider.chat(messages)` 传入完整消息列表，
+    此处转发给 ChatLLM.chat()：其无状态模式会注入 dynamic reminder
+    （当前时间/今日日程）、执行 RAG 检索与上下文裁剪，保证提示词
+    行为与旧路径完全一致。返回 None 时表示上游 API 失败。
+    """
+
+    def __init__(self, chatllm):
+        self._chatllm = chatllm
+
+    @property
+    def chatllm(self):
+        return self._chatllm
+
+    def _prepend_system_head(self, messages: list) -> list:
+        """把 ChatLLM 的 system 头（角色人格/对话示例等）拼到消息列表最前。
+
+        旧路径（有状态）在 set_session()/refresh_context() 时把
+        ``context.build_messages_head(cache_strategy)`` 写入 self.messages，
+        ChatLLM.chat() 使用实例状态时该头自然在列表中；而无状态路径
+        （messages=history 参数）只对传入列表追加/裁剪，从不注入 system 头，
+        导致 AI 丢失人格设定且破坏前缀缓存命中。此处显式补齐，
+        保证与旧路径行为一致（P1）。
+        """
+        head = self._chatllm.context.build_messages_head(self._chatllm.cache_strategy)
+        return list(head) + list(messages)
+
+    def chat(self, messages):
+        """同步 chat 接口（ChatAgent 内部按 sync provider 处理）
+
+        最后一条消息作为当前用户输入，其余作为历史传入 ChatLLM 的无状态模式
+        （messages=history 参数），由 ChatLLM 内部注入 dynamic reminder
+        （当前时间/今日日程）、执行 RAG 检索与上下文裁剪，保证提示词
+        行为与旧路径一致。system 头由本适配器显式补齐（见
+        _prepend_system_head，修复 ChatAgent 路径丢失人格设定的问题）。
+        """
+        try:
+            if not messages:
+                return None
+            user_input = messages[-1].get("content", "")
+            history = self._prepend_system_head(messages[:-1])
+            return self._chatllm.chat(
+                user_input,
+                persist_content=None,
+                save_to_session=False,
+                sid=None,
+                messages=history,
+            )
+        except Exception as e:
+            logger.error("ChatLLMAdapter 调用失败: %s", e)
+            return None
+
+
 class TaleCore:
     """Tale 核心应用类
 
@@ -65,6 +121,14 @@ class TaleCore:
 
     def __init__(self):
         self.chat: Optional[ChatLLM] = None
+        # 无状态 ChatAgent（#183）：generate(messages, session_id, timeout)，
+        # 内部自带 per-session lock + Semaphore 并发控制。
+        # 兼容模式：chat_agent 为 None 时走旧 self.chat.chat() 路径。
+        self.chat_agent: Optional[Any] = None
+        # ChatAgent 模式的 per-session 消息快照（sid -> 消息列表）：
+        # 历史由 SessionManager 统一管理，快照缓存本轮会话追加段，
+        # 供 Agent 多轮循环上下文连续与最终回复落库，避免跨会话共享状态串味。
+        self._chat_snapshots: Dict[str, List[Dict]] = {}
         self.toolllm: Optional[ToolLLM] = None
         self.adapter_bridge: Optional[AdapterEventBridge] = None
         self.message_processor: Optional[MessageProcessor] = None
@@ -111,6 +175,7 @@ class TaleCore:
         self.bridge = BridgeState()
 
         self.chat = self._init_chatllm()
+        self.chat_agent = self._init_chat_agent()
 
         # 更新 Semaphore（从配置读取最大并发数）
         max_concurrent = getattr(config_loader.bot.bot, 'max_concurrent_llm', 3)
@@ -255,6 +320,30 @@ class TaleCore:
             logger.warning("ChatLLM 初始化失败: %s", e)
             return None
 
+    def _init_chat_agent(self):
+        """初始化无状态 ChatAgent（#183 集成）。
+
+        ChatAgent 需要 provider 提供 `chat(messages) -> str` 接口：
+        - 优先包装 ChatLLM 实例（复用其 dynamic reminder/RAG/上下文裁剪逻辑）
+        - 其次回退到 provider_manager 的 main_llm 配置，保证热重载时重建可用
+        """
+        from .agent import ChatAgent
+        if self.chat is not None:
+            try:
+                provider = ChatLLMAdapter(self.chat)
+                return ChatAgent(provider=provider)
+            except Exception as e:
+                logger.warning("ChatAgent 包装 ChatLLM 失败，回退 provider 直连: %s", e)
+        # 回退：直接用 provider_manager 解析出的 provider（热重载时 ChatLLM 可能尚不可用）
+        try:
+            provider, model = provider_manager.resolve("main_llm")
+            if provider is None:
+                return None
+            return ChatAgent(provider=provider)
+        except Exception as e:
+            logger.warning("ChatAgent 初始化失败: %s", e)
+            return None
+
     @staticmethod
     def _init_toolllm():
         api_key = get_tool_api_key()
@@ -274,6 +363,13 @@ class TaleCore:
             self.chat = self._init_chatllm()
             if self.chat is not None:
                 logger.info("ChatLLM 热重载初始化成功")
+        # ChatAgent 绑定 ChatLLM 实例，ChatLLM 重建后需同步重建 agent
+        if self.chat_agent is None or (
+            self.chat is not None and getattr(self.chat_agent, "_provider", None) is not self.chat
+        ):
+            self.chat_agent = self._init_chat_agent()
+            if self.chat_agent is not None:
+                logger.info("ChatAgent 热重载初始化成功")
         if self.toolllm is None:
             self.toolllm = self._init_toolllm()
             if self.toolllm is not None:
@@ -284,6 +380,15 @@ class TaleCore:
         # 重新初始化消息处理器（唤醒词、权限等配置可能已变更）
         self._init_message_processor()
         logger.info("MessageProcessor 已热重载")
+
+    @staticmethod
+    def _get_planllm_ref():
+        """安全获取 PlanLLM 引用（不存在时返回 None，供插件提示词段注入）"""
+        try:
+            from .llm import get_planllm
+            return get_planllm()
+        except Exception:
+            return None
 
     def _init_message_processor(self):
         """初始化消息处理器"""
@@ -342,6 +447,7 @@ class TaleCore:
             self.plugin_manager._wire_prompt_sections(
                 chatllm=self.chat,
                 toollLM=self.toolllm,
+                planllm=self._get_planllm_ref(),
             )
             logger.info(
                 "插件管理器初始化完成，已加载 %d 个插件",
@@ -850,7 +956,9 @@ class TaleCore:
                 # per-session 锁：每个会话独立锁，防止同会话消息乱序
                 session_lock = await self._get_session_lock(sid)
                 async with session_lock:
-                    # set_session 在锁内执行，确保 self.messages/current_sid 原子化
+                    # set_session 在锁内执行，确保 self.messages/current_sid 原子化。
+                    # ChatAgent 模式（无状态）下 set_session 仅用于绑定会话 ID，
+                    # 历史由 SessionManager 统一管理、调用时按需传入。
                     if sid:
                         self.chat.set_session(sid, load_history=session_enabled)
                     # ── 跨会话消息注入（consume inbox） ──
@@ -946,14 +1054,20 @@ class TaleCore:
 
                     # 首次调用不落库（save_to_session=False），最终回复在最后统一持久化
                     # 避免工具调用轮次和最终回复双重写入
-                    chatllm_reply = await self._call_chatllm(user_input, persist_content, save_to_session=False)
+                    chatllm_reply = await self._call_chatllm(
+                        user_input, persist_content, save_to_session=False, sid=sid
+                    )
                     parsed = parse_xml_msg(chatllm_reply)
 
                     async def _persist_and_ack():
                         # 本轮跨会话消息已被 consume 移入 pending；无论以何种路径结束
                         # （含 skip_reply / 解析失败 / 纯文本回复等提前 return），
                         # 都需落库并 ack，否则这些消息会被判超时重复投递，回退回复也不会写入记忆。
-                        if self.chat and self.chat.current_sid and persist_content:
+                        if self.chat_agent is not None and sid:
+                            # ChatAgent 路径：无状态，最终回复从快照统一落库
+                            # （user 纯净原文 + 最终 assistant 回复，与旧语义一致）
+                            self._persist_snapshot(sid)
+                        elif self.chat and self.chat.current_sid and persist_content:
                             self.chat._save_session_memory(persist_content)
                         if inbox_msgs and sid and self.bridge:
                             _mids = [m["id"] for m in inbox_msgs if m.get("id")]
@@ -1403,14 +1517,77 @@ class TaleCore:
         return results
 
 
+    def _get_session_messages(self, sid: str) -> List[Dict]:
+        """组装 ChatAgent 模式的会话消息列表（#183）。
+
+        ChatAgent 无状态：历史消息在每次调用时传入，由 SessionManager 统一管理。
+        此处将会话历史与当前快照（本轮追加段）合并：
+        - system 头由 ChatLLMAdapter 显式注入（_prepend_system_head，P1）
+        - 持久化模式：历史来自 SessionManager.get_memory(sid)
+        - 快照缓存本轮未落库的追加消息（Agent 多轮循环上下文连续）；
+          无持久化模式下快照在 _persist_snapshot 中每轮清空（P2），不跨轮读取
+
+        Returns:
+            消息列表（[{role, content}, ...]）
+        """
+        messages: List[Dict] = []
+        if self.session_manager is not None:
+            try:
+                messages.extend(self.session_manager.get_memory(sid))
+            except Exception as e:
+                logger.debug("读取会话历史失败: %s", e)
+        messages.extend(self._chat_snapshots.get(sid, []))
+        return messages
+
+    def _persist_snapshot(self, sid: str):
+        """将 ChatAgent 模式的会话快照落库到 SessionManager（#183）
+
+        快照中 user+assistant 成对写入（与旧路径 _save_session_memory 语义一致），
+        落库成功后清空快照，避免下次轮次重复追加。
+
+        无持久化模式（session_manager 为 None）下无库可落：快照只承载
+        本轮追加段，直接清空即可（下轮从头开始），否则快照只进不出，
+        每条消息都带上此前所有消息原文，造成上下文漂移（P2）。
+        """
+        if not sid:
+            return
+        if self.session_manager is None:
+            self._chat_snapshots.pop(sid, None)
+            return
+        try:
+            session = self.session_manager.get_session(sid)
+            if session is not None and not session.enabled:
+                return  # 禁用的会话不持久化新记忆
+            snap = self._chat_snapshots.get(sid, [])
+            i = 0
+            while i < len(snap) - 1:
+                if snap[i].get("role") == "user" and snap[i + 1].get("role") == "assistant":
+                    self.session_manager.append_memory(
+                        sid,
+                        {"role": "user", "content": snap[i].get("content", "")},
+                        {"role": "assistant", "content": snap[i + 1].get("content", "")},
+                    )
+                    i += 2
+                else:
+                    i += 1
+            self._chat_snapshots.pop(sid, None)
+        except Exception as e:
+            logger.debug("会话快照落库失败: %s", e)
+
     async def _call_chatllm(self, user_input: str, persist_content: str = None,
-                             save_to_session: bool = True) -> str:
-        """调用 ChatLLM 生成回复（非阻塞，使用线程池执行同步 API 调用）
+                             save_to_session: bool = True, sid: str = None) -> str:
+        """调用 LLM 生成回复（非阻塞，使用线程池执行同步 API 调用）
+
+        #183 集成：优先走无状态 ChatAgent.generate(messages, session_id, timeout)，
+        ChatAgent 内部自带 per-session lock + Semaphore 并发控制与超时保护。
+        历史消息由 SessionManager 统一管理，调用时组装传入。
 
         Args:
             user_input: 发给 LLM 的用户输入
             persist_content: 落库时存入会话记忆的纯净用户原文，None 则用 user_input
             save_to_session: 是否写入会话记忆，Agent 内部步骤传 False
+            sid: 会话标识（ChatAgent 路径必须显式传入；无持久化模式下
+                self.chat.current_sid 可能为 None，需用锁内的 sid）
 
         Returns:
             AI 回复文本
@@ -1432,14 +1609,52 @@ class TaleCore:
         try:
             # 在专用线程池中执行同步 API 调用，避免阻塞事件循环
             loop = asyncio.get_running_loop()
-            chatllm_reply = await loop.run_in_executor(
-                self._llm_executor, self.chat.chat, user_input, persist_content, save_to_session
-            )
+            if self.chat_agent is not None:
+                # ── ChatAgent 无状态路径 ──
+                # 历史由 SessionManager 统一管理，调用时从会话历史+快照组装；
+                # 当前用户消息作为 user 消息传入（system 头由 ChatLLMAdapter
+                # 显式补齐，见 _prepend_system_head）
+                if not sid:
+                    sid = self.chat.current_sid or ""
+                messages = self._get_session_messages(sid)
+                messages.append({"role": "user", "content": user_input})
+                reply = await self.chat_agent.generate(
+                    messages=messages,
+                    session_id=sid,
+                    timeout=60.0,
+                )
+                if reply is None:
+                    logger.error("ChatLLM API 返回空响应")
+                    reply = ""
+                # 本轮追加段入快照（最终回复由 _persist_and_ack 统一落库）。
+                # 工具轮次（persist_content=None）只更新回复，保留首条用户原文，
+                # 与旧路径 _save_session_memory 语义一致（落库纯净原文 + 最终回复）。
+                # 无持久化模式（session_manager 为 None）下快照在 _persist_snapshot
+                # 中每轮清空，本轮追加段不跨轮读取（P2）。
+                if (reply or persist_content) and sid:
+                    # 空 sid（控制台模式）不建快照：无 _persist_and_ack 调用，
+                    # 建了只会残留无界增长（P2）
+                    snap = self._chat_snapshots.setdefault(sid, [])
+                    if persist_content:
+                        snap.append({"role": "user", "content": persist_content or user_input})
+                    if reply:
+                        if snap and snap[-1].get("role") == "assistant":
+                            snap[-1] = {"role": "assistant", "content": reply}
+                        else:
+                            snap.append({"role": "assistant", "content": reply})
+                    # 快照只承载本轮未落库的追加段，限制长度防内存泄漏
+                    if len(snap) > 40:
+                        self._chat_snapshots[sid] = snap[-20:]
+            else:
+                # ── 兼容路径：ChatLLM 有状态调用 ──
+                reply = await loop.run_in_executor(
+                    self._llm_executor, self.chat.chat, user_input, persist_content, save_to_session
+                )
         finally:
             # 停止动画（daemon 线程无需 join，进程退出时自动终止）
             stop_event.set()
 
-        return chatllm_reply
+        return reply
 
     async def _generate_reply(self, user_input: str) -> list:
         """生成 AI 回复（控制台模式入口）

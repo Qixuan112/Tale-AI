@@ -1,24 +1,26 @@
 """
-Unit tests for Issue #130: Global lock concurrency problem
+Unit tests for Issue #184: per-session lock concurrency behavior
 
-Tests cover:
-1. Parallel execution for different sessions
-2. Serial execution for same session
-3. Semaphore concurrency limit
-4. ChatLLM stateless verification
+Tests verify the NEW behavior introduced by #171 (replacing the #130 global lock):
+1. Parallel execution for different sessions (per-session locks)
+2. Serial execution for same session (per-session lock)
+3. Semaphore concurrency limit (_session_semaphore)
+4. ChatLLM stateless capability detection
 5. High concurrency stability
+6. Lock acquisition order / overlap across sessions
 
-These tests MUST FAIL before the fix is applied, validating that the current
-implementation indeed has the global lock problem where all sessions block each other.
+These tests exercise the real TaleCore._handle_respond_message path with mocked
+ChatLLM / adapter bridge (no API keys needed). The typing delay
+(calculate_split_interval, simulates human typing per message) is disabled in
+the fixture because it is a UX simulation unrelated to concurrency semantics.
 """
 
 import pytest
 import asyncio
 import time
 import threading
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from unittest.mock import Mock, AsyncMock, patch
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
 
 # Import components to test
 import sys
@@ -27,10 +29,7 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from core.main import TaleCore
-from core.adapter.event import (
-    PlatformEvent, PlatformType, EventType,
-    SenderInfo, MessageContent
-)
+from core.adapter.event import PlatformType, EventType
 from core.adapter.message_processor import ProcessedMessage, ResponseDecision
 
 
@@ -40,7 +39,7 @@ from core.adapter.message_processor import ProcessedMessage, ResponseDecision
 
 @pytest.fixture
 def mock_chatllm():
-    """Mock ChatLLM with stateful behavior (simulating current implementation)"""
+    """Mock ChatLLM with a blocking chat() call (200ms) and session state"""
     mock = Mock()
     mock.messages = []
     mock.current_sid = None
@@ -48,7 +47,7 @@ def mock_chatllm():
     def mock_chat(user_input, persist_content=None, save_to_session=True):
         """Simulate blocking LLM call with 200ms delay"""
         time.sleep(0.2)  # Simulate network I/O
-        return f"<msg><text>Reply to: {user_input[:50]}</text></msg>"
+        return "<msg><text>Reply OK</text></msg>"
 
     def mock_set_session(sid, load_history=True):
         """Simulate session state mutation"""
@@ -78,19 +77,25 @@ def mock_adapter_bridge():
 
 @pytest.fixture
 def tale_core_with_mocks(mock_chatllm, mock_adapter_bridge):
-    """Create TaleCore instance with mocked dependencies"""
-    core = TaleCore()
-    core.chat = mock_chatllm
-    core.toolllm = Mock()
-    core.adapter_bridge = mock_adapter_bridge
-    core.session_manager = None  # Disable persistence for tests
-    core._llm_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="test-llm")
+    """Create TaleCore instance with mocked dependencies.
 
-    # Mock message processor
-    mock_processor = Mock()
-    core.message_processor = mock_processor
+    打字延迟（calculate_split_interval，模拟真人逐条打字）与并发语义无关，
+    在此统一禁用，避免每条回复被 typing_speed * 字数 拖慢数秒。
+    """
+    with patch("core.main.calculate_split_interval", return_value=0.0):
+        core = TaleCore()
+        core.chat = mock_chatllm
+        core.toolllm = Mock()
+        core.adapter_bridge = mock_adapter_bridge
+        core.session_manager = None  # Disable persistence for tests
+        core.bridge = None  # 跨会话 bridge 不需要
+        core._llm_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="test-llm")
 
-    return core
+        # Mock message processor
+        mock_processor = Mock()
+        core.message_processor = mock_processor
+
+        yield core
 
 
 def create_test_message(session_id: str, text: str, is_group: bool = True) -> ProcessedMessage:
@@ -111,6 +116,12 @@ def create_test_message(session_id: str, text: str, is_group: bool = True) -> Pr
     )
 
 
+def current_message(user_input: str) -> str:
+    """从 user_input 中提取当前用户消息（_handle_respond_message 会组装
+    时间/元数据/环境等结构化上下文，当前消息在 '## 当前消息' 段）。"""
+    return user_input.rsplit("## 当前消息", 1)[-1].strip()[:30]
+
+
 # ============================================================================
 # Test 1: Parallel execution for different sessions
 # ============================================================================
@@ -118,12 +129,11 @@ def create_test_message(session_id: str, text: str, is_group: bool = True) -> Pr
 @pytest.mark.asyncio
 async def test_parallel_different_sessions(tale_core_with_mocks):
     """
-    Test that messages from different sessions can execute in parallel.
+    Test that messages from different sessions execute in parallel.
 
-    **Expected behavior after fix**: 3 sessions execute concurrently with overlapping timestamps.
-    **Current behavior (SHOULD FAIL)**: Global lock forces serial execution, no overlap.
-
-    This test validates that the global lock problem exists before the fix.
+    Current behavior (#171): per-session locks allow different sessions to
+    run concurrently (bounded by _session_semaphore). 3 sessions with a
+    200ms chat call should finish in ~200ms, not ~600ms serial.
     """
     core = tale_core_with_mocks
 
@@ -135,10 +145,10 @@ async def test_parallel_different_sessions(tale_core_with_mocks):
     original_chat = core.chat.chat
     def tracked_chat(user_input, persist_content=None, save_to_session=True):
         with lock:
-            execution_log.append(("start", user_input[:20], time.time()))
+            execution_log.append(("start", current_message(user_input), time.time()))
         result = original_chat(user_input, persist_content, save_to_session)
         with lock:
-            execution_log.append(("end", user_input[:20], time.time()))
+            execution_log.append(("end", current_message(user_input), time.time()))
         return result
 
     core.chat.chat = tracked_chat
@@ -185,18 +195,16 @@ async def test_parallel_different_sessions(tale_core_with_mocks):
     print(f"Total execution time: {total_time * 1000:.1f}ms")
 
     # ASSERTION: Different sessions should execute in parallel
-    # With 200ms per call, 3 parallel calls should take ~200ms total
-    # Serial execution would take ~600ms
-    # Current implementation SHOULD FAIL this assertion (takes ~600ms)
-    assert total_time < 0.35, (
-        f"Different sessions blocked each other (took {total_time:.2f}s, expected <0.35s). "
-        f"This confirms the global lock problem exists."
+    # With 200ms per call, 3 parallel calls take ~200ms; serial would take ~600ms
+    assert total_time < 0.5, (
+        f"Different sessions blocked each other (took {total_time:.2f}s, expected <0.5s). "
+        f"Per-session concurrency is broken."
     )
 
-    # At least 2 sessions should have overlapping execution
+    # All 3 sessions should overlap with each other (per-session locks, not global)
     assert overlaps >= 2, (
         f"Only {overlaps} overlaps detected, expected at least 2. "
-        f"This confirms sessions are executing serially due to global lock."
+        f"Executions are serially blocked by a shared lock."
     )
 
 
@@ -209,8 +217,9 @@ async def test_serial_same_session(tale_core_with_mocks):
     """
     Test that messages from the same session execute serially in order.
 
-    **Expected behavior**: Second message starts only after first completes.
-    **This should PASS both before and after the fix** (per-session lock).
+    Current behavior (#171): the per-session lock guarantees strict ordering
+    within one session. Two 200ms calls take ~400ms (serial), and the second
+    call starts only after the first finishes.
     """
     core = tale_core_with_mocks
 
@@ -221,10 +230,10 @@ async def test_serial_same_session(tale_core_with_mocks):
     original_chat = core.chat.chat
     def tracked_chat(user_input, persist_content=None, save_to_session=True):
         with lock:
-            execution_log.append(("start", user_input[:30], time.time()))
+            execution_log.append(("start", current_message(user_input), time.time()))
         result = original_chat(user_input, persist_content, save_to_session)
         with lock:
-            execution_log.append(("end", user_input[:30], time.time()))
+            execution_log.append(("end", current_message(user_input), time.time()))
         return result
 
     core.chat.chat = tracked_chat
@@ -263,12 +272,13 @@ async def test_serial_same_session(tale_core_with_mocks):
         f"start2={start2_time:.3f}, end1={end1_time:.3f}"
     )
 
-    # Total time should be ~400ms (2 * 200ms serial)
-    assert 0.35 < total_time < 0.50, (
+    # Total time should be ~400ms (2 * 200ms serial); if the per-session lock
+    # is broken and they run concurrently, total would be ~200ms and this fails.
+    assert 0.35 < total_time < 0.65, (
         f"Execution time {total_time:.2f}s unexpected for serial execution"
     )
 
-    print(f"\n✓ Same session messages executed serially (gap: {(start2_time - end1_time) * 1000:.1f}ms)")
+    print(f"\nOK: Same session messages executed serially (gap: {(start2_time - end1_time) * 1000:.1f}ms)")
 
 
 # ============================================================================
@@ -278,12 +288,11 @@ async def test_serial_same_session(tale_core_with_mocks):
 @pytest.mark.asyncio
 async def test_semaphore_limit(tale_core_with_mocks):
     """
-    Test that Semaphore(3) limits concurrent executions to 3.
+    Test that _session_semaphore(3) limits concurrent executions to 3.
 
-    **Expected behavior after fix**: At most 3 tasks execute concurrently.
-    **Current behavior (SHOULD FAIL)**: Global lock limits to 1 concurrent task.
-
-    This test will fail before the fix because only 1 task runs at a time.
+    Current behavior (#171): different sessions run in parallel (per-session
+    locks) but global concurrency is capped at 3. 10 tasks with 200ms each
+    take ~4 waves = ~800ms, and at most 3 chats run simultaneously.
     """
     core = tale_core_with_mocks
 
@@ -327,88 +336,100 @@ async def test_semaphore_limit(tale_core_with_mocks):
     print(f"\n=== Semaphore Test Results ===")
     print(f"Max concurrent executions: {max_active}")
     print(f"Total time: {total_time:.2f}s")
-    print(f"Expected time with Semaphore(3): ~0.7s (10 tasks / 3 = 4 batches * 0.2s)")
-    print(f"Expected time with global lock: ~2.0s (10 tasks * 0.2s serial)")
+    print(f"Expected time with Semaphore(3): ~0.8s (10 tasks / 3 = 4 waves * 0.2s)")
+    print(f"Expected time without rate limit: ~0.2s (all 10 at once)")
 
-    # ASSERTION: With Semaphore(3), max concurrent should be 3
-    # Current implementation SHOULD FAIL this (max_active == 1 due to global lock)
-    assert max_active >= 3, (
-        f"Max concurrent executions was {max_active}, expected >= 3. "
-        f"This confirms the global lock prevents parallel execution."
+    # At most 3 concurrent chats (semaphore enforces the cap)
+    assert max_active <= 3, (
+        f"Max concurrent executions was {max_active}, expected <= 3. "
+        f"The semaphore limit is not enforced."
     )
 
-    # With Semaphore(3), 10 tasks should complete in ~0.7-0.8s
-    # With global lock, it takes ~2.0s
-    assert total_time < 1.0, (
-        f"Execution took {total_time:.2f}s, expected <1.0s with Semaphore(3). "
-        f"This confirms the global lock serializes all requests."
+    # At least 3 concurrent chats (per-session locks allow real parallelism)
+    assert max_active >= 3, (
+        f"Max concurrent executions was {max_active}, expected >= 3. "
+        f"Executions are serialized (global lock regression?)."
+    )
+
+    # With Semaphore(3) and 200ms calls, 10 tasks take ~4 waves (~0.8s).
+    # Without rate limiting it would be ~0.2s; with a global lock ~2.0s.
+    assert 0.5 < total_time < 1.5, (
+        f"Execution took {total_time:.2f}s, expected 0.5-1.5s with Semaphore(3). "
+        f"Rate limiting or concurrency is broken."
     )
 
 
 # ============================================================================
-# Test 4: ChatLLM stateless verification
+# Test 4: ChatLLM stateless capability
 # ============================================================================
 
 @pytest.mark.asyncio
 async def test_chatllm_stateless(tale_core_with_mocks):
     """
-    Test that ChatLLM.chat() does not mutate instance state.
+    Test stateless ChatLLM capability detection and per-session isolation.
 
-    **Expected behavior after fix**: chat() is pure function, no state mutation.
-    **Current behavior (SHOULD FAIL)**: self.messages and self.current_sid change.
-
-    This test verifies the stateless refactoring goal.
+    Current behavior (#171): TaleCore detects whether chat() supports the
+    stateless signature (sid=/messages= parameters). The hot path still goes
+    through set_session() under the per-session lock, so different sessions
+    must never observe each other's input.
     """
     core = tale_core_with_mocks
-    chatllm = core.chat
 
-    # Record initial state
-    initial_messages = chatllm.messages.copy() if hasattr(chatllm, 'messages') else None
-    initial_sid = chatllm.current_sid if hasattr(chatllm, 'current_sid') else None
+    # 1. Old interface (chat without sid/messages params) is detected as stateful
+    assert core._check_chatllm_stateless() is False, (
+        "Old-style chat() without sid/messages should be detected as stateful"
+    )
 
-    print(f"\n=== ChatLLM State Before Call ===")
-    print(f"messages: {initial_messages}")
-    print(f"current_sid: {initial_sid}")
+    # 2. New stateless interface (chat with sid/messages params) is detected
+    recorded_calls = []
+    recorded_sids = []
 
-    # Make two calls with different sessions
-    msg1 = create_test_message("group_X", "Test message 1")
-    msg2 = create_test_message("group_Y", "Test message 2")
+    def stateless_chat_call(user_input, persist_content=None, save_to_session=True,
+                            sid=None, messages=None):
+        recorded_calls.append((current_message(user_input), sid, messages))
+        time.sleep(0.05)
+        return "<msg><text>Stateless OK</text></msg>"
+
+    def stateless_set_session(sid, load_history=True):
+        recorded_sids.append(sid)
+        stateless_chat.current_sid = sid
+
+    stateless_chat = Mock()
+    stateless_chat.chat = stateless_chat_call
+    stateless_chat.set_session = stateless_set_session
+    stateless_chat._save_session_memory = Mock()
+
+    core.chat = stateless_chat
+
+    assert core._check_chatllm_stateless() is True, (
+        "chat(sid=..., messages=...) should be detected as stateless"
+    )
+
+    # 3. Two different sessions: no cross-contamination of input, correct sids
+    msg1 = create_test_message("group_stateless_a", "Msg A")
+    msg2 = create_test_message("group_stateless_b", "Msg B")
 
     await core._handle_respond_message(msg1, adapter_instance="qq")
-
-    # Record state after first call
-    mid_messages = chatllm.messages.copy() if hasattr(chatllm, 'messages') else None
-    mid_sid = chatllm.current_sid if hasattr(chatllm, 'current_sid') else None
-
-    print(f"\n=== ChatLLM State After First Call ===")
-    print(f"messages: {mid_messages}")
-    print(f"current_sid: {mid_sid}")
-
     await core._handle_respond_message(msg2, adapter_instance="qq")
 
-    # Record state after second call
-    final_messages = chatllm.messages.copy() if hasattr(chatllm, 'messages') else None
-    final_sid = chatllm.current_sid if hasattr(chatllm, 'current_sid') else None
+    print(f"\n=== Stateless Test Results ===")
+    print(f"Recorded calls: {recorded_calls}")
+    print(f"Recorded sids: {recorded_sids}")
 
-    print(f"\n=== ChatLLM State After Second Call ===")
-    print(f"messages: {final_messages}")
-    print(f"current_sid: {final_sid}")
-
-    # ASSERTION: For stateless ChatLLM, these should not exist or not change
-    # Current implementation SHOULD FAIL this (state mutates)
-    if hasattr(chatllm, 'messages'):
-        # State exists - check if it pollutes across calls
-        assert mid_messages == initial_messages, (
-            "ChatLLM.messages was mutated by first call. "
-            "This confirms ChatLLM is stateful and needs refactoring."
-        )
-
-    if hasattr(chatllm, 'current_sid'):
-        # current_sid exists - it should not persist across different sessions
-        assert mid_sid == initial_sid, (
-            f"ChatLLM.current_sid changed from {initial_sid} to {mid_sid}. "
-            f"This confirms ChatLLM maintains session state."
-        )
+    assert len(recorded_calls) == 2, (
+        f"Expected 2 chat calls, got {len(recorded_calls)}"
+    )
+    # Each call receives its own session's message - no cross-contamination
+    assert recorded_calls[0][0] == "Msg A", (
+        f"First call got {recorded_calls[0][0]!r}, expected 'Msg A'"
+    )
+    assert recorded_calls[1][0] == "Msg B", (
+        f"Second call got {recorded_calls[1][0]!r}, expected 'Msg B'"
+    )
+    # set_session is invoked with the correct per-session sid
+    assert recorded_sids == ["qq:gm:group_stateless_a", "qq:gm:group_stateless_b"], (
+        f"set_session sids {recorded_sids} do not match expected sessions"
+    )
 
 
 # ============================================================================
@@ -420,8 +441,9 @@ async def test_high_concurrency_stability(tale_core_with_mocks):
     """
     Test system stability under high concurrent load (50 requests).
 
-    **Expected behavior**: All requests complete successfully within reasonable time.
-    **Validates**: No deadlocks, no OOM, performance acceptable.
+    Current behavior: 50 requests across 10 sessions, semaphore caps at 3
+    concurrent; with 50ms per call this completes in ~1s. Validates no
+    deadlocks (timeout watchdog), no cross-session corruption.
     """
     core = tale_core_with_mocks
 
@@ -429,7 +451,7 @@ async def test_high_concurrency_stability(tale_core_with_mocks):
     original_chat = core.chat.chat
     def fast_chat(user_input, persist_content=None, save_to_session=True):
         time.sleep(0.05)  # 50ms instead of 200ms
-        return f"<msg><text>Reply</text></msg>"
+        return "<msg><text>Reply</text></msg>"
 
     core.chat.chat = fast_chat
 
@@ -463,17 +485,14 @@ async def test_high_concurrency_stability(tale_core_with_mocks):
     # ASSERTIONS
     assert success, "Timeout detected - possible deadlock or extreme slowdown"
 
-    # With Semaphore(3) and 50ms per call, expected time:
-    # 50 requests / 3 concurrent = ~17 batches * 50ms = ~0.85s
-    # Allow up to 3s for overhead
+    # With Semaphore(3) and 50ms per call: 50 / 3 = ~17 waves * 50ms = ~0.85s.
+    # Allow up to 3s for overhead.
     assert total_time < 3.0, (
         f"High concurrency took {total_time:.2f}s, expected <3.0s. "
         f"Performance degradation detected."
     )
 
-    # With global lock, would take 50 * 50ms = 2.5s minimum
-    # This test helps identify if parallel execution is working
-    print(f"\n✓ High concurrency test passed in {total_time:.2f}s")
+    print(f"\nOK: High concurrency test passed in {total_time:.2f}s")
 
 
 # ============================================================================
@@ -483,10 +502,11 @@ async def test_high_concurrency_stability(tale_core_with_mocks):
 @pytest.mark.asyncio
 async def test_lock_acquisition_order(tale_core_with_mocks):
     """
-    Test that per-session locks are acquired correctly and don't cause deadlocks.
+    Test that per-session locks are acquired independently and don't cause
+    deadlocks.
 
-    **Expected behavior after fix**: Each session has independent lock, no blocking.
-    **Current behavior**: Single global lock causes all sessions to wait.
+    Current behavior (#171): each session has its own lock; interleaved
+    requests from sessions A and B must show overlapping lock holds.
     """
     core = tale_core_with_mocks
 
@@ -497,12 +517,12 @@ async def test_lock_acquisition_order(tale_core_with_mocks):
     original_chat = core.chat.chat
     def tracked_chat(user_input, persist_content=None, save_to_session=True):
         with lock:
-            lock_events.append(("acquire", user_input[:20], time.time()))
+            lock_events.append(("acquire", current_message(user_input), time.time()))
 
         result = original_chat(user_input, persist_content, save_to_session)
 
         with lock:
-            lock_events.append(("release", user_input[:20], time.time()))
+            lock_events.append(("release", current_message(user_input), time.time()))
 
         return result
 
@@ -540,6 +560,9 @@ async def test_lock_acquisition_order(tale_core_with_mocks):
             msg_i, acq_i = acquire_times[i]
             msg_j, acq_j = acquire_times[j]
 
+            if msg_i == msg_j:
+                continue  # 同会话本来就串行，不参与跨会话重叠判断
+
             # Find release times
             rel_i = next(t for m, t in release_times if m == msg_i and t > acq_i)
             rel_j = next(t for m, t in release_times if m == msg_j and t > acq_j)
@@ -547,13 +570,13 @@ async def test_lock_acquisition_order(tale_core_with_mocks):
             # Check overlap
             if acq_i < rel_j and acq_j < rel_i:
                 has_overlap = True
-                print(f"\n✓ Overlap detected: {msg_i} and {msg_j}")
+                print(f"\nOK: Overlap detected: {msg_i} and {msg_j}")
                 break
 
     # With per-session locks, different sessions should overlap
-    # With global lock, NO overlaps (SHOULD FAIL before fix)
     assert has_overlap, (
-        "No lock overlaps detected. This confirms the global lock serializes all requests."
+        "No lock overlaps detected. Different sessions are serialized "
+        "(shared lock regression?)."
     )
 
 

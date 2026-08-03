@@ -119,7 +119,15 @@ class TestWebSocketAdapterErrorLogging:
     @pytest.mark.asyncio
     async def test_websocket_receive_loop_error_uses_error_log(self):
         """Line 183: Receive loop error should use logger.error"""
-        with patch('core.adapter.src.websocket.adapter.logger') as mock_logger:
+        import websockets.exceptions as ws_exceptions
+
+        with patch('core.adapter.src.websocket.adapter.websockets') as mock_ws, \
+             patch('core.adapter.src.websocket.adapter.logger') as mock_logger:
+            # Point the mock's exceptions attribute at the real module so the
+            # `except websockets.exceptions.ConnectionClosed:` clause evaluates
+            # to a real exception class (a bare Mock would raise TypeError)
+            mock_ws.exceptions = ws_exceptions
+
             from core.adapter.src.websocket.adapter import WebSocketAdapter
 
             config = {"mode": "client", "auto_reconnect": False}
@@ -140,7 +148,6 @@ class TestWebSocketAdapterErrorLogging:
                 pass
 
             # Assert: Should call logger.error
-            # Currently calls logger.info (line 183) - should be logger.error
             error_logged = any("Error in receive loop" in str(call) for call in mock_logger.error.call_args_list)
             info_logged = any("Error in receive loop" in str(call) for call in mock_logger.info.call_args_list)
 
@@ -164,9 +171,8 @@ class TestWebSocketAdapterErrorLogging:
             # Trigger send failure
             result = await adapter.send_message("target", content)
 
-            # Assert: Should call logger.error and return False
-            assert result is False
-            # Currently calls logger.info (line 282) - should be logger.error
+            # Assert: Should call logger.error and return SendResult(success=False)
+            assert result.success is False
             error_logged = any("Failed to send message" in str(call) for call in mock_logger.error.call_args_list)
             info_logged = any("Failed to send message" in str(call) for call in mock_logger.info.call_args_list)
 
@@ -182,19 +188,17 @@ class TestAdapterIntegrationErrorLogging:
         with patch('core.adapter.integration.logger') as mock_logger:
             from core.adapter.integration import AdapterEventBridge
 
+            # Mock bus without aemit: the sync emit() path runs inside
+            # _emit_to_bus's try/except, so its exception is caught there
             mock_bus = Mock()
-            mock_bus.aemit = AsyncMock(side_effect=Exception("Bus error"))
+            mock_bus.emit = Mock(side_effect=Exception("Bus error"))
 
             bridge = AdapterEventBridge(mock_bus)
 
             # Trigger event emission error
             bridge._emit_to_bus("test_event", {"data": "test"})
 
-            # Wait for async task to complete
-            await asyncio.sleep(0.2)
-
             # Assert: Should call logger.error
-            # Currently calls logger.info (line 81) - should be logger.error
             error_logged = any("Error emitting event" in str(call) for call in mock_logger.error.call_args_list)
             info_logged = any("Error emitting event" in str(call) for call in mock_logger.info.call_args_list)
 
@@ -305,10 +309,10 @@ class TestAdapterManagerErrorLogging:
                 mock_dir.name = "test_adapter"
                 mock_dir.is_dir.return_value = True
 
-                def mock_div(other):
-                    mock_path = Mock(spec=Path)
-                    mock_path.exists.return_value = (other == "manifest.json")
-                    return mock_path
+                # __truediv__ is invoked as (self, other); return real Paths
+                # whose exists() is governed by the class-level patch above
+                def mock_div(self, other):
+                    return Path("/fake/path/test_adapter") / other
 
                 mock_dir.__truediv__ = mock_div
                 mock_iterdir.return_value = [mock_dir]
@@ -332,23 +336,18 @@ class TestAdapterManagerErrorLogging:
             # Reset scanned flag
             AdapterManager._scanned = False
 
-            with patch.object(Path, 'is_dir', return_value=True), \
+            with patch.object(Path, 'exists', return_value=True), \
+                 patch.object(Path, 'is_dir', return_value=True), \
                  patch.object(Path, 'iterdir') as mock_iterdir:
 
                 mock_dir = Mock(spec=Path)
                 mock_dir.name = "test_adapter"
                 mock_dir.is_dir.return_value = True
 
-                # Setup file mocks
-                def path_div(other):
-                    mock_path = Mock(spec=Path)
-                    if other == "manifest.json":
-                        mock_path.exists.return_value = True
-                    elif other == "schema.json":
-                        mock_path.exists.return_value = True
-                    else:
-                        mock_path.exists.return_value = False
-                    return mock_path
+                # Setup file mocks: return real Paths (exists patched above),
+                # so mock_open_impl can dispatch on str(file)
+                def path_div(self, other):
+                    return Path("/fake/path/test_adapter") / other
 
                 mock_dir.__truediv__ = path_div
                 mock_iterdir.return_value = [mock_dir]
@@ -379,17 +378,16 @@ class TestAdapterManagerErrorLogging:
             # Reset scanned flag
             AdapterManager._scanned = False
 
-            with patch.object(Path, 'is_dir', return_value=True), \
+            with patch.object(Path, 'exists', return_value=True), \
+                 patch.object(Path, 'is_dir', return_value=True), \
                  patch.object(Path, 'iterdir') as mock_iterdir:
 
                 mock_dir = Mock(spec=Path)
                 mock_dir.name = "test_adapter"
                 mock_dir.is_dir.return_value = True
 
-                def path_div(other):
-                    mock_path = Mock(spec=Path)
-                    mock_path.exists.return_value = True
-                    return mock_path
+                def path_div(self, other):
+                    return Path("/fake/path/test_adapter") / other
 
                 mock_dir.__truediv__ = path_div
                 mock_iterdir.return_value = [mock_dir]
@@ -432,9 +430,8 @@ class TestQQAdapterErrorLogging:
             # Trigger send failure
             result = await adapter.send_message("12345", content, is_group=False)
 
-            # Assert: Should call logger.error and return False
-            assert result is False
-            # Currently calls logger.info (line 439) - should be logger.error
+            # Assert: Should call logger.error and return SendResult(success=False)
+            assert result.success is False
             error_logged = any("Failed to send message" in str(call) for call in mock_logger.error.call_args_list)
             info_logged = any("Failed to send message" in str(call) for call in mock_logger.info.call_args_list)
 
