@@ -1,0 +1,84 @@
+site_name: Tale-AI Documentation
+site_description: 多智能体 AI 对话系统 - 自主规划日程的 AI 角色
+site_author: Qixuan112
+site_url: https://qixuan112.github.io/Tale-AI/
+
+repo_name: Qixuan112/Tale-AI
+repo_url: https://github.com/Qixuan112/Tale-AI
+
+theme:
+  name: material
+  language: zh
+  palette:
+    # 浅色模式
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: 切换至深色模式
+    # 深色模式
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: 切换至浅色模式
+
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+
+plugins:
+  - search:
+      lang:
+        - zh
+        - en
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - admonition
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+nav:
+  - 首页: index.md
+  - 快速开始:
+    - 安装部署: getting-started/installation.md
+    - 配置指南: getting-started/config-guide.md
+    - 常见问题: getting-started/faq.md
+  - 架构设计:
+    - 总览: architecture/overview.md
+    - Pipeline 系统: architecture/pipeline.md
+    - 多智能体架构: architecture/multi-agent.md
+    - 事件系统: architecture/event-system.md
+    - 适配器架构: architecture/adapters.md
+  - 开发指南:
+    - 插件开发: development/plugin-development.md
+    - 适配器开发: development/adapter-development.md
+    - 贡献指南: development/contributing.md
+  - API 参考:
+    - Pipeline API: api/pipeline.md
+    - Event Bus API: api/event-bus.md
+    - Plugin API: api/plugins.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/Qixuan112/Tale-AI

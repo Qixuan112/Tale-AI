@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock
 from core.pipeline.context import PipelineContext
 from core.adapter.message_processor import ProcessedMessage
 from core.adapter.event import PlatformType
+from core.message import Message, Text
 
 
 @pytest.fixture
@@ -23,6 +24,8 @@ def mock_toolllm():
     """Mock ToolLLM"""
     llm = MagicMock()
     llm.call_function = MagicMock(return_value="Tool result")
+    llm.generate_fc = MagicMock(return_value='{"function": "test_tool", "arguments": {}}')
+    llm.query_tools = MagicMock(return_value="Available tools: tool1, tool2")
     return llm
 
 
@@ -53,144 +56,211 @@ def mock_processed():
 
 
 class TestToolExecuteStage:
-    """Test ToolExecuteStage (SKELETON - implementation needed)"""
+    """Test ToolExecuteStage"""
 
-    @pytest.mark.skip(reason="Stage not yet implemented")
-    def test_stage_initialization(self):
+    def test_stage_initialization(self, mock_toolllm):
         """Should initialize with order 700 and name 'tool_execute'"""
-        # from core.pipeline.stages.tool_execute import ToolExecuteStage
-        # stage = ToolExecuteStage(mock_toolllm)
-        # assert stage.order == 700
-        # assert stage.name == "tool_execute"
-        pass
+        from core.pipeline.stages.tool_execute import ToolExecuteStage
+        stage = ToolExecuteStage(tool_llm=mock_toolllm)
+        assert stage.order == 700
+        assert stage.name == "tool_execute"
 
-    @pytest.mark.skip(reason="Stage not yet implemented")
     @pytest.mark.asyncio
     async def test_process_executes_tool_call(self, mock_toolllm, mock_processed):
         """Should execute tool from parsed XML"""
-        # from core.pipeline.stages.tool_execute import ToolExecuteStage
-        # stage = ToolExecuteStage(mock_toolllm)
-        # ctx = PipelineContext(processed=mock_processed)
-        # ctx.parsed = {
-        #     "messages": ["Searching..."],
-        #     "tools": ["browser_search"],
-        #     "skip_reply": False
-        # }
-        #
-        # await stage.process(ctx)
-        #
-        # # Tool should be executed
-        # mock_toolllm.call_function.assert_called_once()
-        pass
+        from core.pipeline.stages.tool_execute import ToolExecuteStage
+        from core.message import Message, Text
 
-    @pytest.mark.skip(reason="Stage not yet implemented")
+        # Mock ToolLLM to return function call
+        mock_toolllm.generate_fc = MagicMock(return_value='{"function": "browser_search", "arguments": {"query": "test"}}')
+
+        # Mock ChatLLM/Agent for follow-up
+        mock_chatllm = MagicMock()
+        mock_chatllm.chat = MagicMock(return_value="<msg>Here are the results</msg>")
+
+        stage = ToolExecuteStage(tool_llm=mock_toolllm, chat_llm=mock_chatllm, max_steps=2)
+        ctx = PipelineContext(processed=mock_processed)
+        ctx.chatllm_reply = "<msg>Searching...</msg><act>browser_search</act>"
+        ctx.parsed = {
+            "messages": [Message().add_element(Text("Searching..."))],
+            "actions": ["browser_search"],
+            "skip_reply": False
+        }
+
+        await stage.process(ctx)
+
+        # Tool should be executed
+        mock_toolllm.generate_fc.assert_called_once()
+        # Follow-up call should happen
+        mock_chatllm.chat.assert_called_once()
+
     @pytest.mark.asyncio
     async def test_process_skips_without_tools(self, mock_toolllm, mock_processed):
         """Should skip when no tools in parsed"""
-        # from core.pipeline.stages.tool_execute import ToolExecuteStage
-        # stage = ToolExecuteStage(mock_toolllm)
-        # ctx = PipelineContext(processed=mock_processed)
-        # ctx.parsed = {
-        #     "messages": ["Just a message"],
-        #     "skip_reply": False
-        # }
-        #
-        # await stage.process(ctx)
-        #
-        # # No tool execution
-        # mock_toolllm.call_function.assert_not_called()
-        pass
+        from core.pipeline.stages.tool_execute import ToolExecuteStage
+        from core.message import Message, Text
 
-    @pytest.mark.skip(reason="Stage not yet implemented")
+        stage = ToolExecuteStage(tool_llm=mock_toolllm, max_steps=2)
+        ctx = PipelineContext(processed=mock_processed)
+        ctx.chatllm_reply = "<msg>Just a message</msg>"
+        ctx.parsed = {
+            "messages": [Message().add_element(Text("Just a message"))],
+            "skip_reply": False
+        }
+
+        await stage.process(ctx)
+
+        # No tool execution
+        mock_toolllm.generate_fc.assert_not_called()
+
     @pytest.mark.asyncio
     async def test_process_handles_function_call_format(self, mock_toolllm, mock_processed):
         """Should handle OpenAI function_call format"""
-        # from core.pipeline.stages.tool_execute import ToolExecuteStage
-        # stage = ToolExecuteStage(mock_toolllm)
-        # ctx = PipelineContext(processed=mock_processed)
-        # ctx.chatllm_reply = '{"function_call": {"name": "search", "arguments": "{\\"query\\": \\"Python\\"}"}}'
-        #
-        # await stage.process(ctx)
-        #
-        # # Should parse and execute function call
-        # mock_toolllm.call_function.assert_called()
-        pass
+        from core.pipeline.stages.tool_execute import ToolExecuteStage
 
-    @pytest.mark.skip(reason="Stage not yet implemented")
+        # Mock ChatLLM for follow-up
+        mock_chatllm = MagicMock()
+        mock_chatllm.chat = MagicMock(return_value="<msg>Results processed</msg>")
+
+        stage = ToolExecuteStage(tool_llm=mock_toolllm, chat_llm=mock_chatllm, max_steps=2)
+        ctx = PipelineContext(processed=mock_processed)
+        ctx.chatllm_reply = '{"function": "browser_search", "arguments": {"query": "Python"}}'
+        ctx.parsed = {
+            "messages": [],
+            "skip_reply": False
+        }
+
+        await stage.process(ctx)
+
+        # Should parse and execute function call, then call follow-up
+        mock_chatllm.chat.assert_called_once()
+
     @pytest.mark.asyncio
     async def test_process_stores_tool_results(self, mock_toolllm, mock_processed):
         """Should store tool execution results in context"""
-        # from core.pipeline.stages.tool_execute import ToolExecuteStage
-        # mock_toolllm.call_function.return_value = "Search result: ..."
-        # stage = ToolExecuteStage(mock_toolllm)
-        # ctx = PipelineContext(processed=mock_processed)
-        # ctx.parsed = {"tools": ["browser_search"]}
-        #
-        # await stage.process(ctx)
-        #
-        # # Results should be stored
-        # assert "tool_results" in ctx.extra or ctx.chatllm_reply is not None
-        pass
+        from core.pipeline.stages.tool_execute import ToolExecuteStage
+        from core.message import Message, Text
 
-    @pytest.mark.skip(reason="Stage not yet implemented")
+        mock_toolllm.generate_fc = MagicMock(return_value='{"function": "browser_search", "arguments": {"query": "test"}}')
+
+        # Mock ChatLLM to return final messages
+        mock_chatllm = MagicMock()
+        mock_chatllm.chat = MagicMock(return_value="<msg>Search complete</msg>")
+
+        stage = ToolExecuteStage(tool_llm=mock_toolllm, chat_llm=mock_chatllm, max_steps=2)
+        ctx = PipelineContext(processed=mock_processed)
+        ctx.chatllm_reply = "<msg>Searching...</msg><act>browser_search</act>"
+        ctx.parsed = {
+            "messages": [Message().add_element(Text("Searching..."))],
+            "actions": ["browser_search"]
+        }
+
+        await stage.process(ctx)
+
+        # messages_to_send should be updated with final result
+        assert ctx.messages_to_send is not None
+
     @pytest.mark.asyncio
     async def test_process_handles_tool_error(self, mock_toolllm, mock_processed):
         """Should handle tool execution errors gracefully"""
-        # from core.pipeline.stages.tool_execute import ToolExecuteStage
-        # mock_toolllm.call_function.side_effect = RuntimeError("Tool failed")
-        # stage = ToolExecuteStage(mock_toolllm)
-        # ctx = PipelineContext(processed=mock_processed)
-        # ctx.parsed = {"tools": ["browser_search"]}
-        #
-        # await stage.process(ctx)
-        #
-        # # Error should be handled, not crash
-        # assert "error" in ctx.extra or ctx.parsed.get("tool_error") is not None
-        pass
+        from core.pipeline.stages.tool_execute import ToolExecuteStage
+        from core.message import Message, Text
 
-    @pytest.mark.skip(reason="Stage not yet implemented")
+        mock_toolllm.generate_fc = MagicMock(side_effect=RuntimeError("Tool failed"))
+
+        # Mock ChatLLM for follow-up (should still be called with error)
+        mock_chatllm = MagicMock()
+        mock_chatllm.chat = MagicMock(return_value="<msg>Error handled</msg>")
+
+        stage = ToolExecuteStage(tool_llm=mock_toolllm, chat_llm=mock_chatllm, max_steps=2)
+        ctx = PipelineContext(processed=mock_processed)
+        ctx.chatllm_reply = "<msg>Trying...</msg><act>browser_search</act>"
+        ctx.parsed = {
+            "messages": [Message().add_element(Text("Trying..."))],
+            "actions": ["browser_search"]
+        }
+
+        # Should not crash
+        await stage.process(ctx)
+
+        # Error should be handled, follow-up should be called
+        mock_chatllm.chat.assert_called_once()
+
     @pytest.mark.asyncio
     async def test_process_triggers_follow_up_llm(self, mock_toolllm, mock_processed):
         """Should trigger follow-up LLM call with tool results"""
-        # from core.pipeline.stages.tool_execute import ToolExecuteStage
-        # mock_toolllm.call_function.return_value = "Result"
-        # stage = ToolExecuteStage(mock_toolllm, chat_llm=mock_chat_llm)
-        # ctx = PipelineContext(processed=mock_processed)
-        # ctx.parsed = {"tools": ["browser_search"]}
-        #
-        # await stage.process(ctx)
-        #
-        # # Follow-up LLM call should happen to process results
-        # assert ctx.chatllm_reply != ctx.chatllm_reply  # Updated
-        pass
+        from core.pipeline.stages.tool_execute import ToolExecuteStage
+        from core.message import Message, Text
 
-    @pytest.mark.skip(reason="Stage not yet implemented")
+        mock_toolllm.generate_fc = MagicMock(return_value='{"function": "browser_search", "arguments": {"query": "test"}}')
+
+        # Mock ChatLLM for follow-up
+        mock_chatllm = MagicMock()
+        mock_chatllm.chat = MagicMock(return_value="<msg>Result processed</msg>")
+
+        stage = ToolExecuteStage(tool_llm=mock_toolllm, chat_llm=mock_chatllm, max_steps=2)
+        ctx = PipelineContext(processed=mock_processed)
+        ctx.chatllm_reply = "<msg>Searching...</msg><act>browser_search</act>"
+        ctx.parsed = {
+            "messages": [Message().add_element(Text("Searching..."))],
+            "actions": ["browser_search"]
+        }
+
+        await stage.process(ctx)
+
+        # Follow-up LLM call should happen to process results
+        mock_chatllm.chat.assert_called_once()
+        # Verify the call contains tool results
+        call_args = mock_chatllm.chat.call_args[0][0]
+        assert "执行结果" in call_args or "工具" in call_args
+
     @pytest.mark.asyncio
     async def test_process_multiple_tool_calls(self, mock_toolllm, mock_processed):
         """Should execute multiple tool calls"""
-        # from core.pipeline.stages.tool_execute import ToolExecuteStage
-        # stage = ToolExecuteStage(mock_toolllm)
-        # ctx = PipelineContext(processed=mock_processed)
-        # ctx.parsed = {"tools": ["tool1", "tool2", "tool3"]}
-        #
-        # await stage.process(ctx)
-        #
-        # # All tools should be executed
-        # assert mock_toolllm.call_function.call_count == 3
-        pass
+        from core.pipeline.stages.tool_execute import ToolExecuteStage
+        from core.message import Message, Text
 
-    @pytest.mark.skip(reason="Stage not yet implemented")
+        mock_toolllm.generate_fc = MagicMock(return_value='{"function": "browser_search", "arguments": {"query": "test"}}')
+
+        # Mock ChatLLM for follow-up
+        mock_chatllm = MagicMock()
+        mock_chatllm.chat = MagicMock(return_value="<msg>All tools executed</msg>")
+
+        stage = ToolExecuteStage(tool_llm=mock_toolllm, chat_llm=mock_chatllm, max_steps=2)
+        ctx = PipelineContext(processed=mock_processed)
+        ctx.chatllm_reply = "<msg>Running...</msg><act>tool1</act><act>tool2</act><act>tool3</act>"
+        ctx.parsed = {
+            "messages": [Message().add_element(Text("Running..."))],
+            "actions": ["tool1", "tool2", "tool3"]
+        }
+
+        await stage.process(ctx)
+
+        # All tools should be executed
+        assert mock_toolllm.generate_fc.call_count == 3
+
     @pytest.mark.asyncio
     async def test_process_respects_max_iterations(self, mock_toolllm, mock_processed):
         """Should limit multi-turn iterations to prevent infinite loops"""
-        # from core.pipeline.stages.tool_execute import ToolExecuteStage
-        # stage = ToolExecuteStage(mock_toolllm, max_iterations=3)
-        # ctx = PipelineContext(processed=mock_processed)
-        # # Simulate infinite tool calling
-        # ctx.parsed = {"tools": ["infinite_tool"]}
-        #
-        # await stage.process(ctx)
-        #
-        # # Should stop after max_iterations
-        # assert mock_toolllm.call_function.call_count <= 3
-        pass
+        from core.pipeline.stages.tool_execute import ToolExecuteStage
+        from core.message import Message, Text
+
+        mock_toolllm.generate_fc = MagicMock(return_value='{"function": "browser_search", "arguments": {"query": "test"}}')
+
+        # Mock ChatLLM to always return more tool calls (infinite loop scenario)
+        mock_chatllm = MagicMock()
+        mock_chatllm.chat = MagicMock(return_value="<msg>More work...</msg><act>infinite_tool</act>")
+
+        stage = ToolExecuteStage(tool_llm=mock_toolllm, chat_llm=mock_chatllm, max_steps=3)
+        ctx = PipelineContext(processed=mock_processed)
+        ctx.chatllm_reply = "<msg>Starting...</msg><act>infinite_tool</act>"
+        ctx.parsed = {
+            "messages": [Message().add_element(Text("Starting..."))],
+            "actions": ["infinite_tool"]
+        }
+
+        await stage.process(ctx)
+
+        # Should stop after max_steps (3 iterations total)
+        # First iteration + 2 follow-ups = 3 calls
+        assert mock_toolllm.generate_fc.call_count <= 3

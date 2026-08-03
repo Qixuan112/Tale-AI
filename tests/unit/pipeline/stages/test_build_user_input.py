@@ -7,8 +7,8 @@ import pytest
 from unittest.mock import MagicMock
 from core.pipeline.stages.build_user_input import BuildUserInputStage
 from core.pipeline.context import PipelineContext
-from core.adapter.message_processor import ProcessedMessage
-from core.adapter.event import PlatformType
+from core.adapter.message_processor import ProcessedMessage, ResponseDecision
+from core.adapter.event import PlatformType, EventType
 
 @pytest.fixture
 def stage():
