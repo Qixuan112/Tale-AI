@@ -17,75 +17,7 @@ from core.adapter.event import (
 from core.adapter.message_processor import (
     ProcessedMessage, ResponseDecision, ProcessorConfig
 )
-
-
-class PermissionHandler:
-    """Handler for permission checking (mock implementation for testing)"""
-
-    def __init__(self, config: ProcessorConfig):
-        self.config = config
-        self.next_handler = None
-
-    def set_next(self, handler):
-        """Set the next handler in the chain"""
-        self.next_handler = handler
-        return handler
-
-    def handle(self, message: ProcessedMessage) -> ProcessedMessage:
-        """Check permissions and pass to next handler if allowed"""
-        if not self._check_permission(message):
-            message.decision = ResponseDecision.IGNORE
-            message.reason = "permission_denied"
-            return message
-
-        # Permission granted, pass to next handler
-        if self.next_handler:
-            return self.next_handler.handle(message)
-
-        return message
-
-    def _check_permission(self, message: ProcessedMessage) -> bool:
-        """Check if message passes permission rules"""
-        mode = self.config.permission_mode
-
-        if mode == "none":
-            return True
-
-        # Check user blacklist
-        if message.sender_id in self.config.user_deny_list:
-            return False
-
-        # Check group blacklist
-        if message.group_id and message.group_id in self.config.group_deny_list:
-            return False
-
-        if mode == "deny_list":
-            # Blacklist mode: not in blacklist = allowed
-            return True
-
-        if mode == "allow_list":
-            # Whitelist mode: must be in whitelist
-
-            # Private message: check user whitelist
-            if message.is_private_message:
-                if not self.config.user_allow_list:
-                    return True  # Empty whitelist = allow all
-                return message.sender_id in self.config.user_allow_list
-
-            # Group message: check group or user whitelist
-            if message.group_id:
-                if self.config.group_allow_list:
-                    if message.group_id in self.config.group_allow_list:
-                        return True
-                if self.config.user_allow_list:
-                    if message.sender_id in self.config.user_allow_list:
-                        return True
-                # Both whitelists empty = allow all
-                if not self.config.group_allow_list and not self.config.user_allow_list:
-                    return True
-                return False
-
-        return False  # Unknown mode = fail closed
+from core.handler import PermissionHandler
 
 
 class TestPermissionHandler:

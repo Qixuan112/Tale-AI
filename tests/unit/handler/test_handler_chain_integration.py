@@ -17,6 +17,7 @@ from core.adapter.event import (
 from core.adapter.message_processor import (
     ProcessedMessage, ResponseDecision, ProcessorConfig
 )
+from core.handler import PermissionHandler, WakeWordHandler, QuoteReplyHandler
 
 
 class SimpleSentMessageCache:
@@ -30,141 +31,6 @@ class SimpleSentMessageCache:
 
     def contains(self, message_id: str) -> bool:
         return message_id in self.cache
-
-
-class PermissionHandler:
-    """Permission checking handler"""
-
-    def __init__(self, config: ProcessorConfig):
-        self.config = config
-        self.next_handler = None
-
-    def set_next(self, handler):
-        self.next_handler = handler
-        return handler
-
-    def handle(self, message: ProcessedMessage) -> ProcessedMessage:
-        if not self._check_permission(message):
-            message.decision = ResponseDecision.IGNORE
-            message.reason = "permission_denied"
-            return message
-        if self.next_handler:
-            return self.next_handler.handle(message)
-        return message
-
-    def _check_permission(self, message: ProcessedMessage) -> bool:
-        mode = self.config.permission_mode
-        if mode == "none":
-            return True
-        if message.sender_id in self.config.user_deny_list:
-            return False
-        if message.group_id and message.group_id in self.config.group_deny_list:
-            return False
-        if mode == "deny_list":
-            return True
-        if mode == "allow_list":
-            if message.is_private_message:
-                if not self.config.user_allow_list:
-                    return True
-                return message.sender_id in self.config.user_allow_list
-            if message.group_id:
-                if self.config.group_allow_list and message.group_id in self.config.group_allow_list:
-                    return True
-                if self.config.user_allow_list and message.sender_id in self.config.user_allow_list:
-                    return True
-                if not self.config.group_allow_list and not self.config.user_allow_list:
-                    return True
-                return False
-        return False
-
-
-class WakeWordHandler:
-    """Wake word detection handler"""
-
-    def __init__(self, config: ProcessorConfig):
-        self.config = config
-        self.next_handler = None
-
-    def set_next(self, handler):
-        self.next_handler = handler
-        return handler
-
-    def handle(self, message: ProcessedMessage) -> ProcessedMessage:
-        if not message.is_group_message:
-            if self.next_handler:
-                return self.next_handler.handle(message)
-            return message
-
-        if self._check_at_bot(message):
-            message.decision = ResponseDecision.RESPOND
-            message.reason = "at_bot"
-            return message
-
-        if self._check_wake_keywords(message):
-            message.decision = ResponseDecision.RESPOND
-            message.reason = "waking_keyword"
-            return message
-
-        if self._check_quote_reply(message):
-            message.decision = ResponseDecision.RESPOND
-            message.reason = "quote_wake"
-            return message
-
-        if self.next_handler:
-            return self.next_handler.handle(message)
-        return message
-
-    def _check_at_bot(self, message: ProcessedMessage) -> bool:
-        bot_id = self.config.bot_id or str(message.raw_event.get("self_id", ""))
-        return bot_id and bot_id in message.at_targets
-
-    def _check_wake_keywords(self, message: ProcessedMessage) -> bool:
-        if not self.config.enable_keyword_wake or not message.text or not self.config.waking_keywords:
-            return False
-        text_lower = message.text.lower()
-        return any(kw.lower() in text_lower for kw in self.config.waking_keywords)
-
-    def _check_quote_reply(self, message: ProcessedMessage) -> bool:
-        if not self.config.enable_quote_wake or not message.reply_to or not self.config.sent_message_cache:
-            return False
-        return self.config.sent_message_cache.contains(message.reply_to)
-
-
-class QuoteReplyHandler:
-    """Quote reply detection handler (fallback)"""
-
-    def __init__(self, config: ProcessorConfig):
-        self.config = config
-        self.next_handler = None
-
-    def set_next(self, handler):
-        self.next_handler = handler
-        return handler
-
-    def handle(self, message: ProcessedMessage) -> ProcessedMessage:
-        if not self.config.enable_quote_wake:
-            if self.next_handler:
-                return self.next_handler.handle(message)
-            return message
-
-        if not message.reply_to:
-            if self.next_handler:
-                return self.next_handler.handle(message)
-            return message
-
-        if self._is_quoting_bot(message):
-            message.decision = ResponseDecision.RESPOND
-            message.reason = "quote_wake"
-            return message
-
-        if self.next_handler:
-            return self.next_handler.handle(message)
-        return message
-
-    def _is_quoting_bot(self, message: ProcessedMessage) -> bool:
-        if not self.config.sent_message_cache:
-            return False
-        return self.config.sent_message_cache.contains(message.reply_to)
 
 
 class TestHandlerChainIntegration:

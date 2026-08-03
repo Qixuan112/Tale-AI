@@ -17,6 +17,7 @@ from core.adapter.event import (
 from core.adapter.message_processor import (
     ProcessedMessage, ResponseDecision, ProcessorConfig
 )
+from core.handler import QuoteReplyHandler
 
 
 class SimpleSentMessageCache:
@@ -36,51 +37,6 @@ class SimpleSentMessageCache:
     def clear(self):
         """Clear cache"""
         self.cache.clear()
-
-
-class QuoteReplyHandler:
-    """Handler for quote reply detection (mock implementation for testing)"""
-
-    def __init__(self, config: ProcessorConfig):
-        self.config = config
-        self.next_handler = None
-
-    def set_next(self, handler):
-        """Set the next handler in the chain"""
-        self.next_handler = handler
-        return handler
-
-    def handle(self, message: ProcessedMessage) -> ProcessedMessage:
-        """Check if message quotes bot's message and respond or pass to next"""
-        # Check if quote wake is enabled
-        if not self.config.enable_quote_wake:
-            if self.next_handler:
-                return self.next_handler.handle(message)
-            return message
-
-        # Check if message has reply_to
-        if not message.reply_to:
-            if self.next_handler:
-                return self.next_handler.handle(message)
-            return message
-
-        # Check if quoted message is from bot
-        if self._is_quoting_bot(message):
-            message.decision = ResponseDecision.RESPOND
-            message.reason = "quote_wake"
-            return message
-
-        # Not quoting bot, pass to next
-        if self.next_handler:
-            return self.next_handler.handle(message)
-
-        return message
-
-    def _is_quoting_bot(self, message: ProcessedMessage) -> bool:
-        """Check if quoted message is from bot"""
-        if not self.config.sent_message_cache:
-            return False
-        return self.config.sent_message_cache.contains(message.reply_to)
 
 
 class TestQuoteReplyHandler:
