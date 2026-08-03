@@ -31,19 +31,36 @@ import pytest
 # ---------------------------------------------------------------------------
 # import 提速：本测试只需要 ChatLLMAdapter / TaleCore._call_chatllm 分支，
 # core.main 顶层导入链中的 numpy/bs4 只被知识库/工具模块使用，与这些逻辑
-# 无关，用轻量 stub 顶替（避免每次导入 ~4-6s 的 numpy/bs4 链，仅本文件
-# 生效，不影响其他测试）。openai 是 provider.py 的硬依赖，保持真实导入。
+# 无关，用轻量 stub 顶替（避免每次导入 ~4-6s 的 numpy/bs4 链）。
+#
+# 注意：stub 通过 session 级 autouse fixture 注入并在测试结束后恢复
+# sys.modules 原状。不能放在模块顶层：那会进程级全局生效，pytest 收集
+# 顺序不同时，后续依赖 numpy/bs4 的测试模块会 import 到空 stub 而抛
+# ModuleNotFoundError（CI 失败根因）。fixture 内注入 → 本文件收集/执行
+# 期间生效 → 拆解后恢复，既有提速收益又不污染其他测试。
 # ---------------------------------------------------------------------------
-_stub_modules = [
-    "numpy",
-    "numpy._core",
-    "numpy._core._multiarray_umath",
-    "bs4",
-    "bs4.dammit",
-]
-for _name in _stub_modules:
-    if _name not in sys.modules:
-        sys.modules[_name] = type(sys)(_name)
+_STUB_MODULES = ["numpy", "numpy._core", "numpy._core._multiarray_umath",
+                 "bs4", "bs4.dammit"]
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _stub_heavy_deps():
+    """session 级：注入 numpy/bs4 轻量 stub，结束后恢复 sys.modules 原状。"""
+    saved = {}
+    for name in _STUB_MODULES:
+        if name in sys.modules:
+            saved[name] = sys.modules[name]
+    try:
+        for name in _STUB_MODULES:
+            sys.modules.setdefault(name, type(sys)(name))
+        yield
+    finally:
+        for name in _STUB_MODULES:
+            if name in saved:
+                sys.modules[name] = saved[name]
+            else:
+                sys.modules.pop(name, None)
+
 
 from core.llm.chatllm import ChatLLM  # noqa: E402
 from core.llm.context import create_chat_context  # noqa: E402

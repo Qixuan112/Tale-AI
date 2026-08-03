@@ -195,7 +195,16 @@ class TestChatAgentTimeout:
         )
         assert result == "fast response"
 
-        # A call that runs longer than the 60s default must be aborted
+        # Default timeout parameter: generate() without explicit timeout must
+        # pass the 60s default to wait_for (LLMAgent contract, test_llm_agent_base)
+        import inspect
+        sig = inspect.signature(agent.generate)
+        assert sig.parameters["timeout"].default == 60.0, (
+            "generate() 默认 timeout 应为 60s（LLMAgent 契约）"
+        )
+
+        # A call that exceeds the default 60s must be aborted (explicit short
+        # timeout below substitutes the default; the same wait_for path applies)
         async def slow(messages, model=None, timeout=None):
             await asyncio.sleep(0.3)
             return "slow response"

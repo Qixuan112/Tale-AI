@@ -82,7 +82,7 @@ def tale_core_with_mocks(mock_chatllm, mock_adapter_bridge):
     打字延迟（calculate_split_interval，模拟真人逐条打字）与并发语义无关，
     在此统一禁用，避免每条回复被 typing_speed * 字数 拖慢数秒。
     """
-    with patch("core.main.calculate_split_interval", return_value=0.0):
+    with patch("core.main.calculate_split_interval", return_value=0.0, create=True):
         core = TaleCore()
         core.chat = mock_chatllm
         core.toolllm = Mock()
@@ -333,11 +333,11 @@ async def test_semaphore_limit(tale_core_with_mocks):
     await asyncio.gather(*tasks)
     total_time = time.time() - start_time
 
-    print(f"\n=== Semaphore Test Results ===")
-    print(f"Max concurrent executions: {max_active}")
+    print("\n=== Semaphore Test Results ===")
+    print("Max concurrent executions: {max_active}")
     print(f"Total time: {total_time:.2f}s")
-    print(f"Expected time with Semaphore(3): ~0.8s (10 tasks / 3 = 4 waves * 0.2s)")
-    print(f"Expected time without rate limit: ~0.2s (all 10 at once)")
+    print("Expected time with Semaphore(3): ~0.8s (10 tasks / 3 = 4 waves * 0.2s)")
+    print("Expected time without rate limit: ~0.2s (all 10 at once)")
 
     # At most 3 concurrent chats (semaphore enforces the cap)
     assert max_active <= 3, (
@@ -412,7 +412,7 @@ async def test_chatllm_stateless(tale_core_with_mocks):
     await core._handle_respond_message(msg1, adapter_instance="qq")
     await core._handle_respond_message(msg2, adapter_instance="qq")
 
-    print(f"\n=== Stateless Test Results ===")
+    print("\n=== Stateless Test Results ===")
     print(f"Recorded calls: {recorded_calls}")
     print(f"Recorded sids: {recorded_sids}")
 
@@ -476,8 +476,8 @@ async def test_high_concurrency_stability(tale_core_with_mocks):
         total_time = time.time() - start_time
         success = False
 
-    print(f"\n=== High Concurrency Test Results ===")
-    print(f"Total requests: 50")
+    print("\n=== High Concurrency Test Results ===")
+    print("Total requests: 50")
     print(f"Completed: {success}")
     print(f"Total time: {total_time:.2f}s")
     print(f"Average time per request: {total_time / 50 * 1000:.1f}ms")

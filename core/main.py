@@ -3,13 +3,14 @@ import time
 import threading
 import asyncio
 import signal
+import functools
 from pathlib import Path
 from typing import Optional, Callable, Any, List, Dict
 
 from .spin_think import spinning_think
 from .bus import NextBus, bus
 from .llm import ChatLLM, get_planllm, ToolLLM, get_vlm_llm
-from .llm.provider import provider_manager
+from .llm.provider import OpenAICompatibleProvider, provider_manager
 from .utils.cache import BoundedCache
 from .utils.id_sanitizer import IDSanitizer
 from .config.provide import (
@@ -136,6 +137,10 @@ class TaleCore:
         self._running = False
         self._shutdown_event: Optional[asyncio.Event] = None
         self._llm_executor = None
+        # ChatAgent 路径内部阻塞调用（_build_context_window 的图片下载/VLM
+        # 识别）专用 executor：避免与同步 ChatLLM 兼容路径共享默认线程池，
+        # 锁内串行提交的阻塞任务不会因默认池线程被占满而互相排队
+        self._chat_agent_executor = None
         self._chat_context_buffer = BoundedCache(maxsize=200, ttl=7200)
         self._name_to_id = BoundedCache(maxsize=200, ttl=86400)
         self.session_manager: Optional[SessionManager] = None
@@ -157,6 +162,9 @@ class TaleCore:
         import concurrent.futures
         self._llm_executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=8, thread_name_prefix="llm"
+        )
+        self._chat_agent_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=4, thread_name_prefix="chat-agent-ctx"
         )
 
         # 初始化会话管理器（持久化到 data/sessions/）
@@ -339,6 +347,12 @@ class TaleCore:
             provider, model = provider_manager.resolve("main_llm")
             if provider is None:
                 return None
+            # BaseProvider.chat(messages, model, ...) 的 model 是必填参数，
+            # 而 ChatAgent 只调用 provider.chat(messages)：用 functools.partial
+            # 绑定路由解析出的 model，否则回退路径会因缺参抛 TypeError。
+            # （ChatLLMAdapter 主路径内部用 ChatLLM.model，不受影响。）
+            if model and isinstance(provider, OpenAICompatibleProvider):
+                provider.chat = functools.partial(provider.chat, model=model)
             return ChatAgent(provider=provider)
         except Exception as e:
             logger.warning("ChatAgent 初始化失败: %s", e)
@@ -363,9 +377,14 @@ class TaleCore:
             self.chat = self._init_chatllm()
             if self.chat is not None:
                 logger.info("ChatLLM 热重载初始化成功")
-        # ChatAgent 绑定 ChatLLM 实例，ChatLLM 重建后需同步重建 agent
+        # ChatAgent 绑定 ChatLLM 实例，ChatLLM 重建后需同步重建 agent。
+        # 注意：chat_agent._provider 是 ChatLLMAdapter（包装 self.chat），
+        # 直接比较 _provider is self.chat 永远不匹配，会导致每次 config_reloaded
+        # 都重建 agent、丢掉 per-session locks / semaphore 状态。
+        # 正确比较：adapter 包装的 ChatLLM 实例（ChatLLMAdapter.chatllm 暴露）。
         if self.chat_agent is None or (
-            self.chat is not None and getattr(self.chat_agent, "_provider", None) is not self.chat
+            self.chat is not None
+            and getattr(getattr(self.chat_agent, "_provider", None), "chatllm", None) is not self.chat
         ):
             self.chat_agent = self._init_chat_agent()
             if self.chat_agent is not None:
@@ -536,7 +555,12 @@ class TaleCore:
                 extra_info += f" [媒体: {media_type}]"
             user_input = f"[朋友圈动态] {sender_name}: {text}{extra_info}"
 
-            chatllm_reply = await self._call_chatllm(user_input, persist_content=user_input, save_to_session=False)
+            chatllm_reply = await self._call_chatllm(
+                user_input, persist_content=user_input, save_to_session=False,
+                # 朋友圈是全局通道，无会话标识：ChatAgent 路径沿用
+                # self.chat.current_sid（会话消息处理会显式传 sid）
+                sid=self.chat.current_sid if self.chat else None,
+            )
             # 朋友圈动态不需要发送回复（仅让 LLM 记录到记忆中）
             logger.info("[朋友圈] LLM 已处理 %s 的动态", sender_name)
         except Exception as e:
@@ -798,6 +822,10 @@ class TaleCore:
             pass
 
         loop = asyncio.get_running_loop()
+        # 用专用 executor：本方法被 per-session 锁内调用，若用默认 executor
+        # 提交阻塞任务（图片下载/VLM），同一批并发消息会互相占住默认池线程，
+        # 高并发下排队等待可能导致响应延迟（ChatAgent 专用池同理由）
+        executor = self._chat_agent_executor
         lines = []
         img_count = 0
         max_ctx_images = 2
@@ -821,12 +849,12 @@ class TaleCore:
                     if img_count >= max_ctx_images:
                         break
                     local_path = await loop.run_in_executor(
-                        self._llm_executor, self._download_ctx_image, img_url
+                        executor, self._download_ctx_image, img_url
                     )
                     if local_path:
                         try:
                             desc = await loop.run_in_executor(
-                                self._llm_executor,
+                                executor,
                                 vlm.chat_with_image,
                                 "描述这张图片的内容",
                                 [local_path],
@@ -1115,7 +1143,7 @@ class TaleCore:
                             processed, first_messages[:MAX_SPLIT_COUNT], adapter_instance=adapter_instance
                         )
                         # 执行后续操作并获取最终回复
-                        final_messages = await self._resolve_follow_up(chatllm_reply, parsed)
+                        final_messages = await self._resolve_follow_up(chatllm_reply, parsed, sid=sid)
                         await self._send_message_batch(
                             processed, final_messages[:MAX_SPLIT_COUNT], adapter_instance=adapter_instance
                         )
@@ -1312,7 +1340,8 @@ class TaleCore:
 
     async def _call_chatllm_with_timeout(self, user_input: str, timeout: float,
                                           persist_content: str = None,
-                                          save_to_session: bool = True) -> str:
+                                          save_to_session: bool = True,
+                                          sid: str = None) -> str:
         """带超时的 ChatLLM 调用
 
         Args:
@@ -1320,6 +1349,9 @@ class TaleCore:
             timeout: 超时秒数
             persist_content: 落库用纯净原文，None 则用 user_input
             save_to_session: 是否写入会话记忆，Agent 内部步骤应传 False
+            sid: 会话标识（Agent 内部步骤必须显式传入；无持久化模式下
+                self.chat.current_sid 为 None，缺省会落到空 sid，
+                工具轮次将读不到/写不进快照，丢失上下文）
 
         Returns:
             AI 回复文本，超时时返回错误提示
@@ -1328,7 +1360,7 @@ class TaleCore:
             return ""
         try:
             return await asyncio.wait_for(
-                self._call_chatllm(user_input, persist_content, save_to_session),
+                self._call_chatllm(user_input, persist_content, save_to_session, sid=sid),
                 timeout=timeout
             )
         except asyncio.TimeoutError:
@@ -1336,12 +1368,19 @@ class TaleCore:
             timeout_msg = "[系统] 思考时间较长，已自动结束当前推理。"
             return f"<msg><text>{timeout_msg}</text></msg>"
 
-    async def _resolve_follow_up(self, chatllm_reply: str, parsed: Optional[dict] = None) -> list:
+    async def _resolve_follow_up(self, chatllm_reply: str, parsed: Optional[dict] = None,
+                                 sid: str = None) -> list:
         """
         AgentExecutor 多步骤推理循环。
 
         每轮执行当前回复中所有待处理的工具/动作/计划/FC，
         将结果汇总回送 ChatLLM，重复直到达到最大轮数或没有更多工具内容。
+
+        Args:
+            chatllm_reply: 首轮 ChatLLM 原始回复
+            parsed: 解析结果，None 时内部解析
+            sid: 会话标识；工具轮次必须携带，保证 ChatAgent 路径的
+                快照读写（上下文连续）与旧路径语义一致
         """
         if parsed is None:
             parsed = parse_xml_msg(chatllm_reply)
@@ -1428,6 +1467,7 @@ class TaleCore:
             current_reply = await self._call_chatllm_with_timeout(
                 follow_up_prompt, per_step_timeout,
                 persist_content=None, save_to_session=False,
+                sid=sid,
             )
             current_parsed = parse_xml_msg(current_reply)
 
@@ -1533,7 +1573,12 @@ class TaleCore:
         messages: List[Dict] = []
         if self.session_manager is not None:
             try:
-                messages.extend(self.session_manager.get_memory(sid))
+                # 禁用的会话不加载历史（与旧路径 set_session(sid,
+                # load_history=session_enabled) 语义一致）：否则会把已存储
+                # 的历史又发给 LLM，禁用形同虚设
+                session = self.session_manager.get_session(sid)
+                if session is None or session.enabled:
+                    messages.extend(self.session_manager.get_memory(sid))
             except Exception as e:
                 logger.debug("读取会话历史失败: %s", e)
         messages.extend(self._chat_snapshots.get(sid, []))
@@ -1669,7 +1714,7 @@ class TaleCore:
             return []
 
         chatllm_reply = await self._call_chatllm(user_input, persist_content=user_input)
-        return await self._resolve_follow_up(chatllm_reply)
+        return await self._resolve_follow_up(chatllm_reply, sid=self.chat.current_sid if self.chat else None)
 
     def _extract_reply_text(self, parsed: dict) -> str:
         """从解析结果中提取回复文本（兼容旧版，合并所有消息）
@@ -2022,6 +2067,13 @@ class TaleCore:
         # 停止所有适配器（确保 asyncio 任务正确清理）
         logger.info("正在停止适配器...")
         await self.stop_adapters()
+
+        # 释放线程池：wait=False 立即返回，残留的阻塞线程不会拖住进程退出
+        # （ThreadPoolExecutor 线程非 daemon，若 wait=True 会被慢调用卡住）
+        if self._llm_executor is not None:
+            self._llm_executor.shutdown(wait=False, cancel_futures=True)
+        if self._chat_agent_executor is not None:
+            self._chat_agent_executor.shutdown(wait=False, cancel_futures=True)
 
         print("再见！")
 
