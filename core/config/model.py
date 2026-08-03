@@ -75,6 +75,7 @@ class BotBehaviorConfig:
     max_agent_steps: int = 3      # AgentExecutor 最大推理循环轮数
     per_step_timeout: float = 60.0  # AgentExecutor 每步超时（秒）
     persistence_enabled: bool = True  # 会话历史持久化开关，false 时回退到内存 buffer
+    max_concurrent_llm: int = 3  # 最大并发LLM调用数
 
 
 @dataclass

@@ -76,6 +76,7 @@ _SCHEMAS = {
                 "typing_min_delay": (int, float),
                 "max_agent_steps": int,
                 "per_step_timeout": (int, float),
+                "max_concurrent_llm": int,
             },
             "context": {
                 "max_context": int,
@@ -426,6 +427,7 @@ class ConfigLoader:
             max_agent_steps=bot_data.get("max_agent_steps", 3),
             per_step_timeout=bot_data.get("per_step_timeout", 60.0),
             persistence_enabled=bot_data.get("persistence_enabled", True),
+            max_concurrent_llm=bot_data.get("max_concurrent_llm", 3),
         )
 
         context = ContextConfig(
