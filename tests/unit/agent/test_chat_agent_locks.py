@@ -50,7 +50,7 @@ class TestChatAgentLockManagement:
         assert len(agent._session_locks) == 2
 
     @pytest.mark.asyncio
-    async def test_session_locks_are_reentrant(self, mock_llm_provider):
+    async def test_session_locks_are_not_reentrant(self, mock_llm_provider):
         """
         Session locks must NOT be reentrant (use asyncio.Lock, not RLock)
 
@@ -92,8 +92,54 @@ class TestChatAgentLockManagement:
         ])
 
         # All requests must return the SAME lock instance
-        assert all(l is locks[0] for l in locks)
+        assert all(lock is locks[0] for lock in locks)
         assert len(agent._session_locks) == 1
+
+    @pytest.mark.asyncio
+    async def test_session_locks_lru_bounded(self, mock_llm_provider):
+        """
+        Session locks must be LRU-bounded: max_sessions caps the dictionary,
+        least-recently-used locks are evicted when a new session appears
+        """
+        agent = ChatAgent(mock_llm_provider, max_sessions=2)
+
+        # Touch three sessions: s1 is evicted when s3 arrives
+        await agent._get_session_lock("s1")
+        await agent._get_session_lock("s2")
+        await agent._get_session_lock("s3")
+        assert "s1" not in agent._session_locks, "LRU 应淘汰最早访问的锁"
+        assert list(agent._session_locks.keys()) == ["s2", "s3"]
+
+        # Re-accessing s2 refreshes it to most-recent; s3 becomes the LRU
+        await agent._get_session_lock("s2")
+        assert list(agent._session_locks.keys()) == ["s3", "s2"]
+
+        # Dictionary never grows beyond max_sessions
+        for i in range(20):
+            await agent._get_session_lock(f"bulk_{i}")
+        assert len(agent._session_locks) <= 2
+
+    @pytest.mark.asyncio
+    async def test_session_locks_held_lock_never_evicted(self, mock_llm_provider):
+        """
+        CRITICAL: A lock that is held (or awaited) must never be evicted.
+        Eviction is deferred until the lock is free; otherwise a concurrent
+        coroutine could be serializing on a lock that no longer exists.
+        """
+        agent = ChatAgent(mock_llm_provider, max_sessions=1)
+        held = await agent._get_session_lock("held")
+        await held.acquire()
+        try:
+            # Eviction attempt triggered by a new session: "held" is in use,
+            # so it must be kept (deferred eviction)
+            await agent._get_session_lock("other")
+            assert "held" in agent._session_locks, "持有中的锁不能被淘汰"
+        finally:
+            held.release()
+
+        # Once the lock is free, the next insertion can evict it
+        await agent._get_session_lock("fresh")
+        assert "held" not in agent._session_locks
 
     @pytest.mark.asyncio
     async def test_semaphore_configuration(self, mock_llm_provider):

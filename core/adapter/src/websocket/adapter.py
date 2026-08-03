@@ -290,7 +290,7 @@ class WebSocketAdapter(BaseAdapter):
 
             return SendResult(success=sent, failed_files=pending_files)
         except Exception as e:
-            logger.info(f"[WebSocket] Failed to send message: {e}")
+            logger.error(f"[WebSocket] Failed to send message: {e}")
             return SendResult(success=False, failed_files=pending_files)
 
     async def stop(self):
