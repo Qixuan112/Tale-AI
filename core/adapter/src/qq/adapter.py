@@ -511,7 +511,7 @@ class QQAdapter(BaseAdapter):
             return SendResult(success=success, failed_files=failed_files)
 
         except Exception as e:
-            logger.error(f"[QQ] Failed to send message: {e}")
+            logger.info(f"[QQ] Failed to send message: {e}")
             return SendResult(
                 success=False,
                 failed_files=[f.name for f in (content.files or [])],

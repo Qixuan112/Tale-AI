@@ -71,7 +71,7 @@ TALE_TOOL_URL=https://api.deepseek.com/v1
 
 ```yaml
 deepseek:
-  type: chat
+  type: llm
   format: openai
   api_key: "sk-your-key"
   base_url: "https://api.deepseek.com/v1"
