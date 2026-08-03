@@ -10,6 +10,8 @@ import time
 from typing import List, Dict
 from unittest.mock import AsyncMock, MagicMock
 
+from core.agent import ChatAgent
+
 
 @pytest.fixture
 def mock_llm_provider_slow():
@@ -39,31 +41,29 @@ class TestChatAgentConcurrency:
         Expected fix: Per-session lock allows concurrent execution
 
         Test: 3 different users send messages simultaneously
-        Expected: Total time ≈ 1s (concurrent), NOT 3s (serial)
+        Expected: Total time ~1s (concurrent), NOT 3s (serial)
         """
-        # TODO: Implement after ChatAgent is created
-        # Simulate 3 different sessions calling generate() at the same time
-        # Each LLM call takes 1s
-        # If running concurrently: ~1s total
-        # If serial (broken): ~3s total
+        agent = ChatAgent(mock_llm_provider_slow)
 
         start_time = time.time()
 
         # Three concurrent calls with different session_ids
-        # tasks = [
-        #     agent.generate(messages1, session_id="user1", timeout=60.0),
-        #     agent.generate(messages2, session_id="user2", timeout=60.0),
-        #     agent.generate(messages3, session_id="user3", timeout=60.0),
-        # ]
-        # results = await asyncio.gather(*tasks)
+        tasks = [
+            agent.generate(
+                messages=[{"role": "user", "content": f"U{i}"}],
+                session_id=f"user{i}",
+                timeout=60.0
+            )
+            for i in range(3)
+        ]
+        results = await asyncio.gather(*tasks)
 
         elapsed = time.time() - start_time
 
         # Should complete in ~1s (concurrent), not ~3s (serial)
         # Allow 0.5s tolerance for overhead
         assert elapsed < 1.5, f"Concurrent execution took {elapsed:.2f}s, expected <1.5s"
-
-        pass  # Placeholder until ChatAgent is ready
+        assert len(results) == 3
 
     @pytest.mark.asyncio
     async def test_same_session_runs_serially(self, mock_llm_provider_slow):
@@ -73,24 +73,21 @@ class TestChatAgentConcurrency:
         Per-session lock ensures message order within one conversation
 
         Test: Same user sends 3 messages rapidly
-        Expected: Processed in strict order, total time ≈ 3s (serial)
+        Expected: Processed in strict order, total time ~3s (serial)
         """
-        # TODO: Implement after ChatAgent is created
-        # Same session_id, 3 consecutive calls
-        # Each takes 1s, should run serially
-        # Total time should be ~3s
+        agent = ChatAgent(mock_llm_provider_slow)
 
         start_time = time.time()
 
         # Three serial calls with SAME session_id
-        # responses = []
-        # for i in range(3):
-        #     resp = await agent.generate(
-        #         messages=[{"role": "user", "content": f"Message {i}"}],
-        #         session_id="user1",
-        #         timeout=60.0
-        #     )
-        #     responses.append(resp)
+        responses = []
+        for i in range(3):
+            resp = await agent.generate(
+                messages=[{"role": "user", "content": f"Message {i}"}],
+                session_id="user1",
+                timeout=60.0
+            )
+            responses.append(resp)
 
         elapsed = time.time() - start_time
 
@@ -99,11 +96,9 @@ class TestChatAgentConcurrency:
         assert elapsed < 3.5, f"Serial execution took {elapsed:.2f}s, expected <3.5s"
 
         # Verify responses are in correct order
-        # assert "Message 0" in responses[0]
-        # assert "Message 1" in responses[1]
-        # assert "Message 2" in responses[2]
-
-        pass  # Placeholder until ChatAgent is ready
+        assert "Message 0" in responses[0]
+        assert "Message 1" in responses[1]
+        assert "Message 2" in responses[2]
 
     @pytest.mark.asyncio
     async def test_semaphore_limits_max_concurrency(self, mock_llm_provider_slow):
@@ -114,30 +109,29 @@ class TestChatAgentConcurrency:
 
         Test: 5 different users send messages simultaneously
         With Semaphore(3): First 3 run (1s), next 2 queued (2s total)
-        Expected: Total time ≈ 2s
+        Expected: Total time ~2s
         """
-        # TODO: Implement after ChatAgent is created
-        # 5 different sessions, max_concurrent=3
-        # First 3 run concurrently (1s)
-        # Next 2 run concurrently (1s)
-        # Total: ~2s
+        agent = ChatAgent(mock_llm_provider_slow, max_concurrency=3)
 
         start_time = time.time()
 
         # Five concurrent calls, different sessions
-        # tasks = [
-        #     agent.generate(messages, session_id=f"user{i}", timeout=60.0)
-        #     for i in range(5)
-        # ]
-        # results = await asyncio.gather(*tasks)
+        tasks = [
+            agent.generate(
+                messages=[{"role": "user", "content": f"U{i}"}],
+                session_id=f"user{i}",
+                timeout=60.0
+            )
+            for i in range(5)
+        ]
+        results = await asyncio.gather(*tasks)
 
         elapsed = time.time() - start_time
 
         # Should take ~2s (two waves: 3 + 2)
         assert elapsed >= 1.8, f"Semaphore test took {elapsed:.2f}s, expected ≥1.8s"
         assert elapsed < 2.5, f"Semaphore test took {elapsed:.2f}s, expected <2.5s"
-
-        pass  # Placeholder until ChatAgent is ready
+        assert len(results) == 5
 
     @pytest.mark.asyncio
     async def test_mixed_concurrent_and_serial(self, mock_llm_provider_slow):
@@ -154,28 +148,41 @@ class TestChatAgentConcurrency:
         t=2s: User1-Msg2 completes
         Total: ~2s
         """
-        # TODO: Implement after ChatAgent is created
+        agent = ChatAgent(mock_llm_provider_slow)
+
         start_time = time.time()
 
         # User1 sends 2 messages (will be serial due to same session_id)
         # User2 sends 1 message (concurrent with User1's first)
-        # async def user1_workflow():
-        #     await agent.generate(msg1, session_id="user1")
-        #     await agent.generate(msg2, session_id="user1")
-        #
-        # async def user2_workflow():
-        #     await agent.generate(msg1, session_id="user2")
-        #
-        # await asyncio.gather(user1_workflow(), user2_workflow())
+        async def user1_workflow():
+            await agent.generate(
+                messages=[{"role": "user", "content": "M1"}],
+                session_id="user1",
+                timeout=60.0
+            )
+            await agent.generate(
+                messages=[{"role": "user", "content": "M2"}],
+                session_id="user1",
+                timeout=60.0
+            )
+
+        async def user2_workflow():
+            await agent.generate(
+                messages=[{"role": "user", "content": "M1"}],
+                session_id="user2",
+                timeout=60.0
+            )
+
+        await asyncio.gather(user1_workflow(), user2_workflow())
 
         elapsed = time.time() - start_time
 
         # User1-Msg1 and User2-Msg1 concurrent (1s)
         # User1-Msg2 serial after (1s)
         # Total: ~2s
-        assert elapsed >= 1.8 and elapsed < 2.5
-
-        pass  # Placeholder until ChatAgent is ready
+        assert elapsed >= 1.8 and elapsed < 2.5, (
+            f"Mixed workload took {elapsed:.2f}s, expected 1.8-2.5s"
+        )
 
     @pytest.mark.asyncio
     async def test_lock_cleanup_on_error(self, mock_llm_provider_slow):
@@ -184,28 +191,53 @@ class TestChatAgentConcurrency:
 
         If lock is not released, the session will be permanently blocked
         """
-        # TODO: Implement after ChatAgent is created
+        agent = ChatAgent(mock_llm_provider_slow)
+
+        # Save original provider before swapping in the failing one
+        original_chat = mock_llm_provider_slow.chat
+
         # Configure provider to raise exception
-        # mock_llm_provider_slow.chat.side_effect = RuntimeError("LLM failed")
+        async def failing_chat(messages, model=None, timeout=None):
+            raise RuntimeError("LLM failed")
+
+        mock_llm_provider_slow.chat = failing_chat
 
         # First call should fail and release lock
-        # with pytest.raises(RuntimeError):
-        #     await agent.generate(messages, session_id="user1")
+        with pytest.raises(RuntimeError):
+            await agent.generate(
+                messages=[{"role": "user", "content": "X"}],
+                session_id="user1",
+                timeout=60.0
+            )
 
         # Second call should still work (lock was released)
-        # mock_llm_provider_slow.chat.side_effect = None
-        # result = await agent.generate(messages, session_id="user1")
-        # assert result is not None
-
-        pass  # Placeholder until ChatAgent is ready
+        mock_llm_provider_slow.chat = original_chat
+        result = await agent.generate(
+            messages=[{"role": "user", "content": "Y"}],
+            session_id="user1",
+            timeout=60.0
+        )
+        assert result is not None
 
     @pytest.mark.asyncio
-    async def test_session_lock_isolation(self):
+    async def test_session_lock_isolation(self, mock_llm_provider_slow):
         """
         Verify each session has its own lock instance
 
         Locks should not be shared across sessions
         """
-        # TODO: Implement after ChatAgent is created
-        # Verify agent._session_locks["user1"] != agent._session_locks["user2"]
-        pass
+        agent = ChatAgent(mock_llm_provider_slow)
+
+        await agent.generate(
+            messages=[{"role": "user", "content": "A"}],
+            session_id="user1",
+            timeout=60.0
+        )
+        await agent.generate(
+            messages=[{"role": "user", "content": "B"}],
+            session_id="user2",
+            timeout=60.0
+        )
+
+        # Each session must have an independent lock instance
+        assert agent._session_locks["user1"] is not agent._session_locks["user2"]

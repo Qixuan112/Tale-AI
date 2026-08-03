@@ -9,6 +9,8 @@ import time
 from typing import List, Dict
 from unittest.mock import AsyncMock
 
+from core.agent import ChatAgent
+
 
 @pytest.fixture
 def mock_llm_provider_benchmark():
@@ -40,29 +42,28 @@ class TestChatAgentPerformance:
 
         This is the KEY test proving global lock is removed
         """
-        # TODO: Implement after ChatAgent is created
+        agent = ChatAgent(mock_llm_provider_benchmark)
         start_time = time.time()
 
         # 3 concurrent calls, different sessions
-        # tasks = [
-        #     agent.generate(
-        #         messages=[{"role": "user", "content": f"User {i}"}],
-        #         session_id=f"user{i}",
-        #         timeout=60.0
-        #     )
-        #     for i in range(3)
-        # ]
-        # results = await asyncio.gather(*tasks)
+        tasks = [
+            agent.generate(
+                messages=[{"role": "user", "content": f"User {i}"}],
+                session_id=f"user{i}",
+                timeout=60.0
+            )
+            for i in range(3)
+        ]
+        results = await asyncio.gather(*tasks)
 
         elapsed = time.time() - start_time
 
         # Performance target: <0.8s (concurrent)
         assert elapsed < 0.8, f"3 concurrent users took {elapsed:.2f}s, expected <0.8s (CONCURRENCY BROKEN)"
+        assert len(results) == 3
 
         # Record benchmark result
-        print(f"\n✅ BENCHMARK: 3 concurrent users completed in {elapsed:.2f}s")
-
-        pass  # Placeholder
+        print(f"\nBENCHMARK: 3 concurrent users completed in {elapsed:.2f}s")
 
     @pytest.mark.asyncio
     async def test_benchmark_same_user_sequential(self, mock_llm_provider_benchmark):
@@ -75,16 +76,16 @@ class TestChatAgentPerformance:
 
         Verifies per-session lock maintains message order
         """
-        # TODO: Implement after ChatAgent is created
+        agent = ChatAgent(mock_llm_provider_benchmark)
         start_time = time.time()
 
         # 3 sequential calls, same session
-        # for i in range(3):
-        #     await agent.generate(
-        #         messages=[{"role": "user", "content": f"Message {i}"}],
-        #         session_id="user1",
-        #         timeout=60.0
-        #     )
+        for i in range(3):
+            await agent.generate(
+                messages=[{"role": "user", "content": f"Message {i}"}],
+                session_id="user1",
+                timeout=60.0
+            )
 
         elapsed = time.time() - start_time
 
@@ -92,9 +93,7 @@ class TestChatAgentPerformance:
         assert elapsed >= 1.4, f"Sequential took {elapsed:.2f}s, expected ≥1.4s"
         assert elapsed < 1.8, f"Sequential took {elapsed:.2f}s, expected <1.8s"
 
-        print(f"\n✅ BENCHMARK: Same user 3 messages completed in {elapsed:.2f}s")
-
-        pass  # Placeholder
+        print(f"\nBENCHMARK: Same user 3 messages completed in {elapsed:.2f}s")
 
     @pytest.mark.asyncio
     async def test_benchmark_5_users_with_semaphore(self, mock_llm_provider_benchmark):
@@ -108,29 +107,28 @@ class TestChatAgentPerformance:
 
         Verifies semaphore rate limiting works correctly
         """
-        # TODO: Implement after ChatAgent is created
+        agent = ChatAgent(mock_llm_provider_benchmark, max_concurrency=3)
         start_time = time.time()
 
         # 5 concurrent calls, max 3 concurrent due to semaphore
-        # tasks = [
-        #     agent.generate(
-        #         messages=[{"role": "user", "content": f"User {i}"}],
-        #         session_id=f"user{i}",
-        #         timeout=60.0
-        #     )
-        #     for i in range(5)
-        # ]
-        # results = await asyncio.gather(*tasks)
+        tasks = [
+            agent.generate(
+                messages=[{"role": "user", "content": f"User {i}"}],
+                session_id=f"user{i}",
+                timeout=60.0
+            )
+            for i in range(5)
+        ]
+        results = await asyncio.gather(*tasks)
 
         elapsed = time.time() - start_time
 
         # Performance target: ≥0.9s (two waves) and <1.3s
         assert elapsed >= 0.9, f"5 users took {elapsed:.2f}s, expected ≥0.9s"
         assert elapsed < 1.3, f"5 users took {elapsed:.2f}s, expected <1.3s (SEMAPHORE BROKEN)"
+        assert len(results) == 5
 
-        print(f"\n✅ BENCHMARK: 5 users with semaphore completed in {elapsed:.2f}s")
-
-        pass  # Placeholder
+        print(f"\nBENCHMARK: 5 users with semaphore completed in {elapsed:.2f}s")
 
     @pytest.mark.asyncio
     async def test_benchmark_mixed_workload(self, mock_llm_provider_benchmark):
@@ -152,33 +150,33 @@ class TestChatAgentPerformance:
 
         Verifies both per-session serial and cross-session concurrent work together
         """
-        # TODO: Implement after ChatAgent is created
+        agent = ChatAgent(mock_llm_provider_benchmark)
         start_time = time.time()
 
-        # async def user1_workflow():
-        #     for i in range(3):
-        #         await agent.generate(
-        #             messages=[{"role": "user", "content": f"User1-Msg{i}"}],
-        #             session_id="user1",
-        #             timeout=60.0
-        #         )
-        #
-        # async def user2_workflow():
-        #     for i in range(2):
-        #         await agent.generate(
-        #             messages=[{"role": "user", "content": f"User2-Msg{i}"}],
-        #             session_id="user2",
-        #             timeout=60.0
-        #         )
-        #
-        # async def user3_workflow():
-        #     await agent.generate(
-        #         messages=[{"role": "user", "content": "User3-Msg0"}],
-        #         session_id="user3",
-        #         timeout=60.0
-        #     )
-        #
-        # await asyncio.gather(user1_workflow(), user2_workflow(), user3_workflow())
+        async def user1_workflow():
+            for i in range(3):
+                await agent.generate(
+                    messages=[{"role": "user", "content": f"User1-Msg{i}"}],
+                    session_id="user1",
+                    timeout=60.0
+                )
+
+        async def user2_workflow():
+            for i in range(2):
+                await agent.generate(
+                    messages=[{"role": "user", "content": f"User2-Msg{i}"}],
+                    session_id="user2",
+                    timeout=60.0
+                )
+
+        async def user3_workflow():
+            await agent.generate(
+                messages=[{"role": "user", "content": "User3-Msg0"}],
+                session_id="user3",
+                timeout=60.0
+            )
+
+        await asyncio.gather(user1_workflow(), user2_workflow(), user3_workflow())
 
         elapsed = time.time() - start_time
 
@@ -186,9 +184,7 @@ class TestChatAgentPerformance:
         assert elapsed >= 1.4, f"Mixed workload took {elapsed:.2f}s, expected ≥1.4s"
         assert elapsed < 1.8, f"Mixed workload took {elapsed:.2f}s, expected <1.8s"
 
-        print(f"\n✅ BENCHMARK: Mixed workload completed in {elapsed:.2f}s")
-
-        pass  # Placeholder
+        print(f"\nBENCHMARK: Mixed workload completed in {elapsed:.2f}s")
 
     @pytest.mark.asyncio
     async def test_stress_10_concurrent_users(self, mock_llm_provider_benchmark):
@@ -201,26 +197,25 @@ class TestChatAgentPerformance:
 
         Verifies system stability under higher load
         """
-        # TODO: Implement after ChatAgent is created
+        agent = ChatAgent(mock_llm_provider_benchmark, max_concurrency=3)
         start_time = time.time()
 
         # 10 concurrent calls, max 3 concurrent
-        # tasks = [
-        #     agent.generate(
-        #         messages=[{"role": "user", "content": f"User {i}"}],
-        #         session_id=f"user{i}",
-        #         timeout=60.0
-        #     )
-        #     for i in range(10)
-        # ]
-        # results = await asyncio.gather(*tasks)
+        tasks = [
+            agent.generate(
+                messages=[{"role": "user", "content": f"User {i}"}],
+                session_id=f"user{i}",
+                timeout=60.0
+            )
+            for i in range(10)
+        ]
+        results = await asyncio.gather(*tasks)
 
         elapsed = time.time() - start_time
 
         # Performance target: ≥1.8s (4 waves) and <2.5s
         assert elapsed >= 1.8, f"10 users took {elapsed:.2f}s, expected ≥1.8s"
         assert elapsed < 2.5, f"10 users took {elapsed:.2f}s, expected <2.5s"
+        assert len(results) == 10
 
-        print(f"\n✅ STRESS TEST: 10 concurrent users completed in {elapsed:.2f}s")
-
-        pass  # Placeholder
+        print(f"\nSTRESS TEST: 10 concurrent users completed in {elapsed:.2f}s")
