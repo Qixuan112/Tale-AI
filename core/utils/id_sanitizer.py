@@ -19,13 +19,13 @@ class IDSanitizer:
 
     def sanitize_user_id(self, real_id: str) -> str:
         """
-        用户ID打码：123456 -> ****3456
+        用户ID打码：123456 -> usr_1001
 
         Args:
             real_id: 真实用户ID
 
         Returns:
-            打码后的ID（****xxxx格式）
+            打码后的ID（usr_xxx格式）
         """
         if not real_id:
             return ""
@@ -35,13 +35,7 @@ class IDSanitizer:
         if real_id in self._reverse_user:
             return self._reverse_user[real_id]
 
-        # 使用****前缀 + 最后4位（不足4位则补充序号）
-        if len(real_id) >= 4:
-            suffix = real_id[-4:]
-        else:
-            suffix = f"{real_id}{self._counter}"[-4:]
-
-        masked = f"****{suffix}"
+        masked = f"usr_{self._counter}"
         self._counter += 1
         if self._counter > self._max_counter:
             self._counter = 1000  # 循环复用，避免无限增长
@@ -51,13 +45,13 @@ class IDSanitizer:
 
     def sanitize_group_id(self, real_id: str) -> str:
         """
-        群ID打码：987654 -> ****7654
+        群ID打码：987654 -> grp_1002
 
         Args:
             real_id: 真实群ID
 
         Returns:
-            打码后的ID（****xxxx格式）
+            打码后的ID（grp_xxx格式）
         """
         if not real_id:
             return ""
@@ -67,13 +61,7 @@ class IDSanitizer:
         if real_id in self._reverse_group:
             return self._reverse_group[real_id]
 
-        # 使用****前缀 + 最后4位（不足4位则补充序号）
-        if len(real_id) >= 4:
-            suffix = real_id[-4:]
-        else:
-            suffix = f"{real_id}{self._counter}"[-4:]
-
-        masked = f"****{suffix}"
+        masked = f"grp_{self._counter}"
         self._counter += 1
         if self._counter > self._max_counter:
             self._counter = 1000  # 循环复用，避免无限增长
@@ -83,7 +71,7 @@ class IDSanitizer:
 
     def restore_user_id(self, masked: str) -> str:
         """
-        还原用户ID：****3456 -> 123456
+        还原用户ID：usr_1001 -> 123456
 
         Args:
             masked: 打码ID
@@ -97,7 +85,7 @@ class IDSanitizer:
 
     def restore_group_id(self, masked: str) -> str:
         """
-        还原群ID：****7654 -> 987654
+        还原群ID：grp_1002 -> 987654
 
         Args:
             masked: 打码ID
@@ -111,8 +99,8 @@ class IDSanitizer:
 
     def is_masked_user_id(self, id_str: str) -> bool:
         """判断是否为打码的用户ID"""
-        return bool(id_str and id_str.startswith("****"))
+        return bool(id_str and id_str.startswith("usr_"))
 
     def is_masked_group_id(self, id_str: str) -> bool:
         """判断是否为打码的群ID"""
-        return bool(id_str and id_str.startswith("****"))
+        return bool(id_str and id_str.startswith("grp_"))
