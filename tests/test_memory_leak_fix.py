@@ -32,7 +32,12 @@ from datetime import datetime
 @pytest.fixture
 def mock_config():
     """Mock 配置加载器"""
-    with patch("core.main.config_loader") as mock_loader:
+    # 用 importlib 取真实模块对象，绕开 core/__init__.py 的 from .main import main
+    # 对 core.main 属性的遮蔽（遮蔽后 patch("core.main.config_loader") 会解析到
+    # 函数 main 而非模块，CI 收集顺序下抛 AttributeError）
+    import importlib
+    _main_mod = importlib.import_module("core.main")
+    with patch.object(_main_mod, "config_loader") as mock_loader:
         # Mock bot config
         mock_loader.bot.bot.persistence_enabled = False
         mock_loader.bot.bot.typing_speed = 200.0
