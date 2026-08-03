@@ -153,6 +153,8 @@ class TaleCore:
         self._session_semaphore = asyncio.Semaphore(3)
         # 缓存 ChatLLM 是否支持无状态调用（在 initialize 中检测）
         self._chatllm_supports_stateless: bool = False
+        # ContextBuilder 用于构建 LLM 上下文（供 Pipeline 使用）
+        self.context_builder: Optional[Any] = None
 
     def initialize(self):
         """初始化核心组件（幂等，可多次调用）"""
@@ -421,6 +423,10 @@ class TaleCore:
         # 重新初始化消息处理器（唤醒词、权限等配置可能已变更）
         self._init_message_processor()
         logger.info("MessageProcessor 已热重载")
+
+        # 重新初始化 Pipeline（修复 Stage 缓存旧 LLM 引用的问题）
+        self._init_pipeline()
+        logger.info("Pipeline 已热重载（Stage 引用已更新）")
 
     @staticmethod
     def _get_planllm_ref():
@@ -1267,6 +1273,25 @@ class TaleCore:
             )
         # session_lock 和 semaphore 由 async with 自动释放
 
+    @staticmethod
+    def _compute_session_info(processed: ProcessedMessage) -> tuple:
+        """计算会话信息（sid, is_group, target_id, platform_name）
+
+        从 ProcessedMessage 提取会话标识所需的各项信息，避免重复计算逻辑。
+
+        Args:
+            processed: ProcessedMessage 对象
+
+        Returns:
+            (sid, is_group, target_id, platform_name) 元组
+        """
+        is_group = processed.group_id is not None
+        target_id = processed.group_id if processed.group_id else processed.sender_id
+        stype = "gm" if is_group else "dm"
+        platform_name = processed.platform.value if processed.platform else "unknown"
+        sid = f"{platform_name}:{stype}:{target_id}"
+        return sid, is_group, target_id, platform_name
+
     async def _handle_respond_message_v2(self, processed, adapter_instance=None):
         """处理需要响应的消息（Pipeline 版本，带并发控制）
 
@@ -1274,11 +1299,10 @@ class TaleCore:
         """
         from core.pipeline import PipelineContext
 
-        # 1. 构造 sid
-        is_group = processed.group_id is not None
-        target_id = processed.group_id if processed.group_id else processed.sender_id
-        stype = "gm" if is_group else "dm"
-        sid = f"{processed.platform.value}:{stype}:{target_id}"
+        # 1. 计算会话信息（使用提取的静态方法）
+        sid, is_group, target_id, platform_name = self._compute_session_info(processed)
+        if adapter_instance:
+            platform_name = adapter_instance
 
         # 2. 构造 PipelineContext
         ctx = PipelineContext(
@@ -1287,7 +1311,7 @@ class TaleCore:
             sid=sid,
             is_group=is_group,
             target_id=target_id,
-            platform_name=processed.platform.value if processed.platform else adapter_instance or "unknown"
+            platform_name=platform_name
         )
 
         # 3. 添加并发控制（与原实现一致）
