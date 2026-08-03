@@ -82,7 +82,12 @@ def tale_core_with_mocks(mock_chatllm, mock_adapter_bridge):
     打字延迟（calculate_split_interval，模拟真人逐条打字）与并发语义无关，
     在此统一禁用，避免每条回复被 typing_speed * 字数 拖慢数秒。
     """
-    with patch("core.main.calculate_split_interval", return_value=0.0, create=True):
+    # core/__init__.py 的 from .main import main 把 core.main 属性遮蔽为函数，
+    # patch("core.main.X") 在 CI 收集顺序下会解析到函数对象而非模块，必须
+    # patch.object 真实模块对象（同 test_memory_leak_fix.py）
+    import importlib
+    _main_mod = importlib.import_module("core.main")
+    with patch.object(_main_mod, "calculate_split_interval", return_value=0.0):
         core = TaleCore()
         core.chat = mock_chatllm
         core.toolllm = Mock()
