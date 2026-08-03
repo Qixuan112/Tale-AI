@@ -15,6 +15,8 @@ class PromptSection:
     order: int = 0
     description: str = ""
     _content_provider: Optional[Callable[[], str]] = field(default=None, repr=False)
+    dynamic: bool = False  # True for time-sensitive content (timestamps, plans)
+    persist: bool = True   # False to exclude from history persistence
 
     def render(self) -> str:
         """Resolve content — calls provider if set, otherwise returns static content."""

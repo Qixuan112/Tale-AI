@@ -9,15 +9,15 @@
 - 不持多个会话锁（send 只争目标锁，不持本锁）
 - at-least-once 语义：pending 超时未 ack 重新投递
 - 所有集合有上界淘汰
-
-已知局限：
-- BridgeState 纯内存，重启即丢（计划后续持久化到 sessions.json 或 Redis）
+- 状态持久化：重启后恢复 inbox/pending/processed/rate 状态
 """
 
 import asyncio
+import json
 import logging
 import time
 import uuid
+from pathlib import Path
 from typing import Optional
 
 from .utils import get_logger
@@ -41,11 +41,33 @@ class BridgeMessage:
         return {"id": self.id, "from_sid": self.from_sid,
                 "content": self.content, "timestamp": self.timestamp}
 
+    def to_persist_dict(self) -> dict:
+        """序列化为持久化字典（包含 enqueued_at）"""
+        return {
+            "id": self.id,
+            "from_sid": self.from_sid,
+            "content": self.content,
+            "timestamp": self.timestamp,
+            "enqueued_at": self.enqueued_at
+        }
+
+    @staticmethod
+    def from_persist_dict(data: dict) -> 'BridgeMessage':
+        """从持久化字典恢复"""
+        msg = BridgeMessage.__new__(BridgeMessage)
+        msg.id = data["id"]
+        msg.from_sid = data["from_sid"]
+        msg.content = data["content"]
+        msg.timestamp = data["timestamp"]
+        msg.enqueued_at = data.get("enqueued_at", 0)
+        return msg
+
 
 class BridgeState:
-    """跨会话桥接状态（进程内存）
+    """跨会话桥接状态（带持久化）
 
     线程安全：per-session asyncio.Lock，send 只争目标锁。
+    状态持久化：inbox/pending/processed/rate 在状态变更后 debounce 写入 JSON。
     """
 
     MAX_INBOX = 20          # 单个 inbox 上限
@@ -57,8 +79,10 @@ class BridgeState:
     RATE_INTERVAL = 60      # 率控时间窗口（秒）
     RATE_LIMIT = 10         # 窗口内最大发送数
     SID_IDLE_TTL = 3600     # 空闲 sid 淘汰 TTL（秒）：inbox/pending 皆空且超时则清理
+    PERSIST_DEBOUNCE = 0.2  # 持久化 debounce 时间（秒）
+    PROCESSED_PERSIST_DAYS = 7  # _processed 只持久化最近 N 天
 
-    def __init__(self):
+    def __init__(self, persistence_file: Optional[str] = None):
         self._inbox: dict[str, list[BridgeMessage]] = {}
         self._pending: dict[str, list[BridgeMessage]] = {}
         self._processed: dict[str, list[tuple]] = {}  # [(msg_id, timestamp), ...] FIFO
@@ -66,12 +90,180 @@ class BridgeState:
         self._rate: dict[str, list[float]] = {}
         self._last_active: dict[str, float] = {}  # 每 sid 最后活跃时刻，用于空闲淘汰
 
+        # 持久化相关
+        self._persist_path: Optional[Path] = None
+        self._persist_task: Optional[asyncio.Task] = None
+        self._persist_dirty = False
+
+        # 确定持久化路径
+        if persistence_file:
+            self._persist_path = Path(persistence_file)
+        else:
+            # 默认路径：data/bridge/state.json
+            self._persist_path = Path("data/bridge/state.json")
+
+        # 加载持久化状态
+        self._load_state()
+
+    def __del__(self):
+        """析构时同步保存状态（最后机会）"""
+        if self._persist_dirty and self._persist_path:
+            try:
+                # 解释器关闭时，内置函数可能已被清理为 None，显式导入确保可用
+                import builtins
+                import time as time_module
+                import json as json_module
+
+                # 同步保存（无法使用 async）
+                cutoff = time_module.time() - (BridgeState.PROCESSED_PERSIST_DAYS * 86400)
+                data = {
+                    "inbox": {
+                        sid: [m.to_persist_dict() for m in msgs]
+                        for sid, msgs in self._inbox.items()
+                    },
+                    "pending": {
+                        sid: [m.to_persist_dict() for m in msgs]
+                        for sid, msgs in self._pending.items()
+                    },
+                    "processed": {
+                        sid: [(mid, ts) for mid, ts in items if ts > cutoff]
+                        for sid, items in self._processed.items()
+                    },
+                    "rate": self._rate,
+                    "last_active": self._last_active
+                }
+                self._persist_path.parent.mkdir(parents=True, exist_ok=True)
+
+                # 使用 builtins.open 确保函数可用
+                with builtins.open(self._persist_path, 'w', encoding='utf-8') as f:
+                    json_module.dump(data, f, ensure_ascii=False, indent=2)
+
+                logger.debug("BridgeState 析构时已持久化到: %s", self._persist_path)
+            except Exception:
+                # 静默忽略，避免析构时异常
+                pass
+
+    async def flush(self):
+        """立即刷新持久化状态（等待 debounce 任务完成）"""
+        if self._persist_task and not self._persist_task.done():
+            await self._persist_task
+        if self._persist_dirty:
+            await self._save_state()
+            self._persist_dirty = False
+
     def _lock(self, sid: str) -> asyncio.Lock:
         return self._locks.setdefault(sid, asyncio.Lock())
 
     def _touch(self, sid: str):
         """刷新 sid 最后活跃时刻"""
         self._last_active[sid] = time.time()
+
+    def _mark_dirty(self):
+        """标记状态已修改，触发 debounce 持久化"""
+        self._persist_dirty = True
+        if self._persist_task is None or self._persist_task.done():
+            self._persist_task = asyncio.create_task(self._debounce_persist())
+
+    async def _debounce_persist(self):
+        """Debounce 持久化：等待 PERSIST_DEBOUNCE 秒后写入"""
+        await asyncio.sleep(BridgeState.PERSIST_DEBOUNCE)
+        if self._persist_dirty:
+            self._persist_dirty = False
+            await self._save_state()
+
+    def _load_state(self):
+        """启动时从 JSON 文件加载状态"""
+        if not self._persist_path or not self._persist_path.exists():
+            return
+
+        try:
+            with open(self._persist_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            # 恢复 inbox
+            for sid, msgs in data.get("inbox", {}).items():
+                self._inbox[sid] = [BridgeMessage.from_persist_dict(m) for m in msgs]
+
+            # 恢复 pending - 重启后将 pending 消息重新放回 inbox（进程重启意味着之前的消费者可能已失效）
+            # 这样可以确保未 ack 的消息在重启后能够被重新消费
+            for sid, msgs in data.get("pending", {}).items():
+                pending_msgs = [BridgeMessage.from_persist_dict(m) for m in msgs]
+                # 将 pending 消息移回 inbox
+                if sid not in self._inbox:
+                    self._inbox[sid] = []
+                self._inbox[sid].extend(pending_msgs)
+                logger.info("重启后将 %d 条 pending 消息重新放回 inbox: sid=%s", len(pending_msgs), sid)
+
+            # 恢复 _processed（过滤超过 PROCESSED_PERSIST_DAYS 的）
+            cutoff = time.time() - (BridgeState.PROCESSED_PERSIST_DAYS * 86400)
+            for sid, items in data.get("processed", {}).items():
+                self._processed[sid] = [(mid, ts) for mid, ts in items if ts > cutoff]
+
+            # 恢复 _rate
+            for sid, ts_list in data.get("rate", {}).items():
+                self._rate[sid] = ts_list
+
+            # 恢复 _last_active
+            for sid, ts in data.get("last_active", {}).items():
+                self._last_active[sid] = ts
+
+            logger.info("BridgeState 已从持久化文件加载: %s", self._persist_path)
+
+        except json.JSONDecodeError as e:
+            logger.warning("BridgeState 持久化文件损坏，从空状态启动: %s (error: %s)",
+                          self._persist_path, e)
+        except Exception as e:
+            logger.error("加载 BridgeState 持久化文件失败: %s (error: %s)",
+                        self._persist_path, e)
+
+    async def _save_state(self):
+        """将当前状态保存到 JSON 文件（异步非阻塞）"""
+        if not self._persist_path:
+            return
+
+        try:
+            # 准备序列化数据（过滤过期 _processed）
+            cutoff = time.time() - (BridgeState.PROCESSED_PERSIST_DAYS * 86400)
+
+            data = {
+                "inbox": {
+                    sid: [m.to_persist_dict() for m in msgs]
+                    for sid, msgs in self._inbox.items()
+                },
+                "pending": {
+                    sid: [m.to_persist_dict() for m in msgs]
+                    for sid, msgs in self._pending.items()
+                },
+                "processed": {
+                    sid: [(mid, ts) for mid, ts in items if ts > cutoff]
+                    for sid, items in self._processed.items()
+                },
+                "rate": self._rate,
+                "last_active": self._last_active
+            }
+
+            # 确保目录存在
+            self._persist_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # 写入临时文件，然后原子替换（避免写入中途崩溃导致损坏）
+            temp_path = self._persist_path.with_suffix('.tmp')
+
+            # 使用 asyncio 在线程池中执行 IO（避免阻塞事件循环）
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, self._write_json, temp_path, data)
+            await loop.run_in_executor(None, temp_path.replace, self._persist_path)
+
+            logger.debug("BridgeState 已持久化到: %s", self._persist_path)
+
+        except Exception as e:
+            logger.error("保存 BridgeState 持久化文件失败: %s (error: %s)",
+                        self._persist_path, e)
+
+    @staticmethod
+    def _write_json(path: Path, data: dict):
+        """同步写入 JSON 文件（在线程池中执行）"""
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
 
     def _evict_idle(self):
         """空闲 sid 淘汰：inbox 与 pending 皆空、超过 SID_IDLE_TTL 未活跃，
@@ -81,6 +273,7 @@ class BridgeState:
         cutoff = time.time() - BridgeState.SID_IDLE_TTL
         # 快照键，避免遍历中修改。并集 _locks 以回收「只创建了锁却没记录活跃时刻」
         # 的孤儿锁（缺失 _last_active 视为 0，即已空闲）。
+        evicted = False
         for sid in list(set(self._last_active.keys()) | set(self._locks.keys())):
             if self._last_active.get(sid, 0) > cutoff:
                 continue
@@ -97,6 +290,11 @@ class BridgeState:
             self._locks.pop(sid, None)
             self._last_active.pop(sid, None)
             logger.debug("跨会话空闲 sid 淘汰: sid=%s", sid)
+            evicted = True
+
+        # 触发持久化
+        if evicted:
+            self._mark_dirty()
 
     # ── 权限校验 ───────────────────────────────────────────────
 
@@ -192,6 +390,9 @@ class BridgeState:
             inbox.append(msg)
             self._touch(to_sid)
 
+        # 触发持久化
+        self._mark_dirty()
+
         # 空闲 sid 淘汰（不持锁，仅清理已空且超时的 sid）
         self._evict_idle()
 
@@ -223,6 +424,9 @@ class BridgeState:
                                sid, dropped.id, dropped.from_sid)
             inbox.append(msg)
             self._touch(sid)
+
+        # 触发持久化
+        self._mark_dirty()
 
         logger.info("系统消息已注入: → %s (id=%s, len=%d)", sid, msg.id, len(text))
         return msg.id
@@ -270,6 +474,10 @@ class BridgeState:
                 m.enqueued_at = enqueued_at
             self._pending[sid].extend(filtered)
 
+            # 触发持久化
+            if filtered or expired:
+                self._mark_dirty()
+
             return [m.to_dict() for m in filtered]
 
     async def ack(self, sid: str, message_ids: list[str]):
@@ -289,6 +497,8 @@ class BridgeState:
                 self._mark_processed(sid, mid)
             if removed_count:
                 logger.debug("跨会话 ack: sid=%s, count=%d", sid, removed_count)
+                # 触发持久化
+                self._mark_dirty()
 
     async def format_for_prompt(self, sid: str) -> str:
         """格式化本会话的 inbox 消息为 LLM prompt 文本（加锁读取）"""

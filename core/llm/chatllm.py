@@ -65,8 +65,8 @@ class ChatLLM:
         except Exception:
             pass
 
-        # today_plan 已移至 user_input 注入，不再占用 system prompt（启用缓存）
-        # self._add_plan_section()
+        # Add dynamic sections for timestamp and plan (marked as dynamic=True, persist=False)
+        self._add_dynamic_sections()
 
         # Initialize RAG knowledge base flag
         self._rag_enabled = False
@@ -106,6 +106,54 @@ class ChatLLM:
                 else:
                     break
             self.messages = new_head + self.messages[cut:]
+
+    def _add_dynamic_sections(self):
+        """Add dynamic sections (timestamp and plan) that will be injected into user messages.
+
+        These sections are marked with dynamic=True and persist=False, so they:
+        1. Don't appear in system prompt (keeps it byte-stable for caching)
+        2. Get injected into user message via <system_reminder>
+        3. Don't get persisted to session history
+        """
+        from datetime import datetime
+
+        # Timestamp section (dynamic, non-persistent)
+        def _get_timestamp():
+            now = datetime.now()
+            return f"[当前时间] {now.strftime('%Y-%m-%d %H:%M')}"
+
+        self.context.add_section(PromptSection(
+            name="current_time",
+            content="",
+            cacheable=False,
+            order=100,
+            dynamic=True,
+            persist=False,
+            _content_provider=_get_timestamp,
+        ))
+
+        # Plan section (dynamic, non-persistent)
+        def _get_plan_content():
+            from . import get_planllm
+            try:
+                planllm = get_planllm()
+                planllm.ensure_today_plan()
+                plan_text = planllm.get_today_plan_display()
+                if plan_text:
+                    return f"[今日日程]\n{plan_text}"
+            except Exception:
+                pass
+            return ""
+
+        self.context.add_section(PromptSection(
+            name="today_plan",
+            content="",
+            cacheable=False,
+            order=101,
+            dynamic=True,
+            persist=False,
+            _content_provider=_get_plan_content,
+        ))
 
     def _add_plan_section(self):
         """Add a dynamic PromptSection that injects today's plan into the system prompt.
@@ -165,15 +213,30 @@ class ChatLLM:
             self.refresh_context()
             logger.info("ChatLLM: 配置已热更新")
 
-    def chat(self, user_input, persist_content: str = None, save_to_session: bool = True):
-        """发送消息并获取回复，自动维护上下文
+    def chat(self, user_input, persist_content: str = None, save_to_session: bool = True,
+             sid: str = None, messages: list = None):
+        """发送消息并获取回复（无状态模式）
 
         Args:
             user_input: 发给 LLM 的用户输入（可能已拼接历史/元数据等富上下文）
             persist_content: 落库时存入会话记忆的纯净用户原文。
                 为 None 时用 user_input。避免富上下文污染持久化记忆。
             save_to_session: 是否写入会话记忆。Agent 内部步骤传 False。
+            sid: 会话ID（用于持久化），为None时使用self.current_sid（向后兼容）
+            messages: 会话消息列表（无状态模式），为None时使用self.messages（向后兼容）
         """
+        # Inject dynamic reminder (timestamp, plan) into user message
+        dynamic_reminder = self.context.get_dynamic_reminder()
+        if dynamic_reminder:
+            user_input = f"{dynamic_reminder}\n\n{user_input}"
+
+        # 向后兼容：如果没有传入 messages，使用实例状态
+        use_instance_state = (messages is None)
+        if use_instance_state:
+            messages = self.messages
+            if sid is None:
+                sid = self.current_sid
+
         # RAG 检索：在 system 消息之后、conversation 之前注入知识库上下文
         rag_system_msg = None
         if self._rag_enabled:
@@ -185,23 +248,26 @@ class ChatLLM:
             except Exception as e:
                 logger.debug("RAG 检索失败: %s", e)
 
-        # 挂起用户消息并获取当前上下文快照（短持有锁）
+        # 构建本次调用的消息列表（不修改传入的messages）
+        working_messages = list(messages)
         rag_injected = False
-        with self._lock:
-            if rag_system_msg:
-                # 插入在所有 system 消息之后、对话历史之前
-                cut = 0
-                for m in self.messages:
-                    if m.get("role") == "system":
-                        cut += 1
-                    else:
-                        break
-                self.messages.insert(cut, rag_system_msg)
-                rag_injected = True
 
-            self.messages.append({"role": "user", "content": user_input})
-            self._trim_context()
-            messages_snapshot = list(self.messages)
+        if rag_system_msg:
+            # 插入在所有 system 消息之后、对话历史之前
+            cut = 0
+            for m in working_messages:
+                if m.get("role") == "system":
+                    cut += 1
+                else:
+                    break
+            working_messages.insert(cut, rag_system_msg)
+            rag_injected = True
+
+        working_messages.append({"role": "user", "content": user_input})
+
+        # Trim context on working copy
+        working_messages = self._trim_context_list(working_messages)
+        messages_snapshot = list(working_messages)
 
         # 在锁外执行 LLM API 调用（可能耗时 1-10s）
         try:
@@ -211,26 +277,28 @@ class ChatLLM:
             )
         except Exception as e:
             logger.error("ChatLLM API 调用失败: %s", e)
-            self._rollback_rag_and_user(rag_injected)
             raise
 
         if response is None:
             logger.error("ChatLLM API 返回空响应")
-            self._rollback_rag_and_user(rag_injected)
             raise RuntimeError("ChatLLM API 返回空响应")
 
         assistant_reply = response
 
-        # 重新获取锁，追加助手回复
-        with self._lock:
-            if rag_injected:
-                self._remove_rag_message()
-            self.messages.append({"role": "assistant", "content": assistant_reply})
+        # 如果使用实例状态，需要更新self.messages
+        if use_instance_state:
+            with self._lock:
+                # 同步更新实例状态
+                if rag_injected:
+                    self._remove_rag_message()
+                self.messages.append({"role": "user", "content": user_input})
+                self.messages.append({"role": "assistant", "content": assistant_reply})
+                self._trim_context()
 
         # 持久化本轮对话到 SessionManager（落库存纯净原文，避免富上下文污染）
         # Agent 内部步骤不写入，避免工具调用轮次污染会话记忆
-        if save_to_session:
-            self._save_session_memory(persist_content)
+        if save_to_session and sid and self.session_manager:
+            self._save_session_memory_with_sid(sid, persist_content, assistant_reply)
 
         return assistant_reply
 
@@ -270,6 +338,24 @@ class ChatLLM:
                 return
 
             self.messages = system_msgs + non_system
+
+    def _trim_context_list(self, messages: list) -> list:
+        """修剪消息列表（无状态版本）"""
+        result = list(messages)
+        while len(result) > self.max_context:
+            system_msgs = [m for m in result if m.get("role") == "system"]
+            non_system = [m for m in result if m.get("role") != "system"]
+
+            if len(non_system) >= 2:
+                non_system = non_system[2:]
+            elif len(non_system) == 1:
+                non_system = []
+            else:
+                logger.warning("上下文超过限制但无可删除的非系统消息，强制保留 system 消息")
+                return system_msgs
+
+            result = system_msgs + non_system
+        return result
 
     def clear_history(self):
         """清空对话历史，只保留 system 消息"""
@@ -353,6 +439,32 @@ class ChatLLM:
                     {"role": "user", "content": user_content},
                     {"role": "assistant", "content": asst_content},
                 )
+
+    def _save_session_memory_with_sid(self, sid: str, persist_content: str = None,
+                                      assistant_reply: str = None):
+        """持久化本轮对话到SessionManager（无状态版本）
+
+        Args:
+            sid: 会话ID
+            persist_content: 纯净用户原文
+            assistant_reply: 助手回复
+        """
+        if not self.session_manager or not sid:
+            return
+        # 禁用的会话不持久化新记忆
+        session = self.session_manager.get_session(sid)
+        if session is not None and not session.enabled:
+            return
+
+        user_content = persist_content or ""
+        asst_content = assistant_reply or ""
+
+        if user_content and asst_content:
+            self.session_manager.append_memory(
+                sid,
+                {"role": "user", "content": user_content},
+                {"role": "assistant", "content": asst_content},
+            )
 
 
 
