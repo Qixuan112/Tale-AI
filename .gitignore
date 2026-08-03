@@ -105,6 +105,12 @@ CLAUDE.md
 docs/*
 !docs/README.zh.md
 !docs/config-guide.md
+# MkDocs documentation (public)
+!docs/index.md
+!docs/getting-started/
+!docs/architecture/
+!docs/development/
+!docs/api/
 
 # ──────────────────────────────────────────────
 # Project Specific - TODO
