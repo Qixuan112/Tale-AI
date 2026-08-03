@@ -268,3 +268,138 @@ class TestHistorySaveStage:
 
         # Should not raise, just log error
         await stage.process(ctx)
+
+    @pytest.mark.asyncio
+    async def test_notify_file_failure_to_context_buffer(self, mock_processed):
+        """Should inject file failure notice into context buffer in non-persistence mode"""
+        from core.pipeline.stages.history_save import HistorySaveStage
+
+        chat_context_buffer = {}
+        stage = HistorySaveStage(
+            chat_llm=None,
+            session_manager=None,
+            bridge=None,
+            chat_context_buffer=chat_context_buffer
+        )
+
+        ctx = PipelineContext(processed=mock_processed)
+        ctx.failed_files = ["file1.txt", "file2.pdf"]
+        ctx.sid = "qq:dm:user123"
+
+        with patch('core.pipeline.stages.history_save.config_loader') as mock_config:
+            mock_config.bot.bot.persistence_enabled = False
+            await stage.process(ctx)
+
+        # Should have injected notice into buffer
+        key = mock_processed.sender_id
+        assert key in chat_context_buffer
+        entries = chat_context_buffer[key]
+        assert len(entries) == 1
+        assert "系统通知" in entries[0]["text"]
+        assert "file1.txt" in entries[0]["text"]
+        assert "file2.pdf" in entries[0]["text"]
+        assert entries[0]["sender"] == "系统"
+
+    @pytest.mark.asyncio
+    async def test_notify_file_failure_to_session_manager(self, mock_session_manager, mock_processed):
+        """Should inject file failure notice into SessionManager in persistence mode"""
+        from core.pipeline.stages.history_save import HistorySaveStage
+
+        stage = HistorySaveStage(
+            chat_llm=None,
+            session_manager=mock_session_manager,
+            bridge=None
+        )
+
+        ctx = PipelineContext(processed=mock_processed)
+        ctx.failed_files = ["file1.txt", "file2.pdf", "file3.doc"]
+        ctx.sid = "qq:dm:user123"
+
+        with patch('core.pipeline.stages.history_save.config_loader') as mock_config:
+            mock_config.bot.bot.persistence_enabled = True
+            await stage.process(ctx)
+
+        # Should have called append_memory with file failure notice
+        mock_session_manager.append_memory.assert_called_once()
+        call_args = mock_session_manager.append_memory.call_args
+        assert call_args[0][0] == "qq:dm:user123"
+        user_msg = call_args[0][1]
+        assistant_msg = call_args[0][2]
+
+        assert "系统通知" in user_msg["content"]
+        assert "file1.txt" in user_msg["content"]
+        assert "file2.pdf" in user_msg["content"]
+        assert user_msg["role"] == "user"
+        assert assistant_msg["role"] == "assistant"
+        assert "已被记录" in assistant_msg["content"]
+
+    @pytest.mark.asyncio
+    async def test_notify_file_failure_truncates_long_list(self, mock_session_manager, mock_processed):
+        """Should truncate file list to first 5 files"""
+        from core.pipeline.stages.history_save import HistorySaveStage
+
+        stage = HistorySaveStage(
+            chat_llm=None,
+            session_manager=mock_session_manager,
+            bridge=None
+        )
+
+        ctx = PipelineContext(processed=mock_processed)
+        ctx.failed_files = ["file1.txt", "file2.pdf", "file3.doc", "file4.zip", "file5.jpg", "file6.png", "file7.mp4"]
+        ctx.sid = "qq:dm:user123"
+
+        with patch('core.pipeline.stages.history_save.config_loader') as mock_config:
+            mock_config.bot.bot.persistence_enabled = True
+            await stage.process(ctx)
+
+        call_args = mock_session_manager.append_memory.call_args
+        user_msg = call_args[0][1]
+
+        # Should only include first 5 files
+        assert "file1.txt" in user_msg["content"]
+        assert "file5.jpg" in user_msg["content"]
+        assert "file6.png" not in user_msg["content"]
+        assert "file7.mp4" not in user_msg["content"]
+
+    @pytest.mark.asyncio
+    async def test_notify_file_failure_skips_when_no_failures(self, mock_session_manager, mock_processed):
+        """Should skip notification when no files failed"""
+        from core.pipeline.stages.history_save import HistorySaveStage
+
+        stage = HistorySaveStage(
+            chat_llm=None,
+            session_manager=mock_session_manager,
+            bridge=None
+        )
+
+        ctx = PipelineContext(processed=mock_processed)
+        ctx.failed_files = []
+        ctx.sid = "qq:dm:user123"
+
+        with patch('core.pipeline.stages.history_save.config_loader') as mock_config:
+            mock_config.bot.bot.persistence_enabled = True
+            await stage.process(ctx)
+
+        # Should not have called append_memory
+        mock_session_manager.append_memory.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_notify_file_failure_handles_errors_gracefully(self, mock_session_manager, mock_processed):
+        """Should not crash if notification injection fails"""
+        from core.pipeline.stages.history_save import HistorySaveStage
+
+        mock_session_manager.append_memory.side_effect = RuntimeError("Database error")
+        stage = HistorySaveStage(
+            chat_llm=None,
+            session_manager=mock_session_manager,
+            bridge=None
+        )
+
+        ctx = PipelineContext(processed=mock_processed)
+        ctx.failed_files = ["file1.txt"]
+        ctx.sid = "qq:dm:user123"
+
+        with patch('core.pipeline.stages.history_save.config_loader') as mock_config:
+            mock_config.bot.bot.persistence_enabled = True
+            # Should not raise, just log error
+            await stage.process(ctx)
