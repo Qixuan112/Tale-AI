@@ -60,16 +60,20 @@ class AgentContext:
         """Assemble all sections into a single system prompt string.
 
         When *cache_optimize* is True (default), cacheable sections are placed first
-        in their configured order, then dynamic sections. When False, sections are
-        sorted purely by their ``order`` field with no grouping.
+        in their configured order, then non-dynamic sections. Dynamic sections are
+        excluded (they should be injected into user messages via get_dynamic_reminder).
+        When False, sections are sorted purely by their ``order`` field with no grouping.
         """
+        # Filter out dynamic sections (they go in user message)
+        static_sections = [s for s in self._sections.values() if not getattr(s, 'dynamic', False)]
+
         if cache_optimize:
             ordered = sorted(
-                self._sections.values(),
+                static_sections,
                 key=lambda s: (0 if s.cacheable else 1, s.order),
             )
         else:
-            ordered = self.sections
+            ordered = sorted(static_sections, key=lambda s: s.order)
 
         return "\n".join(s.render() for s in ordered if s.render())
 
@@ -79,18 +83,24 @@ class AgentContext:
         The caller decides message placement — e.g. cacheable_prefix as a
         standalone system message, dynamic_suffix as another system message
         or prepended to the first user message.
+
+        Note: Sections marked with dynamic=True are excluded entirely and should
+        be injected via get_dynamic_reminder() into user messages.
         """
+        # Filter out dynamic sections (they go in user message)
+        non_dynamic = [s for s in self._sections.values() if not getattr(s, 'dynamic', False)]
+
         cacheable = sorted(
-            [s for s in self._sections.values() if s.cacheable],
+            [s for s in non_dynamic if s.cacheable],
             key=lambda s: s.order,
         )
-        dynamic = sorted(
-            [s for s in self._sections.values() if not s.cacheable],
+        non_cacheable = sorted(
+            [s for s in non_dynamic if not s.cacheable],
             key=lambda s: s.order,
         )
 
         cacheable_prefix = "\n".join(s.render() for s in cacheable if s.render())
-        dynamic_suffix = "\n".join(s.render() for s in dynamic if s.render())
+        dynamic_suffix = "\n".join(s.render() for s in non_cacheable if s.render())
 
         metadata = [
             {
@@ -131,6 +141,26 @@ class AgentContext:
 
         # Default: single message (backward compatible)
         return [{"role": "system", "content": self.build()}]
+
+    def get_dynamic_reminder(self) -> str:
+        """Extract dynamic sections for injection into user message.
+
+        Returns a <system_reminder> block containing all dynamic sections,
+        or empty string if no dynamic sections exist.
+        """
+        dynamic_sections = sorted(
+            [s for s in self._sections.values() if getattr(s, 'dynamic', False)],
+            key=lambda s: s.order,
+        )
+
+        if not dynamic_sections:
+            return ""
+
+        dynamic_content = "\n".join(s.render() for s in dynamic_sections if s.render())
+        if not dynamic_content:
+            return ""
+
+        return f"<system_reminder>\n{dynamic_content}\n</system_reminder>"
 
     def get_system_message(self) -> Dict[str, str]:
         """Convenience: returns a single ``{"role": "system", "content": ...}`` dict."""
