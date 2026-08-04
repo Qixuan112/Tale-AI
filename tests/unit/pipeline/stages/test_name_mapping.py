@@ -46,7 +46,7 @@ class TestNameMappingStage:
         # Check mapping was stored for private chat
         name_map = name_cache.get("_private", {})
         assert "TestUser" in name_map
-        assert name_map["TestUser"].startswith("****")  # Sanitized ID
+        assert name_map["TestUser"].startswith("usr_")  # Sanitized ID
 
     @pytest.mark.asyncio
     async def test_process_group_message_mapping(self, stage, name_cache, mock_processed):
@@ -72,7 +72,7 @@ class TestNameMappingStage:
         masked_id = name_map["TestUser"]
         # ID should be masked
         assert masked_id != "12345678"
-        assert "****" in masked_id
+        assert "usr_" in masked_id
 
     @pytest.mark.asyncio
     async def test_process_updates_existing_mapping(self, stage, name_cache, mock_processed):

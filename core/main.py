@@ -153,6 +153,8 @@ class TaleCore:
         self._session_semaphore = asyncio.Semaphore(3)
         # 缓存 ChatLLM 是否支持无状态调用（在 initialize 中检测）
         self._chatllm_supports_stateless: bool = False
+        # ContextBuilder 用于构建 LLM 上下文（供 Pipeline 使用）
+        self.context_builder: Optional[Any] = None
 
     def initialize(self):
         """初始化核心组件（幂等，可多次调用）"""
@@ -185,6 +187,25 @@ class TaleCore:
         self.chat = self._init_chatllm()
         self.chat_agent = self._init_chat_agent()
 
+        # 初始化 ContextBuilder（供 ContextBuildStage 使用）
+        from core.chat.context_builder import (
+            ContextBuilder, MetadataBuilder,
+            MediaRecognizer, HistoryProvider
+        )
+        metadata_builder = MetadataBuilder(id_sanitizer=self._id_sanitizer)
+        media_recognizer = MediaRecognizer(
+            vlm=get_vlm_llm(),
+            timeout=3.0,
+            executor=self._llm_executor,
+            download_func=self._download_ctx_image
+        )
+        history_provider = HistoryProvider(session_manager=self.session_manager)
+        self.context_builder = ContextBuilder(
+            metadata_builder=metadata_builder,
+            media_recognizer=media_recognizer,
+            history_provider=history_provider
+        )
+
         # 更新 Semaphore（从配置读取最大并发数）
         max_concurrent = getattr(config_loader.bot.bot, 'max_concurrent_llm', 3)
         self._session_semaphore = asyncio.Semaphore(max_concurrent)
@@ -211,6 +232,9 @@ class TaleCore:
 
         # 初始化插件管理器
         self._init_plugin_manager()
+
+        # 初始化 Pipeline（StandardPipeline + 9 个 Stage）
+        self._init_pipeline()
 
         logger.info("核心组件初始化完成")
 
@@ -400,6 +424,10 @@ class TaleCore:
         self._init_message_processor()
         logger.info("MessageProcessor 已热重载")
 
+        # 重新初始化 Pipeline（修复 Stage 缓存旧 LLM 引用的问题）
+        self._init_pipeline()
+        logger.info("Pipeline 已热重载（Stage 引用已更新）")
+
     @staticmethod
     def _get_planllm_ref():
         """安全获取 PlanLLM 引用（不存在时返回 None，供插件提示词段注入）"""
@@ -474,6 +502,70 @@ class TaleCore:
             )
         except Exception as e:
             logger.warning("插件管理器初始化失败（不影响核心运行）: %s", e)
+
+    def _init_pipeline(self):
+        """初始化 StandardPipeline + 9 个 Stage"""
+        from core.pipeline import StandardPipeline
+        from core.pipeline.stages.build_user_input import BuildUserInputStage
+        from core.pipeline.stages.name_mapping import NameMappingStage
+        from core.pipeline.stages.session_init import SessionInitStage
+        from core.pipeline.stages.context_build import ContextBuildStage
+        from core.pipeline.stages.llm_call import LLMCallStage
+        from core.pipeline.stages.message_parse import MessageParseStage
+        from core.pipeline.stages.tool_execute import ToolExecuteStage
+        from core.pipeline.stages.reply_deliver import ReplyDeliverStage
+        from core.pipeline.stages.history_save import HistorySaveStage
+
+        self.pipeline = StandardPipeline(bus=bus)
+
+        # 注册 9 个 Stage（按 order 顺序）
+        self.pipeline.add_stage(BuildUserInputStage())
+        self.pipeline.add_stage(NameMappingStage(
+            name_to_id_cache=self._name_to_id,
+            id_sanitizer=self._id_sanitizer
+        ))
+        self.pipeline.add_stage(SessionInitStage(
+            session_manager=self.session_manager,
+            chat_llm=self.chat,
+            bridge=self.bridge
+        ))
+        self.pipeline.add_stage(ContextBuildStage(
+            context_builder=self.context_builder,
+            context_buffer=self._chat_context_buffer
+        ))
+        self.pipeline.add_stage(LLMCallStage(
+            chat_llm=self.chat,
+            chat_agent=self.chat_agent,
+            session_manager=self.session_manager,
+            llm_executor=self._llm_executor,
+            chat_snapshots=self._chat_snapshots
+        ))
+        self.pipeline.add_stage(MessageParseStage())
+        self.pipeline.add_stage(ToolExecuteStage(
+            tool_llm=self.toolllm,
+            plan_llm=self._get_planllm_ref(),
+            chat_llm=self.chat,
+            chat_agent=self.chat_agent,
+            session_manager=self.session_manager,
+            llm_executor=self._llm_executor,
+            chat_snapshots=self._chat_snapshots
+        ))
+        self.pipeline.add_stage(ReplyDeliverStage(
+            adapter_bridge=self.adapter_bridge,
+            bridge=self.bridge,
+            name_to_id_cache=self._name_to_id,
+            id_sanitizer=self._id_sanitizer
+        ))
+        self.pipeline.add_stage(HistorySaveStage(
+            session_manager=self.session_manager,
+            chat_llm=self.chat,
+            chat_agent=self.chat_agent,
+            bridge=self.bridge,
+            chat_snapshots=self._chat_snapshots,
+            chat_context_buffer=self._chat_context_buffer
+        ))
+
+        logger.info("Pipeline 初始化完成（9 个 Stage）")
 
     def _handle_platform_message(self, event: PlatformEvent):
         """处理平台消息事件（调试用）"""
@@ -583,7 +675,14 @@ class TaleCore:
 
         # 4. 根据决策处理
         if processed.decision == ResponseDecision.RESPOND:
-            await self._handle_respond_message(processed, adapter_instance=adapter_instance)
+            # 根据 Feature Flag 选择处理路径
+            use_pipeline = config_loader.bot.bot.use_pipeline
+            if use_pipeline:
+                logger.info("[Pipeline] 使用 StandardPipeline 处理消息")
+                await self._handle_respond_message_v2(processed, adapter_instance=adapter_instance)
+            else:
+                logger.info("[Legacy] 使用旧版流程处理消息")
+                await self._handle_respond_message(processed, adapter_instance=adapter_instance)
         elif processed.decision == ResponseDecision.SILENT:
             logger.debug("静默 %s: %s", processed.reason, processed.sender_name)
         else:
@@ -870,12 +969,16 @@ class TaleCore:
         return "\n".join(lines)
 
     async def _handle_respond_message(self, processed: ProcessedMessage, adapter_instance: str = None):
-        """处理需要响应的消息
+        """处理需要响应的消息（旧版流程）
 
         Args:
             processed: 处理后的消息
             adapter_instance: 来源适配器实例名，用于同类多实例精确路由
         """
+        # 构造会话ID用于日志
+        platform_name = processed.platform.value if processed.platform else "unknown"
+        sid_for_log = f"{platform_name}:{'gm' if processed.group_id else 'dm'}:{processed.group_id or processed.sender_id}"
+        logger.info("[Legacy Path] 处理消息: sid=%s, sender=%s", sid_for_log, processed.sender_name)
         # ================================================================
         # 格式化用户消息（结构化格式）
         # ================================================================
@@ -1180,6 +1283,67 @@ class TaleCore:
                 is_group=is_group
             )
         # session_lock 和 semaphore 由 async with 自动释放
+
+    @staticmethod
+    def _compute_session_info(processed: ProcessedMessage) -> tuple:
+        """计算会话信息（sid, is_group, target_id, platform_name）
+
+        从 ProcessedMessage 提取会话标识所需的各项信息，避免重复计算逻辑。
+
+        Args:
+            processed: ProcessedMessage 对象
+
+        Returns:
+            (sid, is_group, target_id, platform_name) 元组
+        """
+        is_group = processed.group_id is not None
+        target_id = processed.group_id if processed.group_id else processed.sender_id
+        stype = "gm" if is_group else "dm"
+        platform_name = processed.platform.value if processed.platform else "unknown"
+        sid = f"{platform_name}:{stype}:{target_id}"
+        return sid, is_group, target_id, platform_name
+
+    async def _handle_respond_message_v2(self, processed, adapter_instance=None):
+        """处理需要响应的消息（Pipeline 版本，带并发控制）
+
+        修复 P0-1: 添加 Semaphore + per-session lock 并发控制
+        """
+        from core.pipeline import PipelineContext
+
+        # 1. 计算会话信息（使用提取的静态方法）
+        sid, is_group, target_id, platform_name = self._compute_session_info(processed)
+        if adapter_instance:
+            platform_name = adapter_instance
+
+        logger.info("[Pipeline Path] 处理消息: sid=%s, sender=%s", sid, processed.sender_name)
+
+        # 2. 构造 PipelineContext
+        ctx = PipelineContext(
+            processed=processed,
+            adapter_instance=adapter_instance,
+            sid=sid,
+            is_group=is_group,
+            target_id=target_id,
+            platform_name=platform_name
+        )
+
+        # 3. 添加并发控制（与原实现一致）
+        try:
+            async with self._session_semaphore:  # 全局限流
+                session_lock = await self._get_session_lock(sid)
+                async with session_lock:  # per-session 锁
+                    await self.pipeline.execute(ctx)
+        except Exception as e:
+            logger.error("Pipeline 处理消息失败: %s", e, exc_info=True)
+            # 发送错误回显给用户
+            error_msg = f"[系统] 处理消息时出了点状况：{e}"
+            await self._send_reply(
+                adapter_instance or processed.platform.value,
+                target_id,
+                error_msg,
+                reply_to=processed.message_id,
+                is_group=is_group
+            )
 
     async def _send_cross_session(self, from_sid: str, to_sid: str, text: str):
         """主动推送跨会话消息

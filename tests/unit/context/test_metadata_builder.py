@@ -39,17 +39,6 @@ def basic_processed_message():
         sender_name="TestUser",
         text="Hello",
         message_id="msg_001",
-        group_id=None,
-        group_name=None,
-        at_targets=[],
-        reply_to=None,
-        reply_text=None,
-        images=[],
-        voices=[],
-        faces=[],
-        stickers=[],
-        videos=[],
-        files=[],
         reason="test"
     )
 
@@ -81,6 +70,7 @@ def test_build_message_metadata_group(metadata_builder, basic_processed_message)
     """测试群聊消息元数据"""
     basic_processed_message.group_id = "67890"
     basic_processed_message.group_name = "TestGroup"
+    basic_processed_message.is_group_message = True
 
     result = metadata_builder._build_message_metadata(basic_processed_message)
 
@@ -93,6 +83,7 @@ def test_build_message_metadata_group_no_name(metadata_builder, basic_processed_
     """测试无群名的群聊元数据"""
     basic_processed_message.group_id = "67890"
     basic_processed_message.group_name = None
+    basic_processed_message.is_group_message = True
 
     result = metadata_builder._build_message_metadata(basic_processed_message)
 
@@ -112,6 +103,7 @@ def test_build_environment_info_private(metadata_builder, basic_processed_messag
 def test_build_environment_info_group(metadata_builder, basic_processed_message):
     """测试群聊环境信息"""
     basic_processed_message.group_id = "67890"
+    basic_processed_message.is_group_message = True
 
     result = metadata_builder._build_environment_info(basic_processed_message, "qq")
 
