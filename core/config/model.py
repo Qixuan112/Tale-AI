@@ -76,6 +76,7 @@ class BotBehaviorConfig:
     per_step_timeout: float = 60.0  # AgentExecutor 每步超时（秒）
     persistence_enabled: bool = True  # 会话历史持久化开关，false 时回退到内存 buffer
     max_concurrent_llm: int = 3  # 最大并发LLM调用数
+    use_pipeline: bool = False  # 是否使用 StandardPipeline（阶段4重构），默认关闭灰度
 
 
 @dataclass

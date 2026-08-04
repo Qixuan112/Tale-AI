@@ -675,7 +675,14 @@ class TaleCore:
 
         # 4. 根据决策处理
         if processed.decision == ResponseDecision.RESPOND:
-            await self._handle_respond_message(processed, adapter_instance=adapter_instance)
+            # 根据 Feature Flag 选择处理路径
+            use_pipeline = config_loader.bot.bot.use_pipeline
+            if use_pipeline:
+                logger.info("[Pipeline] 使用 StandardPipeline 处理消息")
+                await self._handle_respond_message_v2(processed, adapter_instance=adapter_instance)
+            else:
+                logger.info("[Legacy] 使用旧版流程处理消息")
+                await self._handle_respond_message(processed, adapter_instance=adapter_instance)
         elif processed.decision == ResponseDecision.SILENT:
             logger.debug("静默 %s: %s", processed.reason, processed.sender_name)
         else:
@@ -962,12 +969,13 @@ class TaleCore:
         return "\n".join(lines)
 
     async def _handle_respond_message(self, processed: ProcessedMessage, adapter_instance: str = None):
-        """处理需要响应的消息
+        """处理需要响应的消息（旧版流程）
 
         Args:
             processed: 处理后的消息
             adapter_instance: 来源适配器实例名，用于同类多实例精确路由
         """
+        logger.info("[Legacy Path] 处理消息: sid=%s, sender=%s", processed.sid, processed.sender_name)
         # ================================================================
         # 格式化用户消息（结构化格式）
         # ================================================================
@@ -1303,6 +1311,8 @@ class TaleCore:
         sid, is_group, target_id, platform_name = self._compute_session_info(processed)
         if adapter_instance:
             platform_name = adapter_instance
+
+        logger.info("[Pipeline Path] 处理消息: sid=%s, sender=%s", sid, processed.sender_name)
 
         # 2. 构造 PipelineContext
         ctx = PipelineContext(
