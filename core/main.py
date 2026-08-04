@@ -975,7 +975,10 @@ class TaleCore:
             processed: 处理后的消息
             adapter_instance: 来源适配器实例名，用于同类多实例精确路由
         """
-        logger.info("[Legacy Path] 处理消息: sid=%s, sender=%s", processed.sid, processed.sender_name)
+        # 构造会话ID用于日志
+        platform_name = processed.platform.value if processed.platform else "unknown"
+        sid_for_log = f"{platform_name}:{'gm' if processed.group_id else 'dm'}:{processed.group_id or processed.sender_id}"
+        logger.info("[Legacy Path] 处理消息: sid=%s, sender=%s", sid_for_log, processed.sender_name)
         # ================================================================
         # 格式化用户消息（结构化格式）
         # ================================================================

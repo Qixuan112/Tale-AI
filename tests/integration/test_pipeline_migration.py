@@ -79,7 +79,7 @@ class TestPipelineMigration:
             core._store_to_context_buffer = Mock()
 
             # Trigger message processing
-            await core._process_message_event(event, adapter_instance="qq")
+            await core._process_message_event(event)
 
             # Verify legacy path was called
             assert legacy_called, "Legacy path should be called when use_pipeline=False"
@@ -120,7 +120,7 @@ class TestPipelineMigration:
             core._store_to_context_buffer = Mock()
 
             # Trigger message processing
-            await core._process_message_event(event, adapter_instance="qq")
+            await core._process_message_event(event)
 
             # Verify pipeline path was called
             assert pipeline_called, "Pipeline path should be called when use_pipeline=True"
@@ -147,7 +147,7 @@ class TestPipelineMigration:
             core.message_processor.process.return_value = processed
             core._store_to_context_buffer = Mock()
 
-            await core._process_message_event(event, adapter_instance="qq")
+            await core._process_message_event(event)
 
             # Check for legacy log
             assert any("[Legacy]" in record.message for record in caplog.records), \
@@ -166,7 +166,7 @@ class TestPipelineMigration:
             core.message_processor.process.return_value = processed
             core._store_to_context_buffer = Mock()
 
-            await core._process_message_event(event, adapter_instance="qq")
+            await core._process_message_event(event)
 
             # Check for pipeline log
             assert any("[Pipeline]" in record.message for record in caplog.records), \
