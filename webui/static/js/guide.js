@@ -1240,16 +1240,23 @@
         // ============================================
         _startIdleLoop: function () {
             var self = this;
+            var lastTipTime = 0;
+            var cooldownPeriod = 30 * 60 * 1000;  // 30 分钟冷却时间
             this._idleInterval = setInterval(function () {
                 if (self._onboardingActive) return;
                 if (self.overlay && self.overlay.classList.contains('active')) return;
-                if (Math.random() < 0.25) {
+                // 检查冷却时间
+                var now = Date.now();
+                if (now - lastTipTime < cooldownPeriod) return;
+                // 10% 概率触发（原来是 25%）
+                if (Math.random() < 0.10) {
                     var hour = new Date().getHours();
                     // 晚上 23:00 ~ 早上 6:00 用夜间关怀
                     var pool = (hour >= 23 || hour < 6) ? MESSAGES.night_tips : MESSAGES.idle_tips;
                     self.showVNDialog(self._pick(pool));
+                    lastTipTime = now;  // 更新最后提示时间
                 }
-            }, 90000);
+            }, 300000);  // 5 分钟检查一次（原来是 90 秒）
         },
 
         // ---- 跳过设置（不标记完成） ----
