@@ -1,0 +1,2068 @@
+
+<!doctype html>
+<html lang="zh" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="多智能体 AI 对话系统 - 自主规划日程的 AI 角色">
+      
+      
+        <meta name="author" content="Qixuan112">
+      
+      
+        <link rel="canonical" href="https://qixuan112.github.io/Tale-AI/architecture/overview/">
+      
+      
+        <link rel="prev" href="../../getting-started/faq/">
+      
+      
+        <link rel="next" href="../pipeline/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>总览 - Tale-AI Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#_1" class="md-skip">
+          跳转至
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="页眉">
+    <a href="../.." title="Tale-AI Documentation" class="md-header__button md-logo" aria-label="Tale-AI Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Tale-AI Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              总览
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="切换至深色模式"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="切换至深色模式" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="切换至浅色模式"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="切换至浅色模式" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="搜索" placeholder="搜索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="查找">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="分享" aria-label="分享" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="清空当前内容" aria-label="清空当前内容" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            正在初始化搜索引擎
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Qixuan112/Tale-AI" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Qixuan112/Tale-AI
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="标签" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  首页
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+  快速开始
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+  架构设计
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../development/plugin-development/" class="md-tabs__link">
+          
+  
+  
+  开发指南
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../api/pipeline/" class="md-tabs__link">
+          
+  
+  
+  API 参考
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="导航栏" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Tale-AI Documentation" class="md-nav__button md-logo" aria-label="Tale-AI Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Tale-AI Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Qixuan112/Tale-AI" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Qixuan112/Tale-AI
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    首页
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    快速开始
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    快速开始
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    安装部署
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/config-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    配置指南
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    常见问题
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    架构设计
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    架构设计
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    总览
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    总览
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        系统架构图
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        核心组件
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="核心组件">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-adapters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. 适配器层（Adapters）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-eventbus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. 事件总线（EventBus）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-messageprocessor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. 消息处理器（MessageProcessor）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Pipeline 系统
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 多智能体系统
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. 多智能体系统">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#chatllm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ChatLLM
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#planllm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PlanLLM
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#toolllm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ToolLLM
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. 插件系统
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. 上下文管理（Context）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. 配置系统
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#9-webui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. WebUI 管理面板
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        数据流示例
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="数据流示例">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        完整消息流
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        目录结构
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        技术选型
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        设计原则
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        下一步
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pipeline 系统
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../multi-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    多智能体架构
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../event-system/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    事件系统
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adapters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    适配器架构
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    开发指南
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    开发指南
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/plugin-development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    插件开发
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/adapter-development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    适配器开发
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    贡献指南
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API 参考
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API 参考
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pipeline API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/event-bus/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Event Bus API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/plugins/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugin API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        系统架构图
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        核心组件
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="核心组件">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-adapters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. 适配器层（Adapters）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-eventbus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. 事件总线（EventBus）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-messageprocessor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. 消息处理器（MessageProcessor）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Pipeline 系统
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 多智能体系统
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. 多智能体系统">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#chatllm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ChatLLM
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#planllm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PlanLLM
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#toolllm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ToolLLM
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. 插件系统
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. 上下文管理（Context）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. 配置系统
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#9-webui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. WebUI 管理面板
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        数据流示例
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="数据流示例">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        完整消息流
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        目录结构
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        技术选型
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        设计原则
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        下一步
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="_1">架构总览<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
+<h2 id="_2">系统架构图<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>┌─────────────────────────────────────────────────────────────────┐
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>│                          用户交互层                              │
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>│  QQ  │  WeChat  │  WebSocket  │  Console  │  WebUI (Flask)     │
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>└────────────────────┬────────────────────────────────────────────┘
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>                     │
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>            ┌────────▼────────┐
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>            │  Platform       │
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>            │  Adapters       │ ← 热插拔适配器
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>            └────────┬────────┘
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>                     │
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>            ┌────────▼────────┐
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>            │  EventBus       │ ← 事件总线
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>            │  (Pub/Sub)      │
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>            └────────┬────────┘
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>                     │
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>            ┌────────▼────────┐
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>            │ Message         │ ← 权限/唤醒词检查
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>            │ Processor       │
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>            └────────┬────────┘
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>                     │
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>            ┌────────▼────────┐
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>            │  Pipeline       │ ← 消息处理管道
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>            │  (8 Stages)     │
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>            └─────┬───┬───┬───┘
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>                  │   │   │
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>        ┌─────────┘   │   └─────────┐
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>        │             │             │
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>   ┌────▼────┐   ┌───▼────┐   ┌───▼────┐
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>   │ ChatLLM │   │PlanLLM │   │ToolLLM │ ← 三智能体
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>   └────┬────┘   └───┬────┘   └───┬────┘
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>        │            │            │
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>   ┌────▼────────────▼────────────▼────┐
+<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>   │      Tool System / Plugin System  │ ← 工具调用 &amp; 插件
+<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>   └────────────────┬──────────────────┘
+<a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>                    │
+<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>            ┌───────▼────────┐
+<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>            │  Data Layer    │
+<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>            │  (YAML/JSON)   │
+<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>            └────────────────┘
+<a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>         Config / Plans / Sessions
+</code></pre></div>
+<h2 id="_3">核心组件<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<h3 id="1-adapters">1. 适配器层（Adapters）<a class="headerlink" href="#1-adapters" title="Permanent link">&para;</a></h3>
+<p><strong>职责</strong>：连接不同平台，将平台消息转换为统一的 <code>PlatformEvent</code>。</p>
+<p><strong>支持平台</strong>：
+- <strong>QQ</strong> — NapCat/OneBot 11 协议（WebSocket）
+- <strong>WeChat PC</strong> — Windows UIA 自动化
+- <strong>WebSocket</strong> — 自定义协议
+- <strong>Console</strong> — 命令行交互</p>
+<p><strong>核心类</strong>：
+- <code>BaseAdapter</code> (<a href="../../core/adapter/base.py">core/adapter/base.py</a>) — 适配器抽象基类
+- <code>PlatformEvent</code> (<a href="../../core/adapter/event.py">core/adapter/event.py</a>) — 统一事件格式
+- <code>AdapterManager</code> (<a href="../../core/adapter/manager.py">core/adapter/manager.py</a>) — 适配器生命周期管理</p>
+<p><strong>特点</strong>：
+- 热插拔（运行时启动/停止）
+- 统一事件格式
+- 独立配置（<code>platforms.yaml</code>）</p>
+<p>详见 <a href="../adapters/">适配器架构</a>。</p>
+<hr />
+<h3 id="2-eventbus">2. 事件总线（EventBus）<a class="headerlink" href="#2-eventbus" title="Permanent link">&para;</a></h3>
+<p><strong>职责</strong>：进程内发布/订阅系统，解耦各组件。</p>
+<p><strong>核心类</strong>：
+- <code>EventBus</code> (<a href="../../core/bus/bus.py">core/bus/bus.py</a>) — 单例事件总线</p>
+<p><strong>主要事件</strong>：
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># 平台消息</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">bus</span><span class="o">.</span><span class="n">emit</span><span class="p">(</span><span class="s2">&quot;platform_message&quot;</span><span class="p">,</span> <span class="n">event</span><span class="p">)</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># 管道阶段</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">bus</span><span class="o">.</span><span class="n">emit</span><span class="p">(</span><span class="s2">&quot;pipeline_stage_before_llm_call&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="n">bus</span><span class="o">.</span><span class="n">emit</span><span class="p">(</span><span class="s2">&quot;pipeline_stage_after_llm_call&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="p">)</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="c1"># 配置变更</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="n">bus</span><span class="o">.</span><span class="n">emit</span><span class="p">(</span><span class="s2">&quot;config_reloaded&quot;</span><span class="p">,</span> <span class="n">config_type</span><span class="p">)</span>
+</code></pre></div></p>
+<p><strong>特性</strong>：
+- 支持同步/异步监听器
+- 优先级排序
+- 一次性监听（<code>once</code>/<code>aonce</code>）</p>
+<p>详见 <a href="../event-system/">事件系统</a>。</p>
+<hr />
+<h3 id="3-messageprocessor">3. 消息处理器（MessageProcessor）<a class="headerlink" href="#3-messageprocessor" title="Permanent link">&para;</a></h3>
+<p><strong>职责</strong>：权限检查、唤醒词检测、路由决策。</p>
+<p><strong>核心类</strong>：
+- <code>MessageProcessor</code> (<a href="../../core/adapter/message_processor.py">core/adapter/message_processor.py</a>)</p>
+<p><strong>处理流程</strong>：
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>平台消息 → 黑白名单检查 → 唤醒词检测 → 路由决策
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>                                            ↓
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>                            RESPOND / SILENT / IGNORE
+</code></pre></div></p>
+<p><strong>路由类型</strong>：
+- <code>RESPOND</code> — 响应消息（进入 Pipeline）
+- <code>SILENT</code> — 静默记录（不回复，但记录上下文）
+- <code>IGNORE</code> — 完全忽略</p>
+<hr />
+<h3 id="4-pipeline">4. Pipeline 系统<a class="headerlink" href="#4-pipeline" title="Permanent link">&para;</a></h3>
+<p><strong>职责</strong>：标准化消息处理流程，模块化各处理阶段。</p>
+<p><strong>8 个标准 Stage</strong>：
+1. <strong>BuildUserInput</strong> (order=10) — 提取用户输入
+2. <strong>NameMapping</strong> (order=20) — @mention 名称映射
+3. <strong>SessionInit</strong> (order=30) — 会话初始化
+4. <strong>ContextBuild</strong> (order=40) — 构建 LLM 上下文
+5. <strong>LLMCall</strong> (order=50) — 调用 ChatLLM
+6. <strong>MessageParse</strong> (order=60) — 解析 XML 标签
+7. <strong>ToolExecute</strong> (order=70) — 执行工具调用
+8. <strong>ReplyDeliver</strong> (order=80) — 发送回复</p>
+<p><strong>核心类</strong>：
+- <code>PipelineContext</code> (<a href="../../core/pipeline/context.py">core/pipeline/context.py</a>) — 管道上下文
+- <code>PipelineStage</code> (<a href="../../core/pipeline/stage.py">core/pipeline/stage.py</a>) — 阶段抽象
+- <code>StandardPipeline</code> (<a href="../../core/pipeline/standard.py">core/pipeline/standard.py</a>) — 标准管道实现</p>
+<p><strong>特性</strong>：
+- 责任链模式
+- 错误恢复机制
+- 插件 hook 点
+- 性能监控</p>
+<p>详见 <a href="../pipeline/">Pipeline 系统</a>。</p>
+<hr />
+<h3 id="5">5. 多智能体系统<a class="headerlink" href="#5" title="Permanent link">&para;</a></h3>
+<p><strong>职责</strong>：三个专职 LLM 智能体协作完成任务。</p>
+<h4 id="chatllm">ChatLLM<a class="headerlink" href="#chatllm" title="Permanent link">&para;</a></h4>
+<p><strong>职责</strong>：主对话智能体，处理用户交互。</p>
+<p><strong>输出格式</strong>：
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">&lt;msg&gt;</span>我来帮你查一下天气<span class="nt">&lt;/msg&gt;</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">&lt;tool&gt;</span>weather_query<span class="nt">&lt;/tool&gt;</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nt">&lt;act&gt;</span>思考片刻<span class="nt">&lt;/act&gt;</span>
+</code></pre></div></p>
+<p><strong>核心类</strong>：
+- <code>ChatLLM</code> (<a href="../../core/llm/chatllm.py">core/llm/chatllm.py</a>)</p>
+<h4 id="planllm">PlanLLM<a class="headerlink" href="#planllm" title="Permanent link">&para;</a></h4>
+<p><strong>职责</strong>：生成 24 小时日程计划。</p>
+<p><strong>计划类型</strong>：
+- wake（起床）
+- meal（用餐）
+- work（工作）
+- study（学习）
+- rest（休息）
+- social（社交）
+- entertainment（娱乐）
+- exercise（运动）
+- sleep（睡觉）</p>
+<p><strong>核心类</strong>：
+- <code>PlanLLM</code> (<a href="../../core/llm/planllm.py">core/llm/planllm.py</a>)
+- <code>DailyPlan</code> (<a href="../../core/llm/diary_models.py">core/llm/diary_models.py</a>)</p>
+<h4 id="toolllm">ToolLLM<a class="headerlink" href="#toolllm" title="Permanent link">&para;</a></h4>
+<p><strong>职责</strong>：执行工具调用（OpenAI Function Calling）。</p>
+<p><strong>内置工具</strong>：
+- <code>browser_open</code> — 打开网页
+- <code>browser_search</code> — DuckDuckGo 搜索
+- <code>weather_query</code> — 天气查询
+- <code>calculator</code> — 计算器</p>
+<p><strong>核心类</strong>：
+- <code>ToolLLM</code> (<a href="../../core/llm/toolllm.py">core/llm/toolllm.py</a>)
+- <code>ToolRegistry</code> (<a href="../../core/tools/registry.py">core/tools/registry.py</a>)</p>
+<p>详见 <a href="../multi-agent/">多智能体架构</a>。</p>
+<hr />
+<h3 id="6">6. 插件系统<a class="headerlink" href="#6" title="Permanent link">&para;</a></h3>
+<p><strong>职责</strong>：扩展系统功能，无需修改核心代码。</p>
+<p><strong>6 个扩展点</strong>：
+1. <strong>ToolProvider</strong> — 注册自定义工具
+2. <strong>EventSubscriber</strong> — 订阅 EventBus 事件
+3. <strong>WebUIProvider</strong> — 添加 WebUI 页面/API
+4. <strong>XMLTagHandler</strong> — 处理自定义 XML 标签
+5. <strong>PromptSectionProvider</strong> — 注入 Prompt 片段
+6. <strong>PipelineStageProvider</strong> — 注入自定义 Pipeline Stage</p>
+<p><strong>插件结构</strong>：
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>plugins/my_plugin/
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>├── manifest.json    # 元数据 + 扩展点声明
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>└── plugin.py        # 实现代码
+</code></pre></div></p>
+<p><strong>核心类</strong>：
+- <code>PluginManager</code> (<a href="../../core/plugin/manager.py">core/plugin/manager.py</a>)</p>
+<p>详见 <a href="../../development/plugin-development/">插件开发指南</a>。</p>
+<hr />
+<h3 id="7-context">7. 上下文管理（Context）<a class="headerlink" href="#7-context" title="Permanent link">&para;</a></h3>
+<p><strong>职责</strong>：模块化 Prompt 构建，支持 Anthropic 风格的 Prompt Caching。</p>
+<p><strong>核心类</strong>：
+- <code>AgentContext</code> (<a href="../../core/llm/context/agent_context.py">core/llm/context/agent_context.py</a>) — 上下文管理器
+- <code>PromptSection</code> (<a href="../../core/llm/context/section.py">core/llm/context/section.py</a>) — Prompt 片段
+- <code>ContextConfig</code> (<a href="../../core/llm/context/config.py">core/llm/context/config.py</a>) — 缓存策略配置</p>
+<p><strong>缓存策略</strong>：
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># data/config/context.yaml</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nt">chat</span><span class="p">:</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span><span class="nt">cache_strategy</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">aggressive</span><span class="w">  </span><span class="c1"># aggressive / moderate / disabled</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span><span class="nt">cacheable_sections</span><span class="p">:</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">system_base</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">character_profile</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">tool_definitions</span>
+</code></pre></div></p>
+<p><strong>工作流程</strong>：
+1. 注册多个 <code>PromptSection</code>
+2. 按 <code>order</code> 排序
+3. 可缓存部分放前面
+4. 组装为最终 Prompt</p>
+<hr />
+<h3 id="8">8. 配置系统<a class="headerlink" href="#8" title="Permanent link">&para;</a></h3>
+<p><strong>职责</strong>：YAML 配置文件管理，支持热重载。</p>
+<p><strong>配置文件</strong>：
+- <code>services.yaml</code> — LLM API 配置
+- <code>platforms.yaml</code> — 适配器配置
+- <code>character.yaml</code> — 角色设定
+- <code>behavior.yaml</code> — 行为配置
+- <code>routing.yaml</code> — 模型路由
+- <code>context.yaml</code> — 上下文缓存策略（可选）</p>
+<p><strong>核心类</strong>：
+- <code>ConfigLoader</code> (<a href="../../core/config/provide.py">core/config/provide.py</a>)</p>
+<p><strong>热重载</strong>：
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">core.config.provide</span><span class="w"> </span><span class="kn">import</span> <span class="n">config_loader</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="c1"># 重新加载配置</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="n">config_loader</span><span class="o">.</span><span class="n">reload</span><span class="p">()</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="c1"># 发送重载事件</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="n">bus</span><span class="o">.</span><span class="n">emit</span><span class="p">(</span><span class="s2">&quot;config_reloaded&quot;</span><span class="p">,</span> <span class="s2">&quot;services&quot;</span><span class="p">)</span>
+</code></pre></div></p>
+<hr />
+<h3 id="9-webui">9. WebUI 管理面板<a class="headerlink" href="#9-webui" title="Permanent link">&para;</a></h3>
+<p><strong>职责</strong>：Web 界面管理、配置编辑、实时监控。</p>
+<p><strong>主要页面</strong>：
+- <strong>Dashboard</strong> — 系统状态总览
+- <strong>Chat</strong> — 聊天测试
+- <strong>Plan</strong> — 日程查看
+- <strong>Config</strong> — 配置编辑器
+- <strong>Adapters</strong> — 适配器管理
+- <strong>Tools</strong> — 工具中心
+- <strong>Logs</strong> — 日志查看器</p>
+<p><strong>技术栈</strong>：
+- Flask（后端）
+- Vanilla JS（前端）
+- WebSocket（实时通信）</p>
+<p><strong>认证</strong>：
+- 默认启用（首次运行生成 token）
+- Token 存储在 <code>data/config/webui_token</code>
+- 可在 <code>webui/app.py</code> 中关闭</p>
+<p><strong>引导系统</strong>：
+- Galgame 风格新手引导
+- 角色对话式配置流程
+- 角落悬浮 mascot</p>
+<hr />
+<h2 id="_4">数据流示例<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<h3 id="_5">完整消息流<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>1. 用户在 QQ 发送: &quot;@Bot 今天天气怎么样？&quot;
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>          ↓
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>2. QQ Adapter 接收 OneBot 事件
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>          ↓
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>3. 转换为 PlatformEvent
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>          ↓
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>4. 发送到 EventBus: &quot;platform_message&quot;
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>          ↓
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>5. MessageProcessor 检查权限 + 唤醒词 → RESPOND
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>          ↓
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>6. 进入 StandardPipeline
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>   ├─ BuildUserInput: 提取 &quot;今天天气怎么样？&quot;
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>   ├─ NameMapping: &quot;@Bot&quot; → &quot;Tali&quot;
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>   ├─ SessionInit: 加载会话历史
+<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>   ├─ ContextBuild: 构建 LLM 上下文
+<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>   ├─ LLMCall: ChatLLM 返回 &quot;&lt;msg&gt;让我查一下&lt;/msg&gt;&lt;tool&gt;weather_query&lt;/tool&gt;&quot;
+<a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>   ├─ MessageParse: 解析 XML
+<a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a>   ├─ ToolExecute: ToolLLM 调用天气工具 → &quot;北京今天晴，25°C&quot;
+<a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a>   └─ ReplyDeliver: 发送 &quot;让我查一下\n北京今天晴，25°C&quot;
+<a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a>          ↓
+<a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a>7. Adapter 将回复发送到 QQ
+</code></pre></div>
+<hr />
+<h2 id="_6">目录结构<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>Tale-AI/
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>├── main.py                     # 入口文件
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>├── core/                       # 核心代码
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>│   ├── main.py                 # TaleCore 主控制器
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>│   ├── adapter/                # 适配器
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>│   │   ├── base.py
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>│   │   ├── manager.py
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>│   │   ├── event.py
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>│   │   ├── integration.py      # AdapterEventBridge
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>│   │   ├── message_processor.py
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>│   │   └── src/                # 平台适配器实现
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>│   │       ├── qq/
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>│   │       ├── wechat_pc/
+<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>│   │       └── websocket/
+<a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a>│   ├── bus/                    # 事件总线
+<a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a>│   │   └── bus.py
+<a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a>│   ├── pipeline/               # Pipeline 系统
+<a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a>│   │   ├── base.py
+<a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a>│   │   ├── standard.py
+<a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a>│   │   ├── context.py
+<a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a>│   │   ├── stage.py
+<a id="__codelineno-8-22" name="__codelineno-8-22" href="#__codelineno-8-22"></a>│   │   └── stages/             # 标准 Stage 实现
+<a id="__codelineno-8-23" name="__codelineno-8-23" href="#__codelineno-8-23"></a>│   ├── llm/                    # 多智能体
+<a id="__codelineno-8-24" name="__codelineno-8-24" href="#__codelineno-8-24"></a>│   │   ├── chatllm.py
+<a id="__codelineno-8-25" name="__codelineno-8-25" href="#__codelineno-8-25"></a>│   │   ├── planllm.py
+<a id="__codelineno-8-26" name="__codelineno-8-26" href="#__codelineno-8-26"></a>│   │   ├── toolllm.py
+<a id="__codelineno-8-27" name="__codelineno-8-27" href="#__codelineno-8-27"></a>│   │   ├── diary_models.py
+<a id="__codelineno-8-28" name="__codelineno-8-28" href="#__codelineno-8-28"></a>│   │   └── context/            # 上下文管理
+<a id="__codelineno-8-29" name="__codelineno-8-29" href="#__codelineno-8-29"></a>│   ├── tools/                  # 工具系统
+<a id="__codelineno-8-30" name="__codelineno-8-30" href="#__codelineno-8-30"></a>│   │   ├── registry.py
+<a id="__codelineno-8-31" name="__codelineno-8-31" href="#__codelineno-8-31"></a>│   │   └── implementations/
+<a id="__codelineno-8-32" name="__codelineno-8-32" href="#__codelineno-8-32"></a>│   ├── plugin/                 # 插件系统
+<a id="__codelineno-8-33" name="__codelineno-8-33" href="#__codelineno-8-33"></a>│   │   ├── manager.py
+<a id="__codelineno-8-34" name="__codelineno-8-34" href="#__codelineno-8-34"></a>│   │   └── protocols.py
+<a id="__codelineno-8-35" name="__codelineno-8-35" href="#__codelineno-8-35"></a>│   ├── config/                 # 配置管理
+<a id="__codelineno-8-36" name="__codelineno-8-36" href="#__codelineno-8-36"></a>│   │   ├── provide.py
+<a id="__codelineno-8-37" name="__codelineno-8-37" href="#__codelineno-8-37"></a>│   │   └── prompt.py
+<a id="__codelineno-8-38" name="__codelineno-8-38" href="#__codelineno-8-38"></a>│   └── parse_xml.py            # XML 解析器
+<a id="__codelineno-8-39" name="__codelineno-8-39" href="#__codelineno-8-39"></a>├── webui/                      # WebUI
+<a id="__codelineno-8-40" name="__codelineno-8-40" href="#__codelineno-8-40"></a>│   ├── app.py
+<a id="__codelineno-8-41" name="__codelineno-8-41" href="#__codelineno-8-41"></a>│   ├── templates/
+<a id="__codelineno-8-42" name="__codelineno-8-42" href="#__codelineno-8-42"></a>│   └── static/
+<a id="__codelineno-8-43" name="__codelineno-8-43" href="#__codelineno-8-43"></a>├── plugins/                    # 插件目录
+<a id="__codelineno-8-44" name="__codelineno-8-44" href="#__codelineno-8-44"></a>│   └── echo_tool/
+<a id="__codelineno-8-45" name="__codelineno-8-45" href="#__codelineno-8-45"></a>├── data/                       # 数据目录（运行时生成）
+<a id="__codelineno-8-46" name="__codelineno-8-46" href="#__codelineno-8-46"></a>│   ├── config/
+<a id="__codelineno-8-47" name="__codelineno-8-47" href="#__codelineno-8-47"></a>│   ├── plans/
+<a id="__codelineno-8-48" name="__codelineno-8-48" href="#__codelineno-8-48"></a>│   ├── sessions/
+<a id="__codelineno-8-49" name="__codelineno-8-49" href="#__codelineno-8-49"></a>│   └── logs/
+<a id="__codelineno-8-50" name="__codelineno-8-50" href="#__codelineno-8-50"></a>├── tests/                      # 测试
+<a id="__codelineno-8-51" name="__codelineno-8-51" href="#__codelineno-8-51"></a>│   └── unit/
+<a id="__codelineno-8-52" name="__codelineno-8-52" href="#__codelineno-8-52"></a>│       └── pipeline/
+<a id="__codelineno-8-53" name="__codelineno-8-53" href="#__codelineno-8-53"></a>└── docs/                       # 文档
+</code></pre></div>
+<hr />
+<h2 id="_7">技术选型<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>技术</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>语言</td>
+<td>Python 3.8+</td>
+</tr>
+<tr>
+<td>LLM 调用</td>
+<td>OpenAI SDK（兼容格式）</td>
+</tr>
+<tr>
+<td>Web 框架</td>
+<td>Flask</td>
+</tr>
+<tr>
+<td>配置格式</td>
+<td>YAML</td>
+</tr>
+<tr>
+<td>数据持久化</td>
+<td>JSON 文件</td>
+</tr>
+<tr>
+<td>QQ 协议</td>
+<td>OneBot 11 (WebSocket)</td>
+</tr>
+<tr>
+<td>WeChat 自动化</td>
+<td>UIAutomation (Windows)</td>
+</tr>
+<tr>
+<td>搜索引擎</td>
+<td>DuckDuckGo</td>
+</tr>
+<tr>
+<td>HTML 解析</td>
+<td>BeautifulSoup4</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_8">设计原则<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>模块化</strong> — 每个组件职责单一，低耦合</li>
+<li><strong>可扩展</strong> — 插件系统支持自定义扩展</li>
+<li><strong>事件驱动</strong> — EventBus 解耦组件通信</li>
+<li><strong>配置化</strong> — 所有行为通过 YAML 配置</li>
+<li><strong>热插拔</strong> — 适配器/插件运行时加载</li>
+<li><strong>测试友好</strong> — Pipeline Stage 独立测试</li>
+</ol>
+<hr />
+<h2 id="_9">下一步<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../pipeline/">Pipeline 系统</a> — 了解消息处理流程</li>
+<li><a href="../multi-agent/">多智能体架构</a> — 理解三智能体协作</li>
+<li><a href="../event-system/">事件系统</a> — 掌握 EventBus 使用</li>
+<li><a href="../adapters/">适配器架构</a> — 接入新平台</li>
+<li><a href="../../development/plugin-development/">插件开发</a> — 开发自定义功能</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  回到页面顶部
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/Qixuan112/Tale-AI" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.tracking", "search.suggest", "search.highlight", "search.share", "content.code.copy", "content.code.annotate"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
