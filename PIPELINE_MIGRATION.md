@@ -27,10 +27,10 @@ _handle_respond_message() →
 ```
 _handle_respond_message_v2() → 
   StandardPipeline.execute() →
-    8个标准化 Stage（可扩展、可插件化） →
+    9个标准化 Stage（可扩展、可插件化） →
       BuildUserInput → NameMapping → SessionInit → 
       ContextBuild → LLMCall → MessageParse → 
-      ToolExecute → ReplyDeliver
+      ToolExecute → ReplyDeliver → HistorySave
 ```
 
 ## 新流程优势
@@ -93,7 +93,7 @@ bot:
   use_pipeline: false  # 改回 false
 ```
 
-无需重启，ConfigLoader 支持热重载（部分配置），但 `use_pipeline` 在消息分发时读取，需重启生效。
+修改配置后，下一条消息立即生效，无需重启服务。`use_pipeline` 标志在每次消息处理时动态读取。
 
 ### 紧急回滚（环境变量，未来支持）
 ```bash
@@ -103,7 +103,7 @@ export TALE_USE_PIPELINE=false
 
 ## 已知限制
 
-1. **配置热重载**: `use_pipeline` 修改需要重启 Tale 进程才能生效
+1. **配置生效时机**: `use_pipeline` 修改后下一条消息立即生效，无需重启
 2. **会话状态**: 切换路径时，进行中的消息可能出现不一致（极低概率）
 3. **日志格式**: Pipeline 路径日志更详细，可能增加日志体积
 

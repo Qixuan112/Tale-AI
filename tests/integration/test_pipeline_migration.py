@@ -17,6 +17,7 @@ class TestPipelineMigration:
 
     def _create_mock_event(self) -> PlatformEvent:
         """创建模拟 PlatformEvent"""
+        from datetime import datetime
         return PlatformEvent(
             platform=PlatformType.QQ,
             event_type=EventType.MESSAGE,
@@ -27,23 +28,20 @@ class TestPipelineMigration:
             ),
             content=MessageContent(text="你好"),
             group_id=None,
-            channel_id=None,
-            timestamp=1722758400.0,
+            timestamp=datetime.fromtimestamp(1722758400.0),
             raw_event={}
         )
 
     def _create_mock_processed(self, event: PlatformEvent) -> ProcessedMessage:
         """创建模拟 ProcessedMessage"""
         return ProcessedMessage(
-            event=event,
             decision=ResponseDecision.RESPOND,
             reason="正常响应",
-            user_input="你好",
+            text="你好",
             sender_id="12345",
             sender_name="测试用户",
             group_id=None,
-            platform=PlatformType.QQ,
-            sid="qq:dm:12345"
+            platform=PlatformType.QQ
         )
 
     @pytest.mark.asyncio
@@ -62,11 +60,11 @@ class TestPipelineMigration:
             legacy_called = False
             pipeline_called = False
 
-            async def mock_legacy(proc, adapter=None):
+            async def mock_legacy(proc, adapter_instance=None):
                 nonlocal legacy_called
                 legacy_called = True
 
-            async def mock_pipeline(proc, adapter=None):
+            async def mock_pipeline(proc, adapter_instance=None):
                 nonlocal pipeline_called
                 pipeline_called = True
 
@@ -103,11 +101,11 @@ class TestPipelineMigration:
             legacy_called = False
             pipeline_called = False
 
-            async def mock_legacy(proc, adapter=None):
+            async def mock_legacy(proc, adapter_instance=None):
                 nonlocal legacy_called
                 legacy_called = True
 
-            async def mock_pipeline(proc, adapter=None):
+            async def mock_pipeline(proc, adapter_instance=None):
                 nonlocal pipeline_called
                 pipeline_called = True
 
